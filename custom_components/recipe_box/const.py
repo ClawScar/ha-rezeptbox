@@ -6,11 +6,13 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
 DEFAULT_UPDATE_INTERVAL_HOURS = 24
+
+DATA_HUB = "hub"
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -19,9 +21,18 @@ CARD_URL_PATH = f"/{DOMAIN}"
 CARD_FILENAME = "recipe-card.js"
 CARD_URL = f"{CARD_URL_PATH}/{CARD_FILENAME}"
 
-# Local cache of the last imported recipe
+# Local cache of the imported recipes
 STORAGE_VERSION = 1
 
+SERVICE_IMPORT_RECIPE = "import_recipe"
 SERVICE_ADD_TO_SHOPPING_LIST = "add_to_shopping_list"
+ATTR_URL = "url"
 ATTR_ENTITY_ID = "entity_id"
 ATTR_INGREDIENTS = "ingredients"
+
+KNOWN_IMPORT_ERRORS = {
+    "cannot_connect",
+    "invalid_url",
+    "no_recipe",
+    "invalid_response",
+}

@@ -1,15 +1,20 @@
 # Rezeptbox für Home Assistant
 
 Rezepte mit einem Link importieren und direkt im Dashboard anzeigen – ohne
-Copy-and-paste. Die Integration holt sich Titel, Bild, Zutaten, Mengen,
-Zubereitungsschritte, Zeiten, Portionen, Tags und Bewertung von der Quellseite
-und legt alles als Sensor mit Attributen ab. Eine mitgelieferte Lovelace-Karte
-zeigt das Rezept mit abhakbarer Zutatenliste und Button für die Einkaufsliste.
+Copy-and-paste. Die Rezeptbox startet leer; Rezepte kommen später über das
+Importfeld in der Rezeptliste hinzu. Die Integration holt sich Titel, Bild,
+Zutaten, Mengen, Zubereitungsschritte, Zeiten, Portionen, Tags und Bewertung
+von der Quellseite und legt alles als Sensor mit Attributen ab. Eine
+mitgelieferte Lovelace-Karte zeigt die Rezepte als Liste, das gewählte Rezept
+mit abhakbarer Zutatenliste und Button für die Einkaufsliste.
 
 ## Funktionen
 
-- **Import per URL** über die normale Integration-Oberfläche
-  (Einstellungen → Geräte & Dienste → Integration hinzufügen → Rezeptbox)
+- **Leere Rezeptbox starten**: Integration hinzufügen genügt, es wird kein
+  Pflichtfeld abgefragt
+- **Import per Button**: URL oben in der Rezeptliste einfügen und
+  **Importieren** drücken – alternativ der Service
+  `recipe_box.import_recipe`
 - **Chefkoch-Adapter** über die offene `api.chefkoch.de/v2`-Schnittstelle
   (kein API-Key nötig), mit automatischem Fallback auf die Webseite
 - **Generischer Import** für alle Seiten, die schema.org-Rezeptdaten als
@@ -42,16 +47,33 @@ Getestet gegen Home Assistant ab Version **2025.1**.
 Den Ordner `custom_components/recipe_box` nach
 `/config/custom_components/recipe_box` kopieren und Home Assistant neu starten.
 
-## Rezept importieren
+## Einrichtung
 
 1. **Einstellungen → Geräte & Dienste → Integration hinzufügen**
-2. **Rezeptbox** auswählen
-3. Rezept-Link einfügen, z. B.
-   `https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html`
-4. Fertig – das Rezept erscheint als Gerät mit Sensor
+2. **Rezeptbox** auswählen – die Integration wird ohne weitere Angaben
+   angelegt, die Rezeptliste ist zunächst leer
+3. Die Karte `custom:recipe-box-list` in ein Dashboard legen (siehe unten)
 
-Jedes Rezept ist ein eigener Eintrag. Über **Konfigurieren** am Eintrag lässt
-sich das Aktualisierungsintervall ändern.
+Das Aktualisierungsintervall für alle Rezepte lässt sich über
+**Konfigurieren** am Eintrag ändern.
+
+## Rezept importieren
+
+**Über die Karte:** In der Rezeptliste oben die Rezept-URL einfügen (z. B.
+`https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html`)
+und **Importieren** drücken. Das Rezept erscheint sofort in der Liste, Fehler
+werden als Benachrichtigung angezeigt.
+
+**Über einen Service** (z. B. in einem Skript oder einer Automation):
+
+```yaml
+action: recipe_box.import_recipe
+data:
+  url: https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html
+```
+
+Der Service gibt `title` und `url` des importierten Rezepts zurück. Jedes
+Rezept wird als eigenes Gerät mit zwei Sensoren angelegt.
 
 ## Dashboard-Karten
 
@@ -77,7 +99,11 @@ title: Unsere Rezepte   # optional
 #   - sensor.curry
 show_image: true        # Vorschaubilder in der Liste
 show_steps: true        # Zubereitung in der Detailansicht
+show_import: true       # Importfeld für neue Rezepte
 ```
+
+Oben in der Liste sitzt das Importfeld: URL einfügen, **Importieren** drücken.
+Die Liste füllt sich sofort, ohne Neustart.
 
 ### Einzelnes Rezept
 
@@ -127,9 +153,18 @@ Beispiel für eine Automation:
         entity_id: sensor.lasagne
 ```
 
-## Service
+## Services
 
-`recipe_box.add_to_shopping_list`
+### `recipe_box.import_recipe`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `url` | ja | Adresse der Rezeptseite |
+
+Importiert ein Rezept und legt es als Gerät mit Sensoren an. Die Antwort
+enthält `title` und `url`.
+
+### `recipe_box.add_to_shopping_list`
 
 | Feld | Pflicht | Beschreibung |
 | --- | --- | --- |
@@ -155,8 +190,8 @@ Standardmäßig wird ein Rezept alle 24 Stunden neu geladen (Chefkoch: ein
 einziger API-Aufruf). Über **Konfigurieren** lässt sich das Intervall
 zwischen 0 (nie) und 168 Stunden einstellen.
 
-Das zuletzt erfolgreich geladene Rezept wird unter
-`.storage/recipe_box.<eintrag>` gespeichert. Schlägt ein Abruf fehl, bleiben
+Alle importierten Rezepte werden unter `.storage/recipe_box.<eintrag>`
+gespeichert. Schlägt ein Abruf fehl, bleiben
 Sensor und Karte mit dem gespeicherten Stand nutzbar; im Log steht eine
 Warnung.
 
@@ -191,7 +226,7 @@ keine Telemetrie.
 custom_components/recipe_box/
   __init__.py        Einrichtung, Services
   config_flow.py     Import per URL, Optionen
-  coordinator.py     Abruf, Cache, Aktualisierungsintervall
+  coordinator.py     Rezeptsammlung, Abruf, Cache, Aktualisierungsintervall
   scraper.py         HTTP: Chefkoch-API und HTML-Abruf
   parser.py          Reine Parser (JSON-LD, Chefkoch, Zeiten, Mengen)
   sensor.py          Rezept- und Portionen-Sensor

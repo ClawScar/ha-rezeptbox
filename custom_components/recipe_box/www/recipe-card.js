@@ -4,7 +4,7 @@
  *   type: custom:recipe-box-card
  *   entity: sensor.lasagne
  *
- * List card (all recipes, click one to open it):
+ * List card (all recipes, import new ones, click one to open it):
  *   type: custom:recipe-box-list
  *   title: Rezepte                # optional
  *   entities:                    # optional, defaults to all recipes
@@ -12,9 +12,10 @@
  *     - sensor.curry
  *   show_image: true             # optional
  *   show_steps: true             # optional
+ *   show_import: true            # optional, shows the import field
  */
 
-const CARD_VERSION = "1.1.0";
+const CARD_VERSION = "2.0.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const INTEGRATION = "recipe_box";
@@ -248,9 +249,14 @@ const STYLES = `<style>
   button.shopping { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.9rem; cursor: pointer; }
   button.shopping:hover { opacity: 0.9; }
   button.shopping:disabled { opacity: 0.6; cursor: default; }
-  .empty { margin: 0; padding: 16px; color: var(--secondary-text-color); }
+  .empty { margin: 0; padding: 8px 0; color: var(--secondary-text-color); font-size: 0.9rem; }
   .list-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .count { color: var(--secondary-text-color); font-size: 0.85rem; }
+  .import-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  input.import-input { flex: 1 1 180px; min-width: 0; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.9rem; }
+  input.import-input:focus { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+  button.import-button { flex: 0 0 auto; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 9px 14px; font-size: 0.9rem; cursor: pointer; }
+  button.import-button:disabled { opacity: 0.6; cursor: default; }
   ul.recipe-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
   ul.recipe-list li + li { border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.2)); }
   button.recipe-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; background: none; border: none; text-align: left; color: var(--primary-text-color); cursor: pointer; }
@@ -332,6 +338,8 @@ class RecipeBoxListCard extends HTMLElement {
     this._selected = null;
     this._signature = null;
     this._hass = undefined;
+    this._importUrl = "";
+    this._importing = false;
   }
 
   static getStubConfig() {
@@ -347,6 +355,7 @@ class RecipeBoxListCard extends HTMLElement {
       title: "Rezepte",
       show_image: true,
       show_steps: true,
+      show_import: true,
       ...config,
       entities,
     };
@@ -395,6 +404,40 @@ class RecipeBoxListCard extends HTMLElement {
     this._renderList(entries);
   }
 
+  async _import() {
+    const url = (this._importUrl || "").trim();
+    if (!url) {
+      notify(this, "Bitte eine Rezept-URL einfügen.");
+      return;
+    }
+    if (this._importing || !this._hass) return;
+
+    this._importing = true;
+    this._render();
+    try {
+      const response = await this._hass.callService(
+        "recipe_box",
+        "import_recipe",
+        { url },
+        undefined,
+        false,
+        true
+      );
+      this._importUrl = "";
+      const title = response && response.title;
+      notify(this, title ? `Rezept importiert: ${title}` : "Rezept importiert.");
+    } catch (error) {
+      notify(
+        this,
+        `Import fehlgeschlagen: ${(error && (error.message || error.code)) || "unbekannter Fehler"}`
+      );
+    } finally {
+      this._importing = false;
+      this._signature = null;
+      this._render();
+    }
+  }
+
   _renderList(entries) {
     const items = entries.map(({ entityId, state }) => {
       const attributes = state.attributes || {};
@@ -422,13 +465,21 @@ class RecipeBoxListCard extends HTMLElement {
       </li>`;
     });
 
+    const importBar = this._config.show_import
+      ? `<div class="import-bar">
+          <input class="import-input" type="url" placeholder="Rezept-URL einfügen" value="${escapeHtml(this._importUrl)}"${this._importing ? " disabled" : ""}>
+          <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Importieren"}</button>
+        </div>`
+      : "";
+
     const body = entries.length
       ? `<ul class="recipe-list">${items.join("")}</ul>`
-      : `<p class="empty">Noch keine Rezepte vorhanden. Füge über Einstellungen → Geräte &amp; Dienste → Rezeptbox ein Rezept hinzu.</p>`;
+      : `<p class="empty">Noch keine Rezepte. Füge oben die URL eines Rezepts ein – zum Beispiel von Chefkoch.</p>`;
 
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
         <div class="content">
+          ${importBar}
           <div class="list-header">
             <h2>${escapeHtml(this._config.title)}</h2>
             <span class="count">${entries.length}</span>
@@ -444,6 +495,23 @@ class RecipeBoxListCard extends HTMLElement {
         this._render();
       });
     });
+
+    const input = this.shadowRoot.querySelector("input.import-input");
+    if (input) {
+      input.addEventListener("input", () => {
+        this._importUrl = input.value;
+      });
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this._import();
+        }
+      });
+    }
+    const importButton = this.shadowRoot.querySelector("button.import-button");
+    if (importButton) {
+      importButton.addEventListener("click", () => this._import());
+    }
   }
 
   _renderDetail(entry) {
@@ -489,7 +557,7 @@ const CUSTOM_CARDS = [
     type: LIST_TYPE,
     name: "Rezeptbox Liste",
     description:
-      "Zeigt alle importierten Rezepte als Liste; ein Rezept antippen öffnet die Details.",
+      "Zeigt alle Rezepte als Liste und importiert neue Rezepte per URL; ein Rezept antippen öffnet die Details.",
     preview: false,
   },
   {

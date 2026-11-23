@@ -1,43 +1,34 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "Rezept importieren",
-        "description": "Füge den Link zu einem Rezept ein, zum Beispiel von Chefkoch, Lecker oder Allrecipes. Seiten mit schema.org-Rezeptdaten funktionieren ebenfalls.",
-        "data": {
-          "url": "Rezept-URL"
-        },
-        "data_description": {
-          "url": "Vollständige Adresse der Rezeptseite."
-        }
-      }
-    },
-    "error": {
-      "cannot_connect": "Die Seite konnte nicht geladen werden. Prüfe die Adresse und deine Internetverbindung.",
-      "invalid_url": "Das ist keine gültige Webadresse.",
-      "no_recipe": "Auf dieser Seite wurde kein Rezept gefunden.",
-      "invalid_response": "Die Seite hat Daten geliefert, die nicht gelesen werden konnten.",
-      "unknown": "Beim Importieren des Rezepts ist ein unerwarteter Fehler aufgetreten."
-    },
     "abort": {
-      "already_configured": "Dieses Rezept wurde bereits hinzugefügt."
+      "already_configured": "Die Rezeptbox ist bereits eingerichtet. Rezepte fügst du über den Import in der Rezeptliste hinzu."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Rezept aktualisieren",
-        "description": "Wie oft das Rezept von der Quellseite neu geladen werden soll.",
+        "title": "Rezepte aktualisieren",
+        "description": "Wie oft alle Rezepte von ihren Quellseiten neu geladen werden sollen.",
         "data": {
           "update_interval_hours": "Aktualisierungsintervall (Stunden, 0 = nie)"
         },
         "data_description": {
-          "update_interval_hours": "0 schaltet die automatische Aktualisierung ab. Das Rezept bleibt aus dem lokalen Cache verfügbar."
+          "update_interval_hours": "0 schaltet die automatische Aktualisierung ab. Importierte Rezepte bleiben aus dem lokalen Cache verfügbar."
         }
       }
     }
   },
   "services": {
+    "import_recipe": {
+      "name": "Rezept importieren",
+      "description": "Importiert ein Rezept von einer URL (zum Beispiel Chefkoch) und legt es in der Rezeptbox ab.",
+      "fields": {
+        "url": {
+          "name": "Rezept-URL",
+          "description": "Vollständige Adresse der Rezeptseite."
+        }
+      }
+    },
     "add_to_shopping_list": {
       "name": "Zutaten auf die Einkaufsliste",
       "description": "Fügt alle Zutaten des gewählten Rezepts der Einkaufsliste von Home Assistant hinzu.",
@@ -47,6 +38,23 @@
           "description": "Rezeptbox-Sensor des Rezepts."
         }
       }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Die Seite konnte nicht geladen werden. Prüfe die Adresse und deine Internetverbindung."
+    },
+    "invalid_url": {
+      "message": "Das ist keine gültige Webadresse."
+    },
+    "no_recipe": {
+      "message": "Auf dieser Seite wurde kein Rezept gefunden."
+    },
+    "invalid_response": {
+      "message": "Die Seite hat Daten geliefert, die nicht gelesen werden konnten."
+    },
+    "unknown": {
+      "message": "Beim Importieren des Rezepts ist ein unerwarteter Fehler aufgetreten."
     }
   },
   "entity": {

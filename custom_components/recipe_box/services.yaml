@@ -1,3 +1,12 @@
+import_recipe:
+  fields:
+    url:
+      required: true
+      example: https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html
+      selector:
+        text:
+          type: url
+
 add_to_shopping_list:
   fields:
     entity_id:

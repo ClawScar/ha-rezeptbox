@@ -1,9 +1,11 @@
-"""Data update coordinator for Rezeptbox."""
+"""Recipe collection and data update coordinator for Rezeptbox."""
 
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -12,7 +14,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .const import (
     CONF_UPDATE_INTERVAL_HOURS,
-    CONF_URL,
     DEFAULT_UPDATE_INTERVAL_HOURS,
     DOMAIN,
     STORAGE_VERSION,
@@ -22,9 +23,11 @@ from .scraper import async_scrape_recipe
 
 _LOGGER = logging.getLogger(__name__)
 
+EntityAdder = Callable[[Recipe], None]
 
-class RecipeCoordinator(DataUpdateCoordinator[Recipe]):
-    """Fetch a recipe and keep the last good copy on disk."""
+
+class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
+    """Keep every imported recipe, refresh them together and cache the list."""
 
     config_entry: ConfigEntry
 
@@ -48,43 +51,113 @@ class RecipeCoordinator(DataUpdateCoordinator[Recipe]):
             ),
             config_entry=entry,
         )
+        self.data: dict[str, Recipe] = {}
         self._store = Store(
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}"
         )
+        self._entity_adder: EntityAdder | None = None
+        self._pending_urls: list[str] = []
 
     @property
-    def recipe_title(self) -> str:
-        """Return a display name for the recipe."""
-        return self.data.title if self.data is not None else self.config_entry.title
+    def recipes(self) -> dict[str, Recipe]:
+        """Return all imported recipes keyed by their source URL."""
+        return self.data or {}
 
-    async def async_load_stored_recipe(self) -> None:
-        """Load the cached recipe so it stays available while offline."""
+    def recipe(self, source_url: str) -> Recipe | None:
+        """Return one recipe by source URL."""
+        return self.recipes.get(source_url)
+
+    def register_url(self, url: str) -> None:
+        """Queue a URL for the next refresh (used for old single-recipe entries)."""
+        if url not in self.recipes and url not in self._pending_urls:
+            self._pending_urls.append(url)
+
+    def set_entity_adder(self, adder: EntityAdder) -> None:
+        """Register the callback that creates entities for new recipes."""
+        self._entity_adder = adder
+
+    async def async_load_stored_recipes(self) -> None:
+        """Load the cached recipe list so it stays available while offline."""
         stored = await self._store.async_load()
-        if not isinstance(stored, dict):
-            return
-        try:
-            self.data = Recipe.from_dict(stored)
-        except TypeError:
-            _LOGGER.debug("Ignoring incomplete cached recipe for %s", self.name)
+        items: list[Any] = []
+        if isinstance(stored, dict):
+            if isinstance(stored.get("recipes"), list):
+                items = stored["recipes"]
+            elif stored.get("source_url"):
+                # Cache written by 1.x, when one entry held a single recipe.
+                items = [stored]
+        elif isinstance(stored, list):
+            items = stored
 
-    async def _async_update_data(self) -> Recipe:
-        """Fetch the recipe from its source, falling back to the cached copy."""
-        url = self.config_entry.data.get(CONF_URL)
-        if not url:
-            raise UpdateFailed("No recipe URL configured")
+        recipes: dict[str, Recipe] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                recipe = Recipe.from_dict(item)
+            except TypeError:
+                continue
+            if recipe.source_url:
+                recipes[recipe.source_url] = recipe
+        self.data = recipes
 
-        try:
-            recipe = await async_scrape_recipe(self.hass, url)
-        except RecipeError as err:
-            if self.data is not None:
-                _LOGGER.warning(
-                    "Could not refresh recipe %s (%s); keeping the cached version",
-                    self.name,
-                    err.code,
-                )
-                return self.data
-            raise UpdateFailed(f"{err.code}: {err}") from err
+    async def async_add_recipe(self, recipe: Recipe) -> bool:
+        """Store an imported recipe and create its entities.
 
-        if recipe != self.data:
-            await self._store.async_save(recipe.as_dict())
+        Returns True when the recipe is new.
+        """
+        added = recipe.source_url not in self.recipes
+        self.data = {**self.recipes, recipe.source_url: recipe}
+        await self._async_save()
+        self.async_update_listeners()
+        if added and self._entity_adder is not None:
+            self._entity_adder(recipe)
+        return added
+
+    async def async_import(self, url: str) -> Recipe:
+        """Fetch a recipe from a URL and add it to the collection."""
+        recipe = await async_scrape_recipe(self.hass, url)
+        await self.async_add_recipe(recipe)
         return recipe
+
+    async def _async_save(
+        self, recipes: dict[str, Recipe] | None = None
+    ) -> None:
+        """Persist the recipe list."""
+        data = self.recipes if recipes is None else recipes
+        await self._store.async_save(
+            {"recipes": [recipe.as_dict() for recipe in data.values()]}
+        )
+
+    async def _async_update_data(self) -> dict[str, Recipe]:
+        """Refresh every imported recipe, keeping cached copies on errors."""
+        urls = list(self.recipes)
+        urls.extend(url for url in self._pending_urls if url not in self.recipes)
+        if not urls:
+            return {}
+
+        updated: dict[str, Recipe] = {}
+        for url in urls:
+            cached = self.recipes.get(url)
+            try:
+                updated[url] = await async_scrape_recipe(self.hass, url)
+            except RecipeError as err:
+                if cached is not None:
+                    _LOGGER.warning(
+                        "Could not refresh recipe %s (%s); keeping the cached version",
+                        url,
+                        err.code,
+                    )
+                    updated[url] = cached
+                else:
+                    _LOGGER.warning(
+                        "Could not load recipe %s (%s)", url, err.code
+                    )
+
+        if not updated:
+            raise UpdateFailed(f"Could not load any of {len(urls)} recipes")
+
+        if updated != self.recipes:
+            await self._async_save(updated)
+        self._pending_urls = []
+        return updated

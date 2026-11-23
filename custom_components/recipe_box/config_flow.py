@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import voluptuous as vol
@@ -13,78 +12,42 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
-    TextSelector,
-    TextSelectorConfig,
-    TextSelectorType,
 )
 
 from .const import (
     CONF_UPDATE_INTERVAL_HOURS,
-    CONF_URL,
     DEFAULT_UPDATE_INTERVAL_HOURS,
     DOMAIN,
+    NAME,
 )
-from .parser import RecipeError, normalize_url
-from .scraper import async_scrape_recipe
-
-_LOGGER = logging.getLogger(__name__)
-
-KNOWN_ERRORS = {"cannot_connect", "invalid_url", "no_recipe", "invalid_response"}
 
 
 class RecipeBoxConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Import a recipe by its URL."""
+    """Set up an empty recipe box.
+
+    Recipes are imported later from the dashboard card or the
+    ``recipe_box.import_recipe`` service.
+    """
 
     VERSION = 1
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the URL the user pasted."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            try:
-                url = normalize_url(user_input[CONF_URL])
-            except RecipeError:
-                errors["base"] = "invalid_url"
-            else:
-                try:
-                    recipe = await async_scrape_recipe(self.hass, url)
-                except RecipeError as err:
-                    _LOGGER.debug("Recipe import failed for %s: %s", url, err)
-                    errors["base"] = (
-                        err.code if err.code in KNOWN_ERRORS else "unknown"
-                    )
-                else:
-                    await self.async_set_unique_id(recipe.source_url)
-                    self._abort_if_unique_id_configured()
-                    return self.async_create_entry(
-                        title=recipe.title[:60],
-                        data={CONF_URL: recipe.source_url},
-                    )
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_URL): TextSelector(
-                        TextSelectorConfig(type=TextSelectorType.URL)
-                    )
-                }
-            ),
-            errors=errors,
-        )
+        """Create the (empty) recipe box."""
+        await self.async_set_unique_id(DOMAIN)
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=NAME, data={})
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry) -> "RecipeBoxOptionsFlow":
-        """Return the options flow for a recipe."""
+        """Return the options flow for the recipe box."""
         return RecipeBoxOptionsFlow()
 
 
 class RecipeBoxOptionsFlow(OptionsFlow):
-    """Configure how often a recipe is refreshed."""
+    """Configure how often all recipes are refreshed."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None

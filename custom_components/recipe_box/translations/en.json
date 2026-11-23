@@ -1,43 +1,34 @@
 {
   "config": {
-    "step": {
-      "user": {
-        "title": "Import a recipe",
-        "description": "Paste the link to a recipe, for example from Chefkoch, Lecker or Allrecipes. Pages that publish schema.org recipe data work as well.",
-        "data": {
-          "url": "Recipe URL"
-        },
-        "data_description": {
-          "url": "Full web address of the recipe page."
-        }
-      }
-    },
-    "error": {
-      "cannot_connect": "The page could not be loaded. Check the URL and your internet connection.",
-      "invalid_url": "This is not a valid web address.",
-      "no_recipe": "No recipe was found on this page.",
-      "invalid_response": "The page returned data that could not be read.",
-      "unknown": "Unexpected error while importing the recipe."
-    },
     "abort": {
-      "already_configured": "This recipe has already been added."
+      "already_configured": "The recipe box is already set up. Add recipes with the import in the recipe list."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Recipe refresh",
-        "description": "How often the recipe should be reloaded from its source page.",
+        "description": "How often all recipes should be reloaded from their source pages.",
         "data": {
           "update_interval_hours": "Refresh interval (hours, 0 = never)"
         },
         "data_description": {
-          "update_interval_hours": "0 disables automatic refresh. The imported recipe stays available from the local cache."
+          "update_interval_hours": "0 disables automatic refresh. Imported recipes stay available from the local cache."
         }
       }
     }
   },
   "services": {
+    "import_recipe": {
+      "name": "Import a recipe",
+      "description": "Imports a recipe from a URL (for example Chefkoch) and adds it to the recipe box.",
+      "fields": {
+        "url": {
+          "name": "Recipe URL",
+          "description": "Full web address of the recipe page."
+        }
+      }
+    },
     "add_to_shopping_list": {
       "name": "Add ingredients to shopping list",
       "description": "Adds every ingredient of the selected recipe to the Home Assistant shopping list.",
@@ -47,6 +38,23 @@
           "description": "Rezeptbox sensor of the recipe."
         }
       }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "The page could not be loaded. Check the URL and your internet connection."
+    },
+    "invalid_url": {
+      "message": "This is not a valid web address."
+    },
+    "no_recipe": {
+      "message": "No recipe was found on this page."
+    },
+    "invalid_response": {
+      "message": "The page returned data that could not be read."
+    },
+    "unknown": {
+      "message": "Unexpected error while importing the recipe."
     }
   },
   "entity": {

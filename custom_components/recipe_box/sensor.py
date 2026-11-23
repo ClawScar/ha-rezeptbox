@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
@@ -12,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, NAME
-from .coordinator import RecipeCoordinator
+from .coordinator import RecipeHub
 from .parser import Recipe
 
 
@@ -21,39 +22,48 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the sensors for one imported recipe."""
-    coordinator: RecipeCoordinator = entry.runtime_data
-    async_add_entities(
-        [
-            RecipeSensor(coordinator),
-            RecipeServingsSensor(coordinator),
+    """Set up one sensor pair for every imported recipe."""
+    hub: RecipeHub = entry.runtime_data
+
+    def build(recipe: Recipe) -> list[RecipeSensorBase]:
+        return [
+            RecipeSensor(hub, recipe),
+            RecipeServingsSensor(hub, recipe),
         ]
+
+    async_add_entities(
+        [entity for recipe in hub.recipes.values() for entity in build(recipe)]
     )
+    hub.set_entity_adder(lambda recipe: async_add_entities(build(recipe)))
 
 
-class RecipeSensorBase(CoordinatorEntity[RecipeCoordinator], SensorEntity):
+class RecipeSensorBase(CoordinatorEntity[RecipeHub], SensorEntity):
     """Common base for the recipe entities."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: RecipeCoordinator, unique_suffix: str) -> None:
-        super().__init__(coordinator)
-        entry = coordinator.config_entry
-        recipe = coordinator.data
-        self._attr_unique_id = f"{entry.entry_id}_{unique_suffix}"
+    def __init__(
+        self, hub: RecipeHub, recipe: Recipe, unique_suffix: str
+    ) -> None:
+        super().__init__(hub)
+        self._source_url = recipe.source_url
+        token = hashlib.sha1(
+            recipe.source_url.encode("utf-8")
+        ).hexdigest()[:16]
+        self._attr_unique_id = f"{DOMAIN}_{token}_{unique_suffix}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name=coordinator.recipe_title[:60],
+            identifiers={(DOMAIN, recipe.source_url)},
+            name=recipe.title[:60],
             manufacturer=NAME,
-            model=(recipe.site if recipe else "") or "Rezept",
+            model=recipe.site or "Rezept",
             entry_type=DeviceEntryType.SERVICE,
-            configuration_url=(recipe.source_url if recipe else None),
+            configuration_url=recipe.source_url,
         )
 
     @property
     def recipe(self) -> Recipe | None:
         """Return the current recipe data."""
-        return self.coordinator.data
+        return self.coordinator.recipe(self._source_url)
 
     @property
     def available(self) -> bool:
@@ -70,8 +80,8 @@ class RecipeSensor(RecipeSensorBase):
     _attr_native_unit_of_measurement = "min"
     _attr_suggested_display_precision = 0
 
-    def __init__(self, coordinator: RecipeCoordinator) -> None:
-        super().__init__(coordinator, "recipe")
+    def __init__(self, hub: RecipeHub, recipe: Recipe) -> None:
+        super().__init__(hub, recipe, "recipe")
 
     @property
     def native_value(self) -> int | None:
@@ -100,8 +110,8 @@ class RecipeServingsSensor(RecipeSensorBase):
     _attr_icon = "mdi:account-group"
     _attr_suggested_display_precision = 0
 
-    def __init__(self, coordinator: RecipeCoordinator) -> None:
-        super().__init__(coordinator, "servings")
+    def __init__(self, hub: RecipeHub, recipe: Recipe) -> None:
+        super().__init__(hub, recipe, "servings")
 
     @property
     def native_value(self) -> int | None:

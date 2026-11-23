@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -20,6 +21,18 @@ class ManifestTest(unittest.TestCase):
         self.assertIn("version", self.manifest)
         self.assertEqual(self.manifest["iot_class"], "cloud_polling")
 
+    def test_version_matches_const(self) -> None:
+        const = (COMPONENT / "const.py").read_text("utf-8")
+        match = re.search(r'VERSION = "([^"]+)"', const)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), self.manifest["version"])
+
+    def test_version_matches_card(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        match = re.search(r'CARD_VERSION = "([^"]+)"', card)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.group(1), self.manifest["version"])
+
 
 class TranslationTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -31,32 +44,24 @@ class TranslationTest(unittest.TestCase):
             (COMPONENT / "translations" / "en.json").read_text("utf-8")
         )
 
-    def test_same_structure_as_english(self) -> None:
-        self.assertEqual(self.strings.keys(), self.english.keys())
-        self.assertEqual(
-            self.strings["config"]["step"].keys(),
-            self.english["config"]["step"].keys(),
-        )
-        self.assertEqual(
-            self.strings["config"]["error"].keys(),
-            self.english["config"]["error"].keys(),
-        )
+    def test_same_top_level_sections(self) -> None:
+        self.assertEqual(set(self.strings), set(self.german))
+        self.assertEqual(set(self.strings), set(self.english))
 
-    def test_german_covers_all_errors(self) -> None:
-        expected = set(self.strings["config"]["error"])
-        self.assertEqual(set(self.german["config"]["error"]), expected)
-        self.assertEqual(
-            set(self.german["config"]["step"]["user"]["data"]),
-            set(self.strings["config"]["step"]["user"]["data"]),
-        )
+    def test_services_translated(self) -> None:
+        expected = set(self.strings["services"])
+        self.assertEqual(set(self.german["services"]), expected)
+        self.assertEqual(set(self.english["services"]), expected)
+
+    def test_exceptions_translated(self) -> None:
+        expected = set(self.strings["exceptions"])
+        self.assertEqual(set(self.german["exceptions"]), expected)
+        self.assertEqual(set(self.english["exceptions"]), expected)
+
+    def test_options_match(self) -> None:
         self.assertEqual(
             set(self.german["options"]["step"]["init"]["data"]),
             set(self.strings["options"]["step"]["init"]["data"]),
-        )
-
-    def test_services_match(self) -> None:
-        self.assertEqual(
-            set(self.strings["services"]), set(self.german["services"])
         )
 
 
@@ -68,10 +73,17 @@ class FilesTest(unittest.TestCase):
         self.assertIn("recipe_box", content)
         self.assertIn("recipe-box-list", content)
         self.assertIn("recipe-box-card", content)
+        self.assertIn("import_recipe", content)
 
     def test_services_yaml(self) -> None:
         content = (COMPONENT / "services.yaml").read_text("utf-8")
+        self.assertIn("import_recipe", content)
         self.assertIn("add_to_shopping_list", content)
+
+    def test_config_flow_has_no_url_step(self) -> None:
+        content = (COMPONENT / "config_flow.py").read_text("utf-8")
+        self.assertNotIn("CONF_URL", content)
+        self.assertIn("async_create_entry", content)
 
     def test_hacs_manifest(self) -> None:
         hacs = json.loads((BASE / "hacs.json").read_text("utf-8"))
