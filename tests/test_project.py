@@ -77,10 +77,12 @@ class FilesTest(unittest.TestCase):
         self.assertIn("recipe-box-panel", content)
         self.assertIn("import_recipe", content)
         self.assertIn("remove_recipe", content)
+        self.assertIn("urls", content)
 
     def test_services_yaml(self) -> None:
         content = (COMPONENT / "services.yaml").read_text("utf-8")
         self.assertIn("import_recipe", content)
+        self.assertIn("urls", content)
         self.assertIn("remove_recipe", content)
         self.assertIn("add_to_shopping_list", content)
 

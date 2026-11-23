@@ -12,11 +12,11 @@
  *     - sensor.curry
  *   show_image: true             # optional
  *   show_steps: true             # optional
- *   show_import: true            # optional, shows the import field
+ *   show_import: true            # optional, shows the import field (accepts multiple URLs)
  *   show_delete: true            # optional, shows the delete buttons
  */
 
-const CARD_VERSION = "1.2.0";
+const CARD_VERSION = "1.2.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -62,6 +62,16 @@ const isRecipeState = (state) => {
   if (attributes.integration === INTEGRATION) return true;
   return Boolean(attributes.source_url) && Array.isArray(attributes.ingredients);
 };
+
+const parseUrls = (value) =>
+  [
+    ...new Set(
+      String(value || "")
+        .split(/[\s,;]+/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+    ),
+  ];
 
 const recipeTitle = (state) => {
   const attributes = (state && state.attributes) || {};
@@ -256,9 +266,9 @@ const STYLES = `<style>
   .empty { margin: 0; padding: 8px 0; color: var(--secondary-text-color); font-size: 0.9rem; }
   .list-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .count { color: var(--secondary-text-color); font-size: 0.85rem; }
-  .import-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  input.import-input { flex: 1 1 180px; min-width: 0; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.9rem; }
-  input.import-input:focus { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+  .import-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+  textarea.import-input { flex: 1 1 220px; min-width: 0; min-height: 44px; resize: vertical; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.9rem; font-family: inherit; }
+  textarea.import-input:focus { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   button.import-button { flex: 0 0 auto; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 9px 14px; font-size: 0.9rem; cursor: pointer; }
   button.import-button:disabled { opacity: 0.6; cursor: default; }
   ul.recipe-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -417,9 +427,9 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   async _import() {
-    const url = (this._importUrl || "").trim();
-    if (!url) {
-      notify(this, "Bitte eine Rezept-URL einfügen.");
+    const urls = parseUrls(this._importUrl);
+    if (!urls.length) {
+      notify(this, "Bitte mindestens eine Rezept-URL einfügen.");
       return;
     }
     if (this._importing || !this._hass) return;
@@ -427,17 +437,32 @@ class RecipeBoxListCard extends HTMLElement {
     this._importing = true;
     this._render();
     try {
-      const response = await this._hass.callService(
-        "recipe_box",
-        "import_recipe",
-        { url },
-        undefined,
-        false,
-        true
-      );
-      this._importUrl = "";
-      const title = response && response.title;
-      notify(this, title ? `Rezept importiert: ${title}` : "Rezept importiert.");
+      if (urls.length === 1) {
+        const response = await this._hass.callService(
+          "recipe_box",
+          "import_recipe",
+          { url: urls[0] },
+          undefined,
+          false,
+          true
+        );
+        this._importUrl = "";
+        const title = response && response.title;
+        notify(this, title ? `Rezept importiert: ${title}` : "Rezept importiert.");
+      } else {
+        const response = await this._hass.callService(
+          "recipe_box",
+          "import_recipe",
+          { urls },
+          undefined,
+          false,
+          true
+        );
+        this._importUrl = "";
+        const imported = (response && response.imported) || [];
+        const failed = (response && response.failed) || [];
+        notify(this, this._importSummary(imported.length, failed));
+      }
     } catch (error) {
       notify(
         this,
@@ -448,6 +473,17 @@ class RecipeBoxListCard extends HTMLElement {
       this._signature = null;
       this._render();
     }
+  }
+
+  _importSummary(importedCount, failed) {
+    const total = importedCount + failed.length;
+    if (!failed.length) {
+      return `${importedCount} von ${total} Rezepten importiert.`;
+    }
+    const first = failed[0] || {};
+    const raw = String(first.url || "");
+    const label = raw.length > 60 ? `${raw.slice(0, 57)}…` : raw;
+    return `${importedCount} von ${total} importiert, ${failed.length} fehlgeschlagen (${label}: ${first.error || "Fehler"}).`;
   }
 
   _requestDelete(entityId) {
@@ -525,14 +561,14 @@ class RecipeBoxListCard extends HTMLElement {
 
     const importBar = this._config.show_import
       ? `<div class="import-bar">
-          <input class="import-input" type="url" placeholder="Rezept-URL einfügen" value="${escapeHtml(this._importUrl)}"${this._importing ? " disabled" : ""}>
+          <textarea class="import-input" rows="2" placeholder="Rezept-URLs – eine pro Zeile"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
           <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Importieren"}</button>
         </div>`
       : "";
 
     const body = entries.length
       ? `<ul class="recipe-list">${items.join("")}</ul>`
-      : `<p class="empty">Noch keine Rezepte. Füge oben die URL eines Rezepts ein – zum Beispiel von Chefkoch.</p>`;
+      : `<p class="empty">Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch.</p>`;
 
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
@@ -561,13 +597,13 @@ class RecipeBoxListCard extends HTMLElement {
       });
     });
 
-    const input = this.shadowRoot.querySelector("input.import-input");
+    const input = this.shadowRoot.querySelector("textarea.import-input");
     if (input) {
       input.addEventListener("input", () => {
         this._importUrl = input.value;
       });
       input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
           event.preventDefault();
           this._import();
         }

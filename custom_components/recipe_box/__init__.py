@@ -24,6 +24,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     ATTR_INGREDIENTS,
     ATTR_URL,
+    ATTR_URLS,
     CONF_URL,
     DATA_HUB,
     DOMAIN,
@@ -50,7 +51,15 @@ ADD_TO_SHOPPING_LIST_SCHEMA = vol.Schema(
     {vol.Required(ATTR_ENTITY_ID): cv.entity_ids}
 )
 
-IMPORT_RECIPE_SCHEMA = vol.Schema({vol.Required(ATTR_URL): cv.string})
+IMPORT_RECIPE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_URLS): vol.All(cv.ensure_list, [cv.string]),
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_URLS),
+)
 
 REMOVE_RECIPE_SCHEMA = vol.All(
     vol.Schema(
@@ -193,17 +202,39 @@ async def _async_reload_entry(
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def _async_import_recipe(
-    hass: HomeAssistant, call: ServiceCall
-) -> dict[str, Any]:
-    """Import a recipe from a URL into the recipe box."""
-    hub = _get_hub(hass)
-    if hub is None:
-        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+def _collect_import_urls(call: ServiceCall) -> list[str]:
+    """Return the requested URLs, normalised and without duplicates."""
+    raw: list[str] = []
+    url = call.data.get(ATTR_URL)
+    if url:
+        raw.append(str(url))
 
-    url = str(call.data[ATTR_URL])
+    urls = call.data.get(ATTR_URLS) or []
+    if isinstance(urls, str):
+        urls = [urls]
+    raw.extend(str(item) for item in urls)
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = item.strip()
+        if not text:
+            continue
+        try:
+            key = normalize_url(text)
+        except RecipeError:
+            key = text
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(key)
+    return result
+
+
+async def _import_single(hub: RecipeHub, url: str) -> Recipe:
+    """Import one recipe or raise a translated service error."""
     try:
-        recipe = await hub.async_import(url)
+        return await hub.async_import(url)
     except RecipeError as err:
         _LOGGER.debug("Recipe import failed for %s: %s", url, err)
         code = err.code if err.code in KNOWN_IMPORT_ERRORS else "unknown"
@@ -212,8 +243,51 @@ async def _async_import_recipe(
             translation_key=code,
         ) from err
 
-    _LOGGER.debug("Imported recipe %s from %s", recipe.title, recipe.source_url)
-    return {"title": recipe.title, "url": recipe.source_url}
+
+async def _async_import_recipe(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Import one or more recipes into the recipe box."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    urls = _collect_import_urls(call)
+    if not urls:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="invalid_url"
+        )
+
+    if len(urls) == 1:
+        recipe = await _import_single(hub, urls[0])
+        _LOGGER.debug(
+            "Imported recipe %s from %s", recipe.title, recipe.source_url
+        )
+        return {"title": recipe.title, "url": recipe.source_url}
+
+    imported: list[dict[str, str]] = []
+    failed: list[dict[str, str]] = []
+    for url in urls:
+        try:
+            recipe = await hub.async_import(url)
+        except RecipeError as err:
+            code = err.code if err.code in KNOWN_IMPORT_ERRORS else "unknown"
+            _LOGGER.debug("Recipe import failed for %s: %s", url, err)
+            failed.append({"url": url, "error": code})
+        else:
+            imported.append({"title": recipe.title, "url": recipe.source_url})
+
+    _LOGGER.debug(
+        "Imported %s of %s recipes (%s failed)",
+        len(imported),
+        len(urls),
+        len(failed),
+    )
+    return {
+        "imported": imported,
+        "failed": failed,
+        "total": len(urls),
+    }
 
 
 async def _async_remove_recipe(

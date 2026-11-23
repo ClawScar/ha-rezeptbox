@@ -21,11 +21,15 @@
   "services": {
     "import_recipe": {
       "name": "Import a recipe",
-      "description": "Imports a recipe from a URL (for example Chefkoch) and adds it to the recipe box.",
+      "description": "Imports one or more recipes from URLs (for example Chefkoch) and adds them to the recipe box.",
       "fields": {
         "url": {
           "name": "Recipe URL",
           "description": "Full web address of the recipe page."
+        },
+        "urls": {
+          "name": "Recipe URLs",
+          "description": "Multiple recipe URLs. A failing link does not block the others."
         }
       }
     },

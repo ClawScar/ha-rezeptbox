@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
@@ -33,6 +33,7 @@ SERVICE_IMPORT_RECIPE = "import_recipe"
 SERVICE_REMOVE_RECIPE = "remove_recipe"
 SERVICE_ADD_TO_SHOPPING_LIST = "add_to_shopping_list"
 ATTR_URL = "url"
+ATTR_URLS = "urls"
 ATTR_ENTITY_ID = "entity_id"
 ATTR_INGREDIENTS = "ingredients"
 

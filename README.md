@@ -14,9 +14,9 @@ mit abhakbarer Zutatenliste und Button für die Einkaufsliste.
   Seitenleiste verfügbar – Import, Liste und Löschen ohne Dashboard-Konfiguration
 - **Leere Rezeptbox starten**: Integration hinzufügen genügt, es wird kein
   Pflichtfeld abgefragt
-- **Import per Button**: URL oben in der Rezeptliste einfügen und
-  **Importieren** drücken – alternativ der Service
-  `recipe_box.import_recipe`
+- **Import per Button**: eine oder mehrere URLs oben in der Rezeptliste
+  einfügen (eine pro Zeile) und **Importieren** drücken – alternativ der
+  Service `recipe_box.import_recipe`
 - **Chefkoch-Adapter** über die offene `api.chefkoch.de/v2`-Schnittstelle
   (kein API-Key nötig), mit automatischem Fallback auf die Webseite
 - **Generischer Import** für alle Seiten, die schema.org-Rezeptdaten als
@@ -64,10 +64,12 @@ Das Aktualisierungsintervall für alle Rezepte lässt sich über
 
 ## Rezept importieren
 
-**Über die Karte:** In der Rezeptliste oben die Rezept-URL einfügen (z. B.
-`https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html`)
-und **Importieren** drücken. Das Rezept erscheint sofort in der Liste, Fehler
-werden als Benachrichtigung angezeigt.
+**Über die Karte:** In der Rezeptliste oben eine oder mehrere Rezept-URLs
+einfügen (eine pro Zeile, alternativ durch Komma getrennt) und **Importieren**
+drücken. Die Rezepte erscheinen sofort in der Liste, am Ende zeigt eine
+Benachrichtigung die Zusammenfassung (z. B. „3 von 4 importiert, 1
+fehlgeschlagen“). Ein fehlerhafter Link blockiert die übrigen nicht. Mit
+**Strg+Enter** (bzw. Cmd+Enter) startest du den Import aus dem Feld.
 
 **Über einen Service** (z. B. in einem Skript oder einer Automation):
 
@@ -77,8 +79,23 @@ data:
   url: https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html
 ```
 
-Der Service gibt `title` und `url` des importierten Rezepts zurück. Jedes
-Rezept wird als eigenes Gerät mit zwei Sensoren angelegt.
+Bei einer URL gibt der Service `title` und `url` zurück, bei mehreren eine
+Zusammenfassung mit `imported`, `failed` und `total`. Jedes Rezept wird als
+eigenes Gerät mit zwei Sensoren angelegt.
+
+Mehrere Adressen auf einmal:
+
+```yaml
+action: recipe_box.import_recipe
+data:
+  urls:
+    - https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html
+    - https://www.chefkoch.de/rezepte/1065461220711547/Lasagne.html
+```
+
+`url` und `urls` lassen sich kombinieren; doppelte Adressen werden nur einmal
+importiert. Schlägt ein Link fehl, erscheint er unter `failed` mit Fehlercode,
+während die übrigen Rezepte importiert werden.
 
 ## Sidebar-Seite (automatisch)
 
@@ -118,8 +135,8 @@ show_import: true       # Importfeld für neue Rezepte
 show_delete: true       # Löschen-Button je Rezept
 ```
 
-Oben in der Liste sitzt das Importfeld: URL einfügen, **Importieren** drücken.
-Die Liste füllt sich sofort, ohne Neustart. Rechts neben jedem Eintrag entfernt
+Oben in der Liste sitzt das Importfeld: eine oder mehrere URLs einfügen,
+**Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Rechts neben jedem Eintrag entfernt
 der Papierkorb das Rezept – der erste Klick fragt mit **Löschen?** nach, der
 zweite löscht endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
 
@@ -177,10 +194,12 @@ Beispiel für eine Automation:
 
 | Feld | Pflicht | Beschreibung |
 | --- | --- | --- |
-| `url` | ja | Adresse der Rezeptseite |
+| `url` | eins von beiden | Adresse einer Rezeptseite |
+| `urls` | eins von beiden | Liste von Rezept-Adressen |
 
-Importiert ein Rezept und legt es als Gerät mit Sensoren an. Die Antwort
-enthält `title` und `url`.
+Importiert ein oder mehrere Rezepte und legt sie als Geräte mit Sensoren an.
+Bei einer URL enthält die Antwort `title` und `url`, bei mehreren `imported`,
+`failed` und `total`. Fehlerhafte Links blockieren die übrigen nicht.
 
 ### `recipe_box.remove_recipe`
 

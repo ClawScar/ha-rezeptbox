@@ -21,11 +21,15 @@
   "services": {
     "import_recipe": {
       "name": "Rezept importieren",
-      "description": "Importiert ein Rezept von einer URL (zum Beispiel Chefkoch) und legt es in der Rezeptbox ab.",
+      "description": "Importiert ein oder mehrere Rezepte von URLs (zum Beispiel Chefkoch) und legt sie in der Rezeptbox ab.",
       "fields": {
         "url": {
           "name": "Rezept-URL",
           "description": "Vollständige Adresse der Rezeptseite."
+        },
+        "urls": {
+          "name": "Rezept-URLs",
+          "description": "Mehrere Rezept-Adressen. Ein fehlerhafter Link blockiert die übrigen nicht."
         }
       }
     },
