@@ -259,7 +259,8 @@ custom_components/recipe_box/
   parser.py          Reine Parser (JSON-LD, Chefkoch, Zeiten, Mengen)
   sensor.py          Rezept- und Portionen-Sensor
   frontend.py        Auslieferung der Lovelace-Karte
-  www/recipe-card.js Lovelace-Karte
+  www/recipe-card.js Lovelace-Karten und Sidebar-Panel
+  brand/icon.png     Integrations-Icon (256 px, 512 px als @2x)
 tests/               Unit-Tests und Fixtures
 ```
 

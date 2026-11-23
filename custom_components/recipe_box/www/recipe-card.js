@@ -504,7 +504,7 @@ class RecipeBoxListCard extends HTMLElement {
       const thumb =
         this._config.show_image && attributes.image_url
           ? `<img class="thumb" src="${escapeHtml(attributes.image_url)}" alt="" loading="lazy">`
-          : `<span class="thumb placeholder"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon></span>`;
+          : `<span class="thumb placeholder"><ha-icon icon="mdi:chef-hat"></ha-icon></span>`;
 
       const removeButton = this._config.show_delete
         ? deleteButtonHtml(entityId, this._pendingDelete === entityId)

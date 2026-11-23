@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import struct
 import unittest
 from pathlib import Path
 
@@ -94,6 +95,18 @@ class FilesTest(unittest.TestCase):
         self.assertIn("async_register_built_in_panel", frontend)
         self.assertIn("PANEL_COMPONENT", frontend)
         self.assertIn('PANEL_COMPONENT = "recipe-box-panel"', const)
+
+    def test_brand_icon(self) -> None:
+        icon = COMPONENT / "brand" / "icon.png"
+        hd_icon = COMPONENT / "brand" / "icon@2x.png"
+        self.assertTrue(icon.is_file())
+        self.assertTrue(hd_icon.is_file())
+
+        with icon.open("rb") as handle:
+            header = handle.read(24)
+        self.assertEqual(header[:8], b"\x89PNG\r\n\x1a\n")
+        width, height = struct.unpack(">II", header[16:24])
+        self.assertEqual((width, height), (256, 256))
 
     def test_hacs_manifest(self) -> None:
         hacs = json.loads((BASE / "hacs.json").read_text("utf-8"))

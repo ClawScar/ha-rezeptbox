@@ -75,7 +75,7 @@ def async_register_panel(hass: HomeAssistant) -> None:
             hass,
             "custom",
             sidebar_title=NAME,
-            sidebar_icon="mdi:silverware-fork-knife",
+            sidebar_icon="mdi:chef-hat",
             frontend_url_path=PANEL_URL_PATH,
             config={
                 "_panel_custom": {
