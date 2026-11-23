@@ -21,6 +21,11 @@ CARD_URL_PATH = f"/{DOMAIN}"
 CARD_FILENAME = "recipe-card.js"
 CARD_URL = f"{CARD_URL_PATH}/{CARD_FILENAME}"
 
+# Automatic sidebar page
+PANEL_URL_PATH = "rezeptbox"
+PANEL_COMPONENT = "recipe-box-panel"
+DATA_PANEL = f"{DOMAIN}_panel"
+
 # Local cache of the imported recipes
 STORAGE_VERSION = 1
 

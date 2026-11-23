@@ -10,6 +10,8 @@ mit abhakbarer Zutatenliste und Button für die Einkaufsliste.
 
 ## Funktionen
 
+- **Automatische Sidebar-Seite** „Rezeptbox“: nach dem Neustart in der
+  Seitenleiste verfügbar – Import, Liste und Löschen ohne Dashboard-Konfiguration
 - **Leere Rezeptbox starten**: Integration hinzufügen genügt, es wird kein
   Pflichtfeld abgefragt
 - **Import per Button**: URL oben in der Rezeptliste einfügen und
@@ -77,6 +79,16 @@ data:
 
 Der Service gibt `title` und `url` des importierten Rezepts zurück. Jedes
 Rezept wird als eigenes Gerät mit zwei Sensoren angelegt.
+
+## Sidebar-Seite (automatisch)
+
+Nach dem Neustart erscheint links in der Seitenleiste **Rezeptbox** (Scheren-
+und-Gabel-Symbol). Diese Seite wird von der Integration selbst registriert: Sie
+enthält Importfeld, Rezeptliste, Detailansicht und Löschen – ohne dass du ein
+Dashboard bearbeiten oder eine Karte hinzufügen musst.
+
+Die Karten bleiben trotzdem verfügbar, wenn du die Liste in ein bestehendes
+Dashboard einbauen willst.
 
 ## Dashboard-Karten
 

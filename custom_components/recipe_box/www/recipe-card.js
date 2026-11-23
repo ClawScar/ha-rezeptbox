@@ -19,6 +19,7 @@
 const CARD_VERSION = "1.1.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
+const PANEL_TYPE = "recipe-box-panel";
 const INTEGRATION = "recipe_box";
 
 const HTML_ESCAPES = {
@@ -614,8 +615,51 @@ class RecipeBoxListCard extends HTMLElement {
   }
 }
 
+class RecipeBoxPanel extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._card = null;
+    this._hass = undefined;
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._card) {
+      this.shadowRoot.innerHTML = `<style>
+        :host { display: block; padding: 16px; box-sizing: border-box; }
+        recipe-box-list { display: block; max-width: 960px; margin: 0 auto; }
+      </style>`;
+      this._card = document.createElement(LIST_TYPE);
+      this._card.setConfig({
+        title: "Rezepte",
+        show_import: true,
+        show_delete: true,
+      });
+      this.shadowRoot.appendChild(this._card);
+    }
+    this._card.hass = hass;
+  }
+
+  set narrow(value) {
+    this._narrow = value;
+  }
+
+  set route(value) {
+    this._route = value;
+  }
+
+  set panel(value) {
+    this._panel = value;
+  }
+}
+
 if (!customElements.get(DETAIL_TYPE)) {
   customElements.define(DETAIL_TYPE, RecipeBoxCard);
+}
+
+if (!customElements.get(PANEL_TYPE)) {
+  customElements.define(PANEL_TYPE, RecipeBoxPanel);
 }
 
 if (!customElements.get(LIST_TYPE)) {

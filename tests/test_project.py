@@ -73,6 +73,7 @@ class FilesTest(unittest.TestCase):
         self.assertIn("recipe_box", content)
         self.assertIn("recipe-box-list", content)
         self.assertIn("recipe-box-card", content)
+        self.assertIn("recipe-box-panel", content)
         self.assertIn("import_recipe", content)
         self.assertIn("remove_recipe", content)
 
@@ -86,6 +87,13 @@ class FilesTest(unittest.TestCase):
         content = (COMPONENT / "config_flow.py").read_text("utf-8")
         self.assertNotIn("CONF_URL", content)
         self.assertIn("async_create_entry", content)
+
+    def test_frontend_registers_sidebar_panel(self) -> None:
+        frontend = (COMPONENT / "frontend.py").read_text("utf-8")
+        const = (COMPONENT / "const.py").read_text("utf-8")
+        self.assertIn("async_register_built_in_panel", frontend)
+        self.assertIn("PANEL_COMPONENT", frontend)
+        self.assertIn('PANEL_COMPONENT = "recipe-box-panel"', const)
 
     def test_hacs_manifest(self) -> None:
         hacs = json.loads((BASE / "hacs.json").read_text("utf-8"))

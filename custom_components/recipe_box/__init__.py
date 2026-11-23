@@ -35,7 +35,11 @@ from .const import (
     SERVICE_REMOVE_RECIPE,
 )
 from .coordinator import RecipeHub
-from .frontend import async_register_frontend
+from .frontend import (
+    async_register_frontend,
+    async_register_panel,
+    async_remove_panel,
+)
 from .parser import Recipe, RecipeError, normalize_url
 
 _LOGGER = logging.getLogger(__name__)
@@ -122,6 +126,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: RecipeBoxConfigEntry) ->
         )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    async_register_panel(hass)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
 
@@ -136,6 +141,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: RecipeBoxConfigEntry) -
     if hub is getattr(entry, "runtime_data", None):
         hass.data[DOMAIN].pop(DATA_HUB, None)
     return True
+
+
+async def async_remove_entry(
+    hass: HomeAssistant, entry: RecipeBoxConfigEntry
+) -> None:
+    """Remove the sidebar page when the last recipe box is deleted."""
+    remaining = [
+        item
+        for item in hass.config_entries.async_entries(DOMAIN)
+        if item.entry_id != entry.entry_id
+    ]
+    if not remaining:
+        async_remove_panel(hass)
 
 
 def _get_hub(hass: HomeAssistant) -> RecipeHub | None:

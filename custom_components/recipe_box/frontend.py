@@ -1,4 +1,4 @@
-"""Serve the bundled Lovelace card."""
+"""Serve the bundled Lovelace card and the automatic sidebar panel."""
 
 from __future__ import annotations
 
@@ -8,7 +8,15 @@ from pathlib import Path
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
-from .const import CARD_URL, CARD_URL_PATH, DOMAIN
+from .const import (
+    CARD_URL,
+    CARD_URL_PATH,
+    DATA_PANEL,
+    DOMAIN,
+    NAME,
+    PANEL_COMPONENT,
+    PANEL_URL_PATH,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,3 +57,50 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
             "JavaScript module resource in your dashboard",
             CARD_URL,
         )
+
+
+def async_register_panel(hass: HomeAssistant) -> None:
+    """Register the automatic ``Rezeptbox`` sidebar page."""
+    if hass.data.get(DATA_PANEL):
+        return
+
+    if "frontend" not in hass.config.components:
+        _LOGGER.debug("Frontend is not loaded; skipping the recipe panel")
+        return
+
+    from homeassistant.components.frontend import async_register_built_in_panel
+
+    try:
+        async_register_built_in_panel(
+            hass,
+            "custom",
+            sidebar_title=NAME,
+            sidebar_icon="mdi:silverware-fork-knife",
+            frontend_url_path=PANEL_URL_PATH,
+            config={
+                "_panel_custom": {
+                    "name": PANEL_COMPONENT,
+                    "module_url": CARD_URL,
+                    "embed_iframe": False,
+                    "trust_external": False,
+                }
+            },
+            require_admin=False,
+        )
+    except ValueError:
+        _LOGGER.debug("Panel %s is already registered", PANEL_URL_PATH)
+        hass.data[DATA_PANEL] = True
+        return
+
+    hass.data[DATA_PANEL] = True
+    _LOGGER.debug("Registered recipe panel at /%s", PANEL_URL_PATH)
+
+
+def async_remove_panel(hass: HomeAssistant) -> None:
+    """Remove the sidebar page again when the integration is deleted."""
+    if not hass.data.pop(DATA_PANEL, None):
+        return
+
+    from homeassistant.components.frontend import async_remove_panel as remove
+
+    remove(hass, PANEL_URL_PATH, warn_if_unknown=False)
