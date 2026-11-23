@@ -1,0 +1,9 @@
+add_to_shopping_list:
+  fields:
+    entity_id:
+      required: true
+      example: sensor.lasagne
+      selector:
+        entity:
+          integration: recipe_box
+          domain: sensor

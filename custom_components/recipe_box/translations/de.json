@@ -1,0 +1,59 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Rezept importieren",
+        "description": "Füge den Link zu einem Rezept ein, zum Beispiel von Chefkoch, Lecker oder Allrecipes. Seiten mit schema.org-Rezeptdaten funktionieren ebenfalls.",
+        "data": {
+          "url": "Rezept-URL"
+        },
+        "data_description": {
+          "url": "Vollständige Adresse der Rezeptseite."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Die Seite konnte nicht geladen werden. Prüfe die Adresse und deine Internetverbindung.",
+      "invalid_url": "Das ist keine gültige Webadresse.",
+      "no_recipe": "Auf dieser Seite wurde kein Rezept gefunden.",
+      "invalid_response": "Die Seite hat Daten geliefert, die nicht gelesen werden konnten.",
+      "unknown": "Beim Importieren des Rezepts ist ein unerwarteter Fehler aufgetreten."
+    },
+    "abort": {
+      "already_configured": "Dieses Rezept wurde bereits hinzugefügt."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Rezept aktualisieren",
+        "description": "Wie oft das Rezept von der Quellseite neu geladen werden soll.",
+        "data": {
+          "update_interval_hours": "Aktualisierungsintervall (Stunden, 0 = nie)"
+        },
+        "data_description": {
+          "update_interval_hours": "0 schaltet die automatische Aktualisierung ab. Das Rezept bleibt aus dem lokalen Cache verfügbar."
+        }
+      }
+    }
+  },
+  "services": {
+    "add_to_shopping_list": {
+      "name": "Zutaten auf die Einkaufsliste",
+      "description": "Fügt alle Zutaten des gewählten Rezepts der Einkaufsliste von Home Assistant hinzu.",
+      "fields": {
+        "entity_id": {
+          "name": "Rezept",
+          "description": "Rezeptbox-Sensor des Rezepts."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "servings": {
+        "name": "Portionen"
+      }
+    }
+  }
+}

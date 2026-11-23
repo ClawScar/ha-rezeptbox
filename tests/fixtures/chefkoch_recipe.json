@@ -1,0 +1,64 @@
+{
+  "id": "2060241333351072",
+  "title": "Die beste Okroschka nach Mamas Rezept",
+  "subtitle": "Kühle Sommersuppe mit Wurst und Kefir",
+  "servings": 4,
+  "difficulty": 2,
+  "preparationTime": 30,
+  "cookingTime": 0,
+  "restingTime": 60,
+  "totalTime": 90,
+  "kCalories": 210,
+  "nutrition": {
+    "Fett": "12 g",
+    "Kohlenhydrate": "18 g"
+  },
+  "ingredientGroups": [
+    {
+      "title": "Für die Suppe",
+      "ingredients": [
+        {
+          "id": "1",
+          "name": "Geflügelfleischwurst",
+          "amount": 1,
+          "unit": "Ring/e",
+          "usageInfo": ", fein gewürfelt"
+        },
+        {
+          "id": "2",
+          "name": "Kartoffeln",
+          "amount": 500,
+          "unit": "g",
+          "usageInfo": ""
+        }
+      ]
+    },
+    {
+      "title": "Zum Servieren",
+      "ingredients": [
+        {
+          "id": "3",
+          "name": "Kefir",
+          "amount": 0.5,
+          "unit": "l",
+          "usageInfo": null
+        }
+      ]
+    }
+  ],
+  "instructions": "Die Kartoffeln gar und die Eier hart kochen.\r\nAlles abkühlen lassen und würfeln.\r\nMit Kefir verrühren und abschmecken.",
+  "tags": ["Hauptspeise", "Kartoffeln"],
+  "fullTags": [
+    { "id": 1, "name": "Hauptspeise" },
+    { "id": 2, "name": "Kartoffeln" },
+    { "id": 3, "name": "Schnell" }
+  ],
+  "rating": { "rating": 4.58, "numVotes": 84 },
+  "previewImageUrlTemplate": "https://img.chefkoch-cdn.de/rezepte/2060241333351072/bilder/1219363/<format>/die-beste-okroschka.jpg",
+  "siteUrl": "https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html",
+  "categoryBreadcrumb": [
+    { "name": "Suppen" },
+    { "name": "Kalte Suppen" }
+  ],
+  "recipeCuisine": "Russisch"
+}
