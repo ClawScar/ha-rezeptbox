@@ -16,7 +16,7 @@
  *   show_delete: true            # optional, shows the delete buttons
  */
 
-const CARD_VERSION = "2.1.0";
+const CARD_VERSION = "1.1.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const INTEGRATION = "recipe_box";
