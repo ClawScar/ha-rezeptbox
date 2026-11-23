@@ -74,10 +74,12 @@ class FilesTest(unittest.TestCase):
         self.assertIn("recipe-box-list", content)
         self.assertIn("recipe-box-card", content)
         self.assertIn("import_recipe", content)
+        self.assertIn("remove_recipe", content)
 
     def test_services_yaml(self) -> None:
         content = (COMPONENT / "services.yaml").read_text("utf-8")
         self.assertIn("import_recipe", content)
+        self.assertIn("remove_recipe", content)
         self.assertIn("add_to_shopping_list", content)
 
     def test_config_flow_has_no_url_step(self) -> None:

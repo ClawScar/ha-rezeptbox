@@ -29,6 +29,20 @@
         }
       }
     },
+    "remove_recipe": {
+      "name": "Rezept entfernen",
+      "description": "Entfernt ein importiertes Rezept samt Entitäten und Gerät aus der Rezeptbox.",
+      "fields": {
+        "url": {
+          "name": "Rezept-URL",
+          "description": "Quelladresse des importierten Rezepts."
+        },
+        "entity_id": {
+          "name": "Rezept",
+          "description": "Rezept-Sensor (Alternative zur URL)."
+        }
+      }
+    },
     "add_to_shopping_list": {
       "name": "Zutaten auf die Einkaufsliste",
       "description": "Fügt alle Zutaten des gewählten Rezepts der Einkaufsliste von Home Assistant hinzu.",
@@ -55,6 +69,9 @@
     },
     "unknown": {
       "message": "Beim Importieren des Rezepts ist ein unerwarteter Fehler aufgetreten."
+    },
+    "recipe_not_found": {
+      "message": "Dieses Rezept ist nicht in der Rezeptbox."
     }
   },
   "entity": {

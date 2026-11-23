@@ -13,9 +13,10 @@
  *   show_image: true             # optional
  *   show_steps: true             # optional
  *   show_import: true            # optional, shows the import field
+ *   show_delete: true            # optional, shows the delete buttons
  */
 
-const CARD_VERSION = "2.0.0";
+const CARD_VERSION = "2.1.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const INTEGRATION = "recipe_box";
@@ -187,6 +188,8 @@ const detailHtml = (state, options, checked) => {
     </div>`;
 };
 
+const deleteButtonHtml = (entityId, pending) => `<button class="delete${pending ? " confirm" : ""}" type="button" data-entity="${escapeHtml(entityId)}" title="Rezept löschen" aria-label="Rezept löschen">${pending ? "Löschen?" : `<ha-icon icon="mdi:delete-outline"></ha-icon>`}</button>`;
+
 const notify = (target, message) => {
   if (!target || typeof target.dispatchEvent !== "function") return;
   target.dispatchEvent(
@@ -259,7 +262,12 @@ const STYLES = `<style>
   button.import-button:disabled { opacity: 0.6; cursor: default; }
   ul.recipe-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
   ul.recipe-list li + li { border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.2)); }
-  button.recipe-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; background: none; border: none; text-align: left; color: var(--primary-text-color); cursor: pointer; }
+  li.recipe-row { display: flex; align-items: center; gap: 2px; }
+  button.recipe-item { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 12px; padding: 10px 0; background: none; border: none; text-align: left; color: var(--primary-text-color); cursor: pointer; }
+  button.delete { flex: 0 0 auto; display: inline-flex; align-items: center; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; padding: 8px 6px; border-radius: 6px; font-size: 0.78rem; --mdc-icon-size: 20px; }
+  button.delete:hover { color: var(--error-color, #db4437); background: rgba(219, 68, 55, 0.08); }
+  button.delete.confirm { color: var(--error-color, #db4437); font-weight: 600; }
+  .list-bar button.delete { margin-left: auto; }
   button.recipe-item:hover { background: var(--secondary-background-color, rgba(127, 127, 127, 0.08)); }
   .thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
   .thumb.placeholder { display: flex; align-items: center; justify-content: center; background: var(--secondary-background-color, rgba(127, 127, 127, 0.15)); color: var(--secondary-text-color); }
@@ -340,6 +348,8 @@ class RecipeBoxListCard extends HTMLElement {
     this._hass = undefined;
     this._importUrl = "";
     this._importing = false;
+    this._pendingDelete = null;
+    this._deleteTimer = null;
   }
 
   static getStubConfig() {
@@ -356,6 +366,7 @@ class RecipeBoxListCard extends HTMLElement {
       show_image: true,
       show_steps: true,
       show_import: true,
+      show_delete: true,
       ...config,
       entities,
     };
@@ -438,6 +449,47 @@ class RecipeBoxListCard extends HTMLElement {
     }
   }
 
+  _requestDelete(entityId) {
+    if (!entityId || !this._config.show_delete || !this._hass) return;
+
+    if (this._pendingDelete === entityId) {
+      this._delete(entityId);
+      return;
+    }
+
+    this._pendingDelete = entityId;
+    clearTimeout(this._deleteTimer);
+    this._deleteTimer = setTimeout(() => {
+      this._pendingDelete = null;
+      this._signature = null;
+      this._render();
+    }, 4000);
+    this._signature = null;
+    this._render();
+  }
+
+  async _delete(entityId) {
+    clearTimeout(this._deleteTimer);
+    const entry = this._recipes().find((item) => item.entityId === entityId);
+    const title = entry ? recipeTitle(entry.state) : "";
+    this._pendingDelete = null;
+    try {
+      await this._hass.callService("recipe_box", "remove_recipe", {
+        entity_id: entityId,
+      });
+      notify(this, title ? `Rezept gelöscht: ${title}` : "Rezept gelöscht.");
+      if (this._selected === entityId) this._selected = null;
+    } catch (error) {
+      notify(
+        this,
+        `Löschen fehlgeschlagen: ${(error && (error.message || error.code)) || "unbekannter Fehler"}`
+      );
+    } finally {
+      this._signature = null;
+      this._render();
+    }
+  }
+
   _renderList(entries) {
     const items = entries.map(({ entityId, state }) => {
       const attributes = state.attributes || {};
@@ -453,7 +505,11 @@ class RecipeBoxListCard extends HTMLElement {
           ? `<img class="thumb" src="${escapeHtml(attributes.image_url)}" alt="" loading="lazy">`
           : `<span class="thumb placeholder"><ha-icon icon="mdi:silverware-fork-knife"></ha-icon></span>`;
 
-      return `<li>
+      const removeButton = this._config.show_delete
+        ? deleteButtonHtml(entityId, this._pendingDelete === entityId)
+        : "";
+
+      return `<li class="recipe-row">
         <button class="recipe-item" type="button" data-entity="${escapeHtml(entityId)}">
           ${thumb}
           <span class="item-text">
@@ -462,6 +518,7 @@ class RecipeBoxListCard extends HTMLElement {
           </span>
           <ha-icon class="chevron" icon="mdi:chevron-right"></ha-icon>
         </button>
+        ${removeButton}
       </li>`;
     });
 
@@ -496,6 +553,13 @@ class RecipeBoxListCard extends HTMLElement {
       });
     });
 
+    this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        this._requestDelete(button.getAttribute("data-entity"));
+      });
+    });
+
     const input = this.shadowRoot.querySelector("input.import-input");
     if (input) {
       input.addEventListener("input", () => {
@@ -520,6 +584,7 @@ class RecipeBoxListCard extends HTMLElement {
         <div class="list-bar">
           <button class="back" type="button">← ${escapeHtml(this._config.title || "Rezepte")}</button>
           <span class="list-bar-title">${escapeHtml(recipeTitle(entry.state))}</span>
+          ${this._config.show_delete ? deleteButtonHtml(entry.entityId, this._pendingDelete === entry.entityId) : ""}
         </div>
         ${detailHtml(entry.state, this._config, this._checked)}
       </ha-card>`;
@@ -531,6 +596,12 @@ class RecipeBoxListCard extends HTMLElement {
       this._checked,
       this
     );
+
+    this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._requestDelete(button.getAttribute("data-entity"));
+      });
+    });
 
     const back = this.shadowRoot.querySelector("button.back");
     if (back) {

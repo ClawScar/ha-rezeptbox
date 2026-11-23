@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -57,6 +58,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         )
         self._entity_adder: EntityAdder | None = None
         self._pending_urls: list[str] = []
+        self._entities: dict[str, list[Any]] = {}
 
     @property
     def recipes(self) -> dict[str, Recipe]:
@@ -75,6 +77,10 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
     def set_entity_adder(self, adder: EntityAdder) -> None:
         """Register the callback that creates entities for new recipes."""
         self._entity_adder = adder
+
+    def register_entities(self, source_url: str, entities: list[Any]) -> None:
+        """Remember the entities created for a recipe so they can be removed."""
+        self._entities[source_url] = entities
 
     async def async_load_stored_recipes(self) -> None:
         """Load the cached recipe list so it stays available while offline."""
@@ -114,11 +120,36 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             self._entity_adder(recipe)
         return added
 
+    async def async_remove_recipe(self, source_url: str) -> Recipe | None:
+        """Remove a recipe from the collection, including its entities."""
+        recipe = self.recipes.get(source_url)
+        if recipe is None:
+            return None
+
+        self.data = {
+            url: item for url, item in self.recipes.items() if url != source_url
+        }
+        await self._async_save()
+        self.async_update_listeners()
+        await self._async_remove_entities(source_url)
+        _LOGGER.debug("Removed recipe %s", source_url)
+        return recipe
+
     async def async_import(self, url: str) -> Recipe:
         """Fetch a recipe from a URL and add it to the collection."""
         recipe = await async_scrape_recipe(self.hass, url)
         await self.async_add_recipe(recipe)
         return recipe
+
+    async def _async_remove_entities(self, source_url: str) -> None:
+        """Delete the entity and device registry entries of a recipe."""
+        for entity in self._entities.pop(source_url, []):
+            await entity.async_remove()
+
+        registry = dr.async_get(self.hass)
+        device = registry.async_get_device(identifiers={(DOMAIN, source_url)})
+        if device is not None:
+            registry.async_remove_device(device.id)
 
     async def _async_save(
         self, recipes: dict[str, Recipe] | None = None

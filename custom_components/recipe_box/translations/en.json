@@ -29,6 +29,20 @@
         }
       }
     },
+    "remove_recipe": {
+      "name": "Remove a recipe",
+      "description": "Removes an imported recipe, its entities and its device from the recipe box.",
+      "fields": {
+        "url": {
+          "name": "Recipe URL",
+          "description": "Source URL of the imported recipe."
+        },
+        "entity_id": {
+          "name": "Recipe",
+          "description": "Recipe sensor (alternative to the URL)."
+        }
+      }
+    },
     "add_to_shopping_list": {
       "name": "Add ingredients to shopping list",
       "description": "Adds every ingredient of the selected recipe to the Home Assistant shopping list.",
@@ -55,6 +69,9 @@
     },
     "unknown": {
       "message": "Unexpected error while importing the recipe."
+    },
+    "recipe_not_found": {
+      "message": "This recipe is not in the recipe box."
     }
   },
   "entity": {

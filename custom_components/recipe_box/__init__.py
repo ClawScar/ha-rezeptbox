@@ -32,10 +32,11 @@ from .const import (
     PLATFORMS,
     SERVICE_ADD_TO_SHOPPING_LIST,
     SERVICE_IMPORT_RECIPE,
+    SERVICE_REMOVE_RECIPE,
 )
 from .coordinator import RecipeHub
 from .frontend import async_register_frontend
-from .parser import RecipeError
+from .parser import Recipe, RecipeError, normalize_url
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +47,16 @@ ADD_TO_SHOPPING_LIST_SCHEMA = vol.Schema(
 )
 
 IMPORT_RECIPE_SCHEMA = vol.Schema({vol.Required(ATTR_URL): cv.string})
+
+REMOVE_RECIPE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+)
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -58,6 +69,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_IMPORT_RECIPE,
             partial(_async_import_recipe, hass),
             schema=IMPORT_RECIPE_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_REMOVE_RECIPE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REMOVE_RECIPE,
+            partial(_async_remove_recipe, hass),
+            schema=REMOVE_RECIPE_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -123,6 +143,31 @@ def _get_hub(hass: HomeAssistant) -> RecipeHub | None:
     return hass.data.get(DOMAIN, {}).get(DATA_HUB)
 
 
+def _resolve_recipe(hub: RecipeHub, url: str) -> tuple[str, Recipe]:
+    """Find an imported recipe by URL, tolerating small URL differences."""
+    try:
+        wanted = normalize_url(url)
+    except RecipeError as err:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="invalid_url"
+        ) from err
+
+    recipe = hub.recipe(wanted)
+    if recipe is not None:
+        return wanted, recipe
+
+    for key, item in hub.recipes.items():
+        try:
+            if normalize_url(key) == wanted:
+                return key, item
+        except RecipeError:
+            continue
+
+    raise ServiceValidationError(
+        translation_domain=DOMAIN, translation_key="recipe_not_found"
+    )
+
+
 async def _async_reload_entry(
     hass: HomeAssistant, entry: RecipeBoxConfigEntry
 ) -> None:
@@ -150,6 +195,35 @@ async def _async_import_recipe(
         ) from err
 
     _LOGGER.debug("Imported recipe %s from %s", recipe.title, recipe.source_url)
+    return {"title": recipe.title, "url": recipe.source_url}
+
+
+async def _async_remove_recipe(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Remove a recipe from the recipe box."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    url = call.data.get(ATTR_URL)
+    if not url:
+        entity_id = call.data.get(ATTR_ENTITY_ID)
+        state = hass.states.get(entity_id) if entity_id else None
+        if state is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="recipe_not_found",
+            )
+        url = state.attributes.get("source_url")
+        if not url:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="recipe_not_found",
+            )
+
+    source_url, recipe = _resolve_recipe(hub, str(url))
+    await hub.async_remove_recipe(source_url)
     return {"title": recipe.title, "url": recipe.source_url}
 
 

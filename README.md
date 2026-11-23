@@ -23,6 +23,9 @@ mit abhakbarer Zutatenliste und Button für die Einkaufsliste.
 - **Rezeptliste als Lovelace-Karte** `custom:recipe-box-list`: alle Rezepte
   alphabetisch, ein Klick öffnet das gewählte Rezept, der Zurück-Pfeil führt
   wieder zur Liste
+- **Rezepte entfernen**: Papierkorb-Button in der Liste (zum Bestätigen
+  zweimal antippen) oder Service `recipe_box.remove_recipe` – Gerät und
+  Entitäten werden mit entfernt
 - **Detail-Karte** `custom:recipe-box-card` mit Bild, Chips für Zeit, Portionen
   und Bewertung, Zutaten zum Abhaken und Zubereitungsschritten
 - **Einkaufsliste**: Service `recipe_box.add_to_shopping_list` übernimmt alle
@@ -100,10 +103,13 @@ title: Unsere Rezepte   # optional
 show_image: true        # Vorschaubilder in der Liste
 show_steps: true        # Zubereitung in der Detailansicht
 show_import: true       # Importfeld für neue Rezepte
+show_delete: true       # Löschen-Button je Rezept
 ```
 
 Oben in der Liste sitzt das Importfeld: URL einfügen, **Importieren** drücken.
-Die Liste füllt sich sofort, ohne Neustart.
+Die Liste füllt sich sofort, ohne Neustart. Rechts neben jedem Eintrag entfernt
+der Papierkorb das Rezept – der erste Klick fragt mit **Löschen?** nach, der
+zweite löscht endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
 
 ### Einzelnes Rezept
 
@@ -163,6 +169,16 @@ Beispiel für eine Automation:
 
 Importiert ein Rezept und legt es als Gerät mit Sensoren an. Die Antwort
 enthält `title` und `url`.
+
+### `recipe_box.remove_recipe`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `url` | eins von beiden | Quelladresse des importierten Rezepts |
+| `entity_id` | eins von beiden | Rezept-Sensor |
+
+Entfernt das Rezept samt Gerät und Entitäten aus der Rezeptbox. Es wird auch
+nach einem Neustart nicht wiederhergestellt.
 
 ### `recipe_box.add_to_shopping_list`
 

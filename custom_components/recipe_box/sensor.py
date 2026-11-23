@@ -25,16 +25,17 @@ async def async_setup_entry(
     """Set up one sensor pair for every imported recipe."""
     hub: RecipeHub = entry.runtime_data
 
-    def build(recipe: Recipe) -> list[RecipeSensorBase]:
-        return [
+    def add(recipe: Recipe) -> None:
+        entities: list[RecipeSensorBase] = [
             RecipeSensor(hub, recipe),
             RecipeServingsSensor(hub, recipe),
         ]
+        hub.register_entities(recipe.source_url, entities)
+        async_add_entities(entities)
 
-    async_add_entities(
-        [entity for recipe in hub.recipes.values() for entity in build(recipe)]
-    )
-    hub.set_entity_adder(lambda recipe: async_add_entities(build(recipe)))
+    for recipe in hub.recipes.values():
+        add(recipe)
+    hub.set_entity_adder(add)
 
 
 class RecipeSensorBase(CoordinatorEntity[RecipeHub], SensorEntity):
