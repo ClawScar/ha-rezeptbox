@@ -85,6 +85,81 @@ class UrlTest(unittest.TestCase):
         )
 
 
+class IngredientStructureTest(unittest.TestCase):
+    def test_amount_unit_name(self) -> None:
+        item = recipe_parser.parse_ingredient_text("500 g Kartoffeln")
+        self.assertEqual(item["amount"], 500)
+        self.assertEqual(item["unit"], "g")
+        self.assertEqual(item["name"], "Kartoffeln")
+        self.assertEqual(item["amount_text"], "500")
+        self.assertEqual(item["text"], "500 g Kartoffeln")
+
+    def test_fractions_and_plain_counts(self) -> None:
+        fraction = recipe_parser.parse_ingredient_text("1/2 TL Salz")
+        self.assertEqual(fraction["amount"], 0.5)
+        self.assertEqual(fraction["unit"], "TL")
+        self.assertEqual(fraction["name"], "Salz")
+
+        unicode = recipe_parser.parse_ingredient_text("½ Zitrone")
+        self.assertEqual(unicode["amount"], 0.5)
+
+        plain = recipe_parser.parse_ingredient_text("1 Hokkaido-Kürbis")
+        self.assertEqual(plain["amount"], 1)
+        self.assertEqual(plain["unit"], "")
+        self.assertEqual(plain["name"], "Hokkaido-Kürbis")
+
+        decimal = recipe_parser.parse_ingredient_text("0,5 l Kefir")
+        self.assertEqual(decimal["amount"], 0.5)
+        self.assertEqual(decimal["unit"], "l")
+        self.assertEqual(decimal["name"], "Kefir")
+
+    def test_ranges(self) -> None:
+        item = recipe_parser.parse_ingredient_text("2–3 EL Öl")
+        self.assertEqual(item["amount"], 2)
+        self.assertEqual(item["amount_max"], 3)
+        self.assertEqual(item["unit"], "EL")
+        self.assertEqual(item["name"], "Öl")
+
+    def test_lines_without_amount(self) -> None:
+        item = recipe_parser.parse_ingredient_text("Salz und Pfeffer")
+        self.assertIsNone(item["amount"])
+        self.assertEqual(item["name"], "Salz und Pfeffer")
+
+    def test_scale_ingredient(self) -> None:
+        self.assertEqual(
+            recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text("200 g Mehl"), 1.5
+            ),
+            "300 g Mehl",
+        )
+        self.assertEqual(
+            recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text("1/2 TL Salz"), 2
+            ),
+            "1 TL Salz",
+        )
+        self.assertEqual(
+            recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text("2–3 EL Öl"), 2
+            ),
+            "4–6 EL Öl",
+        )
+        self.assertEqual(
+            recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text("Salz"), 2
+            ),
+            "Salz",
+        )
+
+    def test_text_fallback(self) -> None:
+        self.assertEqual(
+            recipe_parser.scale_ingredients(
+                None, ["500 g Kartoffeln", "Salz und Pfeffer"], 2
+            ),
+            ["1000 g Kartoffeln", "Salz und Pfeffer"],
+        )
+
+
 class JsonLdTest(unittest.TestCase):
     def setUp(self) -> None:
         self.recipe = recipe_parser.parse_jsonld_html(
@@ -120,6 +195,12 @@ class JsonLdTest(unittest.TestCase):
         assert self.recipe is not None
         self.assertEqual(len(self.recipe.ingredients), 3)
         self.assertIn("1 Hokkaido-Kürbis", self.recipe.ingredients)
+        self.assertEqual(
+            len(self.recipe.ingredients_structured), len(self.recipe.ingredients)
+        )
+        first = self.recipe.ingredients_structured[0]
+        self.assertEqual(first["amount"], 1)
+        self.assertEqual(first["name"], "Hokkaido-Kürbis")
         self.assertEqual(len(self.recipe.instructions), 3)
         self.assertEqual(self.recipe.instructions[0], "Kürbis waschen und würfeln.")
         self.assertEqual(self.recipe.instructions[1], "Ingwer fein hacken.")
@@ -176,6 +257,24 @@ class ChefkochTest(unittest.TestCase):
         self.assertIn("0.5 l Kefir", self.recipe.ingredients)
         self.assertEqual(len(self.recipe.ingredient_groups), 2)
         self.assertEqual(self.recipe.ingredient_groups[0]["name"], "Für die Suppe")
+
+    def test_structured_ingredients(self) -> None:
+        structured = {
+            item["text"]: item for item in self.recipe.ingredients_structured
+        }
+        self.assertEqual(len(structured), len(self.recipe.ingredients))
+
+        kartoffeln = structured["500 g Kartoffeln"]
+        self.assertEqual(kartoffeln["amount"], 500)
+        self.assertEqual(kartoffeln["unit"], "g")
+        self.assertEqual(kartoffeln["name"], "Kartoffeln")
+        self.assertEqual(kartoffeln["group"], "Für die Suppe")
+
+        scaled = recipe_parser.scale_ingredients(
+            self.recipe.ingredients_structured, None, 2
+        )
+        self.assertIn("1000 g Kartoffeln", scaled)
+        self.assertIn("1 l Kefir", scaled)
 
     def test_image_and_instructions(self) -> None:
         self.assertIn("crop-960x640", self.recipe.image_url)

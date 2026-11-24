@@ -23,6 +23,8 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import (
     ATTR_INGREDIENTS,
+    ATTR_INGREDIENTS_STRUCTURED,
+    ATTR_SERVINGS,
     ATTR_URL,
     ATTR_URLS,
     CONF_URL,
@@ -41,14 +43,19 @@ from .frontend import (
     async_register_panel,
     async_remove_panel,
 )
-from .parser import Recipe, RecipeError, normalize_url
+from .parser import Recipe, RecipeError, normalize_url, scale_ingredients
 
 _LOGGER = logging.getLogger(__name__)
 
 type RecipeBoxConfigEntry = ConfigEntry[RecipeHub]
 
 ADD_TO_SHOPPING_LIST_SCHEMA = vol.Schema(
-    {vol.Required(ATTR_ENTITY_ID): cv.entity_ids}
+    {
+        vol.Required(ATTR_ENTITY_ID): cv.entity_ids,
+        vol.Optional(ATTR_SERVINGS): vol.All(
+            vol.Coerce(float), vol.Range(min=0.5, max=100)
+        ),
+    }
 )
 
 IMPORT_RECIPE_SCHEMA = vol.All(
@@ -332,6 +339,8 @@ async def _async_add_to_shopping_list(
     if isinstance(entity_ids, str):
         entity_ids = [entity_ids]
 
+    target_servings = call.data.get(ATTR_SERVINGS)
+
     added = 0
     for entity_id in entity_ids:
         state = hass.states.get(entity_id)
@@ -339,8 +348,23 @@ async def _async_add_to_shopping_list(
             _LOGGER.warning("Unknown Rezeptbox entity %s", entity_id)
             continue
 
-        for ingredient in state.attributes.get(ATTR_INGREDIENTS) or []:
-            name = str(ingredient).strip()
+        factor = 1.0
+        base_servings = state.attributes.get(ATTR_SERVINGS)
+        if (
+            target_servings
+            and isinstance(base_servings, (int, float))
+            and not isinstance(base_servings, bool)
+            and base_servings > 0
+        ):
+            factor = float(target_servings) / float(base_servings)
+
+        names = scale_ingredients(
+            state.attributes.get(ATTR_INGREDIENTS_STRUCTURED) or [],
+            state.attributes.get(ATTR_INGREDIENTS) or [],
+            factor,
+        )
+        for name in names:
+            name = str(name).strip()
             if not name:
                 continue
             await hass.services.async_call(

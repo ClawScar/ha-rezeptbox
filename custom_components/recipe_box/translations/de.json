@@ -54,6 +54,10 @@
         "entity_id": {
           "name": "Rezept",
           "description": "Rezeptbox-Sensor des Rezepts."
+        },
+        "servings": {
+          "name": "Portionen",
+          "description": "Ziel-Portionszahl. Die Zutatenmengen werden entsprechend umgerechnet."
         }
       }
     }

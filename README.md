@@ -6,7 +6,8 @@ Importfeld in der Rezeptliste hinzu. Die Integration holt sich Titel, Bild,
 Zutaten, Mengen, Zubereitungsschritte, Zeiten, Portionen, Tags und Bewertung
 von der Quellseite und legt alles als Sensor mit Attributen ab. Eine
 mitgelieferte Lovelace-Karte zeigt die Rezepte als Liste, das gewählte Rezept
-mit abhakbarer Zutatenliste und Button für die Einkaufsliste.
+mit abhakbarer Zutatenliste, Portionssteuerung und Button für die
+Einkaufsliste.
 
 ## Funktionen
 
@@ -30,8 +31,12 @@ mit abhakbarer Zutatenliste und Button für die Einkaufsliste.
   Entitäten werden mit entfernt
 - **Detail-Karte** `custom:recipe-box-card` mit Bild, Chips für Zeit, Portionen
   und Bewertung, Zutaten zum Abhaken und Zubereitungsschritten
+- **Portionen anpassen**: in der Detailansicht mit −/+ die Portionszahl
+  ändern, die Zutatenmengen werden live umgerechnet – auch Angaben wie
+  „1/2 TL“ oder „2–3 EL“
 - **Einkaufsliste**: Service `recipe_box.add_to_shopping_list` übernimmt alle
-  Zutaten in die Home-Assistant-Einkaufsliste
+  Zutaten in die Home-Assistant-Einkaufsliste, auf Wunsch in den skalierten
+  Mengen der eingestellten Portionszahl
 - **Offline-Cache**: das zuletzt geladene Rezept wird lokal gespeichert und
   bleibt verfügbar, wenn die Quellseite nicht erreichbar ist
 - **Einstellbares Aktualisierungsintervall** (Standard: 24 Stunden, 0 = nie)
@@ -152,6 +157,12 @@ show_steps: true   # optional
 Beide Karten bieten eine Zutaten-Checkliste (zum Abhaken beim Kochen) und den
 Button **Zutaten auf die Liste**, der den Service aufruft.
 
+Über der Zutatenliste sitzt die Portionssteuerung **− 4 Portionen +**. Jeder
+Klick rechnet die Mengen sofort um; der Chip oben zeigt die gewählte
+Portionszahl. Der Button **Zutaten auf die Liste** übernimmt genau diese
+Mengen in die Einkaufsliste. Die Umrechnung ist nur eine Anzeige – das
+importierte Rezept selbst bleibt unverändert.
+
 ## Entitäten und Attribute
 
 | Entität | Zustand |
@@ -169,6 +180,7 @@ Der Haupt-Sensor trägt alle Rezeptdaten als Attribute:
 | `servings` | Portionen |
 | `prep_time_minutes`, `cook_time_minutes`, `total_time_minutes` | Zeiten |
 | `ingredients` | Liste der Zutaten, z. B. `["500 g Kartoffeln", …]` |
+| `ingredients_structured` | Zutaten mit `amount`, `unit`, `name` (und `group`) für die Portionsumrechnung |
 | `ingredient_groups` | Zutaten nach Gruppen (`name`, `items`) |
 | `instructions` | Liste der Zubereitungsschritte |
 | `tags`, `cuisine`, `category`, `difficulty` | Einordnung |
@@ -216,9 +228,12 @@ nach einem Neustart nicht wiederhergestellt.
 | Feld | Pflicht | Beschreibung |
 | --- | --- | --- |
 | `entity_id` | ja | Rezept-Sensor (auch mehrere möglich) |
+| `servings` | nein | Ziel-Portionszahl; die Zutatenmengen werden umgerechnet (Standard: Portionen des Rezepts) |
 
 Der Service nutzt die eingebaute Einkaufsliste (`shopping_list`). Ist sie nicht
-eingerichtet, meldet Home Assistant einen Fehler.
+eingerichtet, meldet Home Assistant einen Fehler. Ohne `servings` werden die
+Originalmengen übernommen; Rezepte aus älteren Versionen ohne strukturierte
+Zutaten werden dabei aus dem Zutatentext umgerechnet.
 
 ## Unterstützte Seiten
 

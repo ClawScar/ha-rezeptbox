@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
@@ -36,6 +36,8 @@ ATTR_URL = "url"
 ATTR_URLS = "urls"
 ATTR_ENTITY_ID = "entity_id"
 ATTR_INGREDIENTS = "ingredients"
+ATTR_INGREDIENTS_STRUCTURED = "ingredients_structured"
+ATTR_SERVINGS = "servings"
 
 KNOWN_IMPORT_ERRORS = {
     "cannot_connect",

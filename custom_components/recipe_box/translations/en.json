@@ -54,6 +54,10 @@
         "entity_id": {
           "name": "Recipe",
           "description": "Rezeptbox sensor of the recipe."
+        },
+        "servings": {
+          "name": "Servings",
+          "description": "Target number of servings. The ingredient amounts are scaled accordingly."
         }
       }
     }

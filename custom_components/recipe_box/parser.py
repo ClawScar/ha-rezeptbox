@@ -44,6 +44,86 @@ MINUTE_RE = re.compile(
 NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)?")
 INTEGER_RE = re.compile(r"\d+")
 
+# Ingredients are also kept in a structured form so that the portions can be
+# scaled. The list only needs to cover the units that show up in practice;
+# anything else stays part of the ingredient name and is not scaled.
+INGREDIENT_UNITS = (
+    "Messerspitze",
+    "Päckchen",
+    "Packungen",
+    "Packung",
+    "Portionen",
+    "Portion",
+    "Handvoll",
+    "Scheiben",
+    "Scheibe",
+    "Stangen",
+    "Stange",
+    "Zweige",
+    "Zweig",
+    "Blätter",
+    "Blatt",
+    "Zehen",
+    "Zehe",
+    "Dosen",
+    "Dose",
+    "Gläser",
+    "Glas",
+    "Tassen",
+    "Tasse",
+    "Becher",
+    "Würfel",
+    "Stiele",
+    "Stiel",
+    "Stück",
+    "Stk.",
+    "Prisen",
+    "Prise",
+    "Bund",
+    "Msp.",
+    "EL",
+    "TL",
+    "kg",
+    "mg",
+    "ml",
+    "cl",
+    "dl",
+    "cm",
+    "g",
+    "l",
+    "cups",
+    "cup",
+    "tbsp",
+    "tsp",
+    "oz",
+    "lb",
+    "pinch",
+)
+
+UNICODE_FRACTIONS = {
+    "½": "1/2",
+    "¼": "1/4",
+    "¾": "3/4",
+    "⅓": "1/3",
+    "⅔": "2/3",
+    "⅛": "1/8",
+    "⅜": "3/8",
+    "⅝": "5/8",
+    "⅞": "7/8",
+}
+
+_AMOUNT_TOKEN = r"(?:\d+\s+\d+/\d+|\d+/\d+|\d+(?:[.,]\d+)?)"
+_UNIT_PATTERN = "|".join(
+    sorted((re.escape(unit) for unit in INGREDIENT_UNITS), key=len, reverse=True)
+)
+INGREDIENT_LINE_RE = re.compile(
+    rf"^(?P<amount>{_AMOUNT_TOKEN})"
+    rf"(?:\s*(?:-|–|bis)\s*(?P<amount_max>{_AMOUNT_TOKEN}))?"
+    rf"\s*(?:(?P<unit>{_UNIT_PATTERN})\.?(?=\s|$)\s*)?"
+    r"(?P<name>.+)$",
+    re.IGNORECASE,
+)
+
 
 class RecipeError(Exception):
     """Raised when a recipe cannot be imported.
@@ -72,6 +152,7 @@ class Recipe:
     total_minutes: int | None = None
     ingredients: list[str] = field(default_factory=list)
     ingredient_groups: list[dict[str, Any]] = field(default_factory=list)
+    ingredients_structured: list[dict[str, Any]] = field(default_factory=list)
     instructions: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     cuisine: str = ""
@@ -106,6 +187,7 @@ class Recipe:
             "total_time_minutes": self.total_minutes,
             "ingredients": self.ingredients,
             "ingredient_groups": self.ingredient_groups,
+            "ingredients_structured": self.ingredients_structured,
             "instructions": self.instructions,
             "tags": self.tags,
             "cuisine": self.cuisine,
@@ -239,6 +321,133 @@ def to_float(value: Any) -> float | None:
     return float(match.group().replace(",", ".")) if match else None
 
 
+def parse_amount(value: Any) -> float | None:
+    """Parse an ingredient amount such as ``"200"``, ``"0,5"`` or ``"1/2"``."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if value > 0 else None
+
+    text = clean_text(value).replace(",", ".")
+    mixed = re.match(r"^(\d+)\s+(\d+)/(\d+)$", text)
+    if mixed:
+        whole, numerator, denominator = (float(part) for part in mixed.groups())
+        return whole + numerator / denominator if denominator else None
+    fraction = re.match(r"^(\d+)/(\d+)$", text)
+    if fraction:
+        numerator, denominator = (float(part) for part in fraction.groups())
+        return numerator / denominator if denominator else None
+    number = NUMBER_RE.match(text)
+    return float(number.group().replace(",", ".")) if number else None
+
+
+def format_amount(value: float) -> str:
+    """Format a scaled amount for German text without trailing zeros."""
+    rounded = round(float(value), 2)
+    text = str(int(rounded)) if rounded.is_integer() else f"{rounded:g}"
+    return text.replace(".", ",")
+
+
+def _normalize_fractions(text: str) -> str:
+    """Turn unicode fractions such as ``½`` into ``1/2`` for parsing."""
+    for character, replacement in UNICODE_FRACTIONS.items():
+        text = text.replace(character, f" {replacement}")
+    return WHITESPACE_RE.sub(" ", text).strip()
+
+
+def parse_ingredient_text(text: Any, group: str = "") -> dict[str, Any]:
+    """Split an ingredient line into amount, unit and name.
+
+    Lines that do not start with a number keep the full text as ``name`` and
+    get no amount, so they are shown unchanged when portions change.
+    """
+    source = clean_text(text)
+    item: dict[str, Any] = {
+        "amount": None,
+        "amount_max": None,
+        "amount_text": "",
+        "unit": "",
+        "name": source,
+        "usage": "",
+        "text": source,
+        "group": group,
+    }
+    if not source:
+        return item
+
+    normalized = _normalize_fractions(source)
+    match = INGREDIENT_LINE_RE.match(normalized)
+    if not match:
+        return item
+
+    amount = parse_amount(match.group("amount"))
+    if amount is None:
+        return item
+
+    item["amount"] = amount
+    item["amount_text"] = format_amount(amount)
+    amount_max = parse_amount(match.group("amount_max"))
+    if amount_max is not None and amount_max > amount:
+        item["amount_max"] = amount_max
+    item["unit"] = clean_text(match.group("unit"))
+    name = clean_text(match.group("name"))
+    if name:
+        item["name"] = name
+    return item
+
+
+def ingredient_text(
+    item: dict[str, Any], amount_text: str | None = None
+) -> str:
+    """Rebuild one ingredient line, optionally with a replaced amount."""
+    amount = item.get("amount_text", "") if amount_text is None else amount_text
+    line = " ".join(
+        part
+        for part in (
+            str(amount or ""),
+            str(item.get("unit") or ""),
+            str(item.get("name") or ""),
+        )
+        if part
+    )
+    usage = str(item.get("usage") or "")
+    if usage and line:
+        line = f"{line}{usage}" if usage.startswith((",", ";")) else f"{line}, {usage}"
+    return line or str(item.get("text") or "")
+
+
+def scale_ingredient(item: dict[str, Any], factor: float) -> str:
+    """Return one ingredient line with its amount multiplied by ``factor``."""
+    amount = item.get("amount")
+    if not isinstance(amount, (int, float)) or isinstance(amount, bool) or factor <= 0:
+        return ingredient_text(item)
+
+    text = format_amount(float(amount) * factor)
+    amount_max = item.get("amount_max")
+    if (
+        isinstance(amount_max, (int, float))
+        and not isinstance(amount_max, bool)
+        and amount_max > amount
+    ):
+        text = f"{text}–{format_amount(float(amount_max) * factor)}"
+    return ingredient_text(item, text)
+
+
+def scale_ingredients(
+    structured: list[dict[str, Any]] | None,
+    ingredients: list[str] | None,
+    factor: float,
+) -> list[str]:
+    """Scale structured ingredients, falling back to parsing plain text lines."""
+    if structured:
+        return [scale_ingredient(item, factor) for item in structured if item]
+    return [
+        scale_ingredient(parse_ingredient_text(str(text)), factor)
+        for text in (ingredients or [])
+        if str(text).strip()
+    ]
+
+
 def normalize_url(raw: str) -> str:
     """Validate and normalise a user supplied recipe URL."""
     text = (raw or "").strip()
@@ -362,11 +571,14 @@ def _find_recipe_node(data: Any) -> dict[str, Any] | None:
 
 def recipe_from_jsonld(node: dict[str, Any], page_url: str) -> Recipe:
     """Build a Recipe from a schema.org Recipe node."""
-    ingredients = [
-        text
-        for text in (clean_text(item) for item in _iter_ingredients(node))
-        if text
-    ]
+    ingredients: list[str] = []
+    ingredients_structured: list[dict[str, Any]] = []
+    for raw_ingredient in _iter_ingredients(node):
+        text = clean_text(raw_ingredient)
+        if not text:
+            continue
+        ingredients.append(text)
+        ingredients_structured.append(parse_ingredient_text(text))
     instructions = _steps_from_jsonld(node.get("recipeInstructions"))
 
     prep = parse_duration(node.get("prepTime"))
@@ -408,6 +620,7 @@ def recipe_from_jsonld(node: dict[str, Any], page_url: str) -> Recipe:
         cook_minutes=cook,
         total_minutes=total,
         ingredients=ingredients,
+        ingredients_structured=ingredients_structured,
         instructions=instructions,
         tags=tags,
         cuisine=as_text(node.get("recipeCuisine")),
@@ -508,6 +721,29 @@ def _format_number(value: Any) -> str:
     return clean_text(value)
 
 
+def _chefkoch_structured(
+    item: Any, group: str, line: str
+) -> dict[str, Any]:
+    """Build the structured ingredient entry for a Chefkoch API item."""
+    if not isinstance(item, dict):
+        parsed = parse_ingredient_text(line, group)
+        parsed["text"] = line or parsed["text"]
+        return parsed
+
+    amount_value = item.get("amount")
+    amount = None if isinstance(amount_value, bool) else parse_amount(amount_value)
+    return {
+        "amount": amount,
+        "amount_max": None,
+        "amount_text": _format_number(amount_value),
+        "unit": clean_text(item.get("unit")),
+        "name": clean_text(item.get("name")),
+        "usage": clean_text(item.get("usageInfo")),
+        "text": line,
+        "group": group,
+    }
+
+
 def _chefkoch_ingredient(item: Any) -> str:
     """Format one Chefkoch ingredient as ``200 g Mehl, gesiebt``."""
     if isinstance(item, str):
@@ -541,32 +777,33 @@ def recipe_from_chefkoch(payload: dict[str, Any], url: str) -> Recipe:
 
     groups: list[dict[str, Any]] = []
     ingredients: list[str] = []
+    ingredients_structured: list[dict[str, Any]] = []
     for raw_group in payload.get("ingredientGroups") or []:
         if not isinstance(raw_group, dict):
             continue
-        items = [
-            line
-            for line in (
-                _chefkoch_ingredient(item)
-                for item in raw_group.get("ingredients") or []
+        group_name = clean_text(raw_group.get("title") or raw_group.get("name"))
+        items: list[str] = []
+        for raw_item in raw_group.get("ingredients") or []:
+            line = _chefkoch_ingredient(raw_item)
+            if not line:
+                continue
+            items.append(line)
+            ingredients_structured.append(
+                _chefkoch_structured(raw_item, group_name, line)
             )
-            if line
-        ]
         if not items:
             continue
         ingredients.extend(items)
-        groups.append(
-            {
-                "name": clean_text(raw_group.get("title") or raw_group.get("name")),
-                "items": items,
-            }
-        )
+        groups.append({"name": group_name, "items": items})
 
     if not ingredients:
-        for item in payload.get("ingredients") or []:
-            line = _chefkoch_ingredient(item)
+        for raw_item in payload.get("ingredients") or []:
+            line = _chefkoch_ingredient(raw_item)
             if line:
                 ingredients.append(line)
+                ingredients_structured.append(
+                    _chefkoch_structured(raw_item, "", line)
+                )
 
     tags: list[str] = []
     for tag in payload.get("fullTags") or payload.get("tags") or []:
@@ -627,6 +864,7 @@ def recipe_from_chefkoch(payload: dict[str, Any], url: str) -> Recipe:
         total_minutes=total,
         ingredients=ingredients,
         ingredient_groups=groups,
+        ingredients_structured=ingredients_structured,
         instructions=_html_lines(payload.get("instructions") or ""),
         tags=tags,
         cuisine=as_text(payload.get("recipeCuisine")),

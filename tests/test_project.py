@@ -85,6 +85,18 @@ class FilesTest(unittest.TestCase):
         self.assertIn("urls", content)
         self.assertIn("remove_recipe", content)
         self.assertIn("add_to_shopping_list", content)
+        self.assertIn("servings", content)
+
+    def test_portions_scaling(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        self.assertIn("ingredients_structured", card)
+        self.assertIn("scaleIngredient", card)
+        self.assertIn("servings-button", card)
+        self.assertIn("params.servings", card)
+
+        strings = json.loads((COMPONENT / "strings.json").read_text("utf-8"))
+        fields = strings["services"]["add_to_shopping_list"]["fields"]
+        self.assertIn("servings", fields)
 
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")

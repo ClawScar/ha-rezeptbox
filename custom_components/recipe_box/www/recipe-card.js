@@ -12,11 +12,15 @@
  *     - sensor.curry
  *   show_image: true             # optional
  *   show_steps: true             # optional
- *   show_import: true            # optional, shows the import field (accepts multiple URLs)
+  *   show_import: true             # optional, shows the import field (accepts multiple URLs)
  *   show_delete: true            # optional, shows the delete buttons
+ *
+ * The detail view shows a -/+ control for the servings and rescales the
+ * ingredient amounts live. The shopping list button passes the chosen
+ * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "1.2.1";
+const CARD_VERSION = "1.3.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -57,6 +61,181 @@ const formatServings = (value) => {
   return `${servings} ${servings === 1 ? "Portion" : "Portionen"}`;
 };
 
+const FRACTION_TEXT = {
+  "½": "1/2",
+  "¼": "1/4",
+  "¾": "3/4",
+  "⅓": "1/3",
+  "⅔": "2/3",
+  "⅛": "1/8",
+  "⅜": "3/8",
+  "⅝": "5/8",
+  "⅞": "7/8",
+};
+
+const UNITS = [
+  "Messerspitze",
+  "Päckchen",
+  "Packungen",
+  "Packung",
+  "Portionen",
+  "Portion",
+  "Handvoll",
+  "Scheiben",
+  "Scheibe",
+  "Stangen",
+  "Stange",
+  "Zweige",
+  "Zweig",
+  "Blätter",
+  "Blatt",
+  "Zehen",
+  "Zehe",
+  "Dosen",
+  "Dose",
+  "Gläser",
+  "Glas",
+  "Tassen",
+  "Tasse",
+  "Becher",
+  "Würfel",
+  "Stiele",
+  "Stiel",
+  "Stück",
+  "Stk.",
+  "Prisen",
+  "Prise",
+  "Bund",
+  "Msp.",
+  "EL",
+  "TL",
+  "kg",
+  "mg",
+  "ml",
+  "cl",
+  "dl",
+  "cm",
+  "g",
+  "l",
+  "cups",
+  "cup",
+  "tbsp",
+  "tsp",
+  "oz",
+  "lb",
+  "pinch",
+];
+
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const UNIT_PATTERN = [...UNITS]
+  .sort((first, second) => second.length - first.length)
+  .map(escapeRegExp)
+  .join("|");
+
+const AMOUNT_TOKEN = "\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+(?:[.,]\\d+)?";
+const INGREDIENT_LINE_RE = new RegExp(
+  `^(?<amount>${AMOUNT_TOKEN})` +
+    `(?:\\s*(?:-|–|bis)\\s*(?<amountMax>${AMOUNT_TOKEN}))?` +
+    `\\s*(?:(?<unit>${UNIT_PATTERN})\\.?(?=\\s|$)\\s*)?` +
+    "(?<name>.+)$",
+  "i"
+);
+
+const normalizeFractions = (value) =>
+  String(value ?? "")
+    .replace(/[½¼¾⅓⅔⅛⅜⅝⅞]/g, (character) => ` ${FRACTION_TEXT[character]}`)
+    .replace(/\s+/g, " ")
+    .trim();
+
+const parseAmountValue = (value) => {
+  const text = String(value ?? "")
+    .trim()
+    .replace(",", ".");
+  const mixed = text.match(/^(\d+)\s+(\d+)\/(\d+)$/);
+  if (mixed) {
+    const denominator = Number(mixed[3]);
+    return denominator ? Number(mixed[1]) + Number(mixed[2]) / denominator : null;
+  }
+  const fraction = text.match(/^(\d+)\/(\d+)$/);
+  if (fraction) {
+    const denominator = Number(fraction[2]);
+    return denominator ? Number(fraction[1]) / denominator : null;
+  }
+  const number = Number(text);
+  return Number.isFinite(number) && number > 0 ? number : null;
+};
+
+const formatAmountValue = (value) =>
+  String(Math.round(Number(value) * 100) / 100).replace(".", ",");
+
+const parseIngredientLine = (text, group = "") => {
+  const source = normalizeFractions(String(text ?? "").trim());
+  const item = {
+    amount: null,
+    amount_max: null,
+    amount_text: "",
+    unit: "",
+    name: source,
+    usage: "",
+    text: String(text ?? "").trim(),
+    group,
+  };
+  const match = source.match(INGREDIENT_LINE_RE);
+  if (!match) return item;
+
+  const amount = parseAmountValue(match.groups.amount);
+  if (amount === null) return item;
+
+  item.amount = amount;
+  item.amount_text = formatAmountValue(amount);
+  const amountMax = parseAmountValue(match.groups.amountMax);
+  if (amountMax !== null && amountMax > amount) item.amount_max = amountMax;
+  item.unit = (match.groups.unit || "").trim();
+  item.name = (match.groups.name || "").trim() || source;
+  return item;
+};
+
+const ingredientText = (item, amountText) => {
+  const amount = amountText ?? (item && item.amount_text) ?? "";
+  const line = [amount, item && item.unit, item && item.name]
+    .filter(Boolean)
+    .join(" ");
+  const usage = String((item && item.usage) || "");
+  if (!usage || !line) return line || String((item && item.text) || "");
+  return usage.startsWith(",") || usage.startsWith(";")
+    ? `${line}${usage}`
+    : `${line}, ${usage}`;
+};
+
+const scaleIngredient = (item, factor) => {
+  const amount = Number(item && item.amount);
+  const scale = Number(factor);
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(scale) || scale <= 0) {
+    return ingredientText(item);
+  }
+  let amountText = formatAmountValue(amount * scale);
+  const amountMax = Number(item.amount_max);
+  if (Number.isFinite(amountMax) && amountMax > amount) {
+    amountText = `${amountText}–${formatAmountValue(amountMax * scale)}`;
+  }
+  return ingredientText(item, amountText);
+};
+
+const structuredIngredients = (attributes) => {
+  const structured = Array.isArray(attributes.ingredients_structured)
+    ? attributes.ingredients_structured.filter(
+        (item) => item && typeof item === "object"
+      )
+    : [];
+  if (structured.length) return structured;
+
+  return (Array.isArray(attributes.ingredients) ? attributes.ingredients : [])
+    .filter(Boolean)
+    .map((text) => parseIngredientLine(String(text)));
+};
+
 const isRecipeState = (state) => {
   const attributes = (state && state.attributes) || {};
   if (attributes.integration === INTEGRATION) return true;
@@ -93,12 +272,15 @@ const recipeEntities = (hass, filter) => {
   return result;
 };
 
-const chipsHtml = (attributes) => {
+const chipsHtml = (attributes, servings) => {
   const chips = [];
   const time = formatMinutes(attributes.total_time_minutes);
   if (time) chips.push(time);
-  const servings = formatServings(attributes.servings);
-  if (servings) chips.push(servings);
+  const chosen = Number(servings);
+  const servingsText = formatServings(
+    Number.isFinite(chosen) && chosen > 0 ? chosen : attributes.servings
+  );
+  if (servingsText) chips.push(servingsText);
   const rating = formatRating(attributes.rating, attributes.rating_count);
   if (rating) chips.push(rating);
   if (attributes.difficulty) chips.push(attributes.difficulty);
@@ -118,27 +300,41 @@ const tagsHtml = (attributes) => {
     .join("")}</div>`;
 };
 
-const ingredientRow = (item, checked) => {
-  const text = String(item);
-  const isChecked = checked.has(text) ? " checked" : "";
+const ingredientRow = (item, checked, factor) => {
+  const key = String(item.text || ingredientText(item));
+  const text = scaleIngredient(item, factor);
+  const isChecked = checked.has(key) ? " checked" : "";
   return `<li>
     <label>
-      <input type="checkbox" data-ingredient="${escapeHtml(text)}"${isChecked}>
+      <input type="checkbox" data-ingredient="${escapeHtml(key)}"${isChecked}>
       <span>${escapeHtml(text)}</span>
     </label>
   </li>`;
 };
 
-const ingredientsHtml = (attributes, checked) => {
-  const groups = (Array.isArray(attributes.ingredient_groups)
-    ? attributes.ingredient_groups
-    : []
-  ).filter((group) => group && Array.isArray(group.items) && group.items.length);
-  const flat = Array.isArray(attributes.ingredients)
-    ? attributes.ingredients.filter(Boolean)
-    : [];
+const servingsControlHtml = (attributes, servings) => {
+  const base = Number(attributes.servings);
+  if (!Number.isFinite(base) || base <= 0) return "";
+  const chosen = Number(servings);
+  const value = Number.isFinite(chosen) && chosen > 0 ? chosen : base;
+  return `<div class="servings">
+    <button class="servings-button" type="button" data-step="-1" aria-label="Weniger Portionen"${value <= 1 ? " disabled" : ""}>−</button>
+    <span class="servings-value">${escapeHtml(formatServings(value))}</span>
+    <button class="servings-button" type="button" data-step="1" aria-label="Mehr Portionen"${value >= 99 ? " disabled" : ""}>+</button>
+  </div>`;
+};
 
-  if (!flat.length && !groups.length) return "";
+const ingredientsHtml = (attributes, checked, factor) => {
+  const items = structuredIngredients(attributes);
+  if (!items.length) return "";
+
+  const groups = [];
+  for (const item of items) {
+    const name = String(item.group || "").trim();
+    const last = groups[groups.length - 1];
+    if (!last || last.name !== name) groups.push({ name, items: [] });
+    groups[groups.length - 1].items.push(item);
+  }
 
   if (groups.length > 1) {
     return groups
@@ -146,15 +342,14 @@ const ingredientsHtml = (attributes, checked) => {
         (group) => `
           <h4>${escapeHtml(group.name || "Zutaten")}</h4>
           <ul class="ingredients">${group.items
-            .map((item) => ingredientRow(item, checked))
+            .map((item) => ingredientRow(item, checked, factor))
             .join("")}</ul>`
       )
       .join("");
   }
 
-  const items = flat.length ? flat : groups[0].items;
   return `<ul class="ingredients">${items
-    .map((item) => ingredientRow(item, checked))
+    .map((item) => ingredientRow(item, checked, factor))
     .join("")}</ul>`;
 };
 
@@ -168,8 +363,17 @@ const stepsHtml = (attributes) => {
     .join("")}</ol></div>`;
 };
 
-const detailHtml = (state, options, checked) => {
+const detailHtml = (state, options, checked, servings) => {
   const attributes = state.attributes || {};
+  const baseServings = Number(attributes.servings);
+  const chosenServings = Number(servings);
+  const factor =
+    Number.isFinite(baseServings) &&
+    baseServings > 0 &&
+    Number.isFinite(chosenServings) &&
+    chosenServings > 0
+      ? chosenServings / baseServings
+      : 1;
   const image =
     options.show_image && attributes.image_url
       ? `<img class="recipe-image" src="${escapeHtml(attributes.image_url)}" alt="${escapeHtml(recipeTitle(state))}" loading="lazy">`
@@ -177,7 +381,7 @@ const detailHtml = (state, options, checked) => {
   const description = attributes.description
     ? `<p class="description">${escapeHtml(attributes.description)}</p>`
     : "";
-  const ingredients = ingredientsHtml(attributes, checked);
+  const ingredients = ingredientsHtml(attributes, checked, factor);
   const steps = options.show_steps ? stepsHtml(attributes) : "";
   const source = attributes.source_url
     ? `<a class="source" href="${escapeHtml(attributes.source_url)}" target="_blank" rel="noopener noreferrer">Originalrezept ↗</a>`
@@ -190,10 +394,10 @@ const detailHtml = (state, options, checked) => {
   return `${image}
     <div class="content">
       <h2>${escapeHtml(recipeTitle(state))}</h2>
-      ${chipsHtml(attributes)}
+      ${chipsHtml(attributes, chosenServings)}
       ${description}
       ${tagsHtml(attributes)}
-      ${ingredients ? `<div class="section"><h3>Zutaten</h3>${ingredients}</div>` : ""}
+      ${ingredients ? `<div class="section"><h3>Zutaten</h3>${servingsControlHtml(attributes, chosenServings)}${ingredients}</div>` : ""}
       ${steps}
       <div class="footer">${source}${shopping}</div>
     </div>`;
@@ -212,7 +416,7 @@ const notify = (target, message) => {
   );
 };
 
-const bindDetail = (root, hass, entityId, checked, dispatcher) => {
+const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => {
   root.querySelectorAll("input[data-ingredient]").forEach((input) => {
     input.addEventListener("change", () => {
       const value = input.getAttribute("data-ingredient") || "";
@@ -221,15 +425,25 @@ const bindDetail = (root, hass, entityId, checked, dispatcher) => {
     });
   });
 
+  root.querySelectorAll("button.servings-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const step = Number(button.getAttribute("data-step")) || 0;
+      const current = Number(options.servings) || 1;
+      const next = Math.max(1, Math.min(99, current + step));
+      if (typeof options.onServings === "function") options.onServings(next);
+    });
+  });
+
   const button = root.querySelector("button.shopping");
   if (!button || !hass) return;
 
   button.addEventListener("click", async () => {
     button.disabled = true;
+    const params = { entity_id: entityId };
+    const servings = Number(options.servings);
+    if (Number.isFinite(servings) && servings > 0) params.servings = servings;
     try {
-      await hass.callService("recipe_box", "add_to_shopping_list", {
-        entity_id: entityId,
-      });
+      await hass.callService("recipe_box", "add_to_shopping_list", params);
       notify(dispatcher, "Zutaten zur Einkaufsliste hinzugefügt.");
     } catch (error) {
       notify(dispatcher, `Einkaufsliste: ${error.message || error}`);
@@ -263,6 +477,11 @@ const STYLES = `<style>
   button.shopping { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.9rem; cursor: pointer; }
   button.shopping:hover { opacity: 0.9; }
   button.shopping:disabled { opacity: 0.6; cursor: default; }
+  .servings { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+  button.servings-button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); color: var(--primary-text-color); font-size: 1.15rem; line-height: 1; cursor: pointer; }
+  button.servings-button:hover { border-color: var(--primary-color); }
+  button.servings-button:disabled { opacity: 0.45; cursor: default; }
+  .servings-value { font-size: 0.9rem; font-weight: 600; min-width: 92px; text-align: center; color: var(--primary-text-color); }
   .empty { margin: 0; padding: 8px 0; color: var(--secondary-text-color); font-size: 0.9rem; }
   .list-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .count { color: var(--secondary-text-color); font-size: 0.85rem; }
@@ -296,6 +515,7 @@ class RecipeBoxCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._checked = new Set();
+    this._servings = new Map();
     this._state = undefined;
     this._hass = undefined;
   }
@@ -337,14 +557,27 @@ class RecipeBoxCard extends HTMLElement {
       return;
     }
 
+    const entityId = this._config.entity;
+    const baseServings = Number((this._state.attributes || {}).servings);
+    const servings = this._servings.has(entityId)
+      ? this._servings.get(entityId)
+      : baseServings;
+
     this.shadowRoot.innerHTML = `${STYLES}
-      <ha-card>${detailHtml(this._state, this._config, this._checked)}</ha-card>`;
+      <ha-card>${detailHtml(this._state, this._config, this._checked, servings)}</ha-card>`;
     bindDetail(
       this.shadowRoot,
       this._hass,
-      this._config.entity,
+      entityId,
       this._checked,
-      this
+      this,
+      {
+        servings,
+        onServings: (next) => {
+          this._servings.set(entityId, next);
+          this._render();
+        },
+      }
     );
   }
 }
@@ -354,6 +587,7 @@ class RecipeBoxListCard extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._checked = new Set();
+    this._servings = new Map();
     this._selected = null;
     this._signature = null;
     this._hass = undefined;
@@ -616,6 +850,11 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _renderDetail(entry) {
+    const baseServings = Number((entry.state.attributes || {}).servings);
+    const servings = this._servings.has(entry.entityId)
+      ? this._servings.get(entry.entityId)
+      : baseServings;
+
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
         <div class="list-bar">
@@ -623,7 +862,7 @@ class RecipeBoxListCard extends HTMLElement {
           <span class="list-bar-title">${escapeHtml(recipeTitle(entry.state))}</span>
           ${this._config.show_delete ? deleteButtonHtml(entry.entityId, this._pendingDelete === entry.entityId) : ""}
         </div>
-        ${detailHtml(entry.state, this._config, this._checked)}
+        ${detailHtml(entry.state, this._config, this._checked, servings)}
       </ha-card>`;
 
     bindDetail(
@@ -631,7 +870,14 @@ class RecipeBoxListCard extends HTMLElement {
       this._hass,
       entry.entityId,
       this._checked,
-      this
+      this,
+      {
+        servings,
+        onServings: (next) => {
+          this._servings.set(entry.entityId, next);
+          this._render();
+        },
+      }
     );
 
     this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
