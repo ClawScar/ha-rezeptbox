@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.0";
+const CARD_VERSION = "2.4.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1496,7 +1496,11 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
         notify(dispatcher, "Foto gespeichert.");
       } catch (error) {
         notify(dispatcher, `Foto: ${photoErrorMessage(error, file)}`);
+      } finally {
+        /* Also re-enable when no re-render happens (for example when the
+         * same image is uploaded again); a detached node is harmless. */
         photoInput.disabled = false;
+        photoInput.value = "";
       }
     });
   }

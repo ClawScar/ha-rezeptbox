@@ -54,11 +54,12 @@ const context = {
 vm.runInContext(
   `${source}
 this.RecipeBoxListCard = RecipeBoxListCard;
-this.PHOTO_HELPERS = { manualFormHtml, detailHtml, photoErrorMessage };`,
+this.PHOTO_HELPERS = { manualFormHtml, detailHtml, photoErrorMessage, bindDetail };`,
   vm.createContext(context)
 );
 
-const { manualFormHtml, detailHtml, photoErrorMessage } = context.PHOTO_HELPERS;
+const { manualFormHtml, detailHtml, photoErrorMessage, bindDetail } =
+  context.PHOTO_HELPERS;
 
 // 1. The manual form offers a photo picker with a preview and a remove button.
 const form = manualFormHtml();
@@ -251,7 +252,36 @@ const run = async () => {
   );
   assert.equal(state.uploads.length, 0, "nothing is uploaded for HEIC");
 
-  console.log("card_photo_test: 10 checks passed");
+  // 11. The photo picker is usable again after a successful upload, even
+  //     when the card does not re-render.
+  const changing = makeCard();
+  let changeHandler = null;
+  const picker = {
+    disabled: false,
+    value: "C:\\fakepath\\karte.jpg",
+    files: [{ name: "karte.jpg", type: "image/jpeg", size: 10 }],
+    addEventListener: (type, handler) => {
+      if (type === "change") changeHandler = handler;
+    },
+  };
+  const root = {
+    querySelectorAll: () => [],
+    querySelector: (selector) =>
+      selector === "input.photo-edit-input" ? picker : null,
+  };
+  bindDetail(root, changing._hass, "sensor.manual", new Set(), changing, {});
+  assert.equal(typeof changeHandler, "function", "the picker is bound");
+  await changeHandler();
+  assert.equal(state.calls.length, 1);
+  assert.equal(state.calls[0].service, "set_recipe_image");
+  assert.equal(
+    state.calls[0].data.image_url,
+    "/api/image/serve/abc123/original"
+  );
+  assert.equal(picker.disabled, false, "the picker is enabled again");
+  assert.equal(picker.value, "", "the same file can be chosen again");
+
+  console.log("card_photo_test: 11 checks passed");
 };
 
 run().catch((error) => {
