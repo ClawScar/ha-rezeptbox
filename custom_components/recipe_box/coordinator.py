@@ -256,6 +256,45 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         await self._async_save()
         self.async_update_listeners()
 
+    async def async_rename_group(
+        self, old_name: str, new_name: str
+    ) -> list[str]:
+        """Rename a group in the list and in every recipe assignment."""
+        old_key = str(old_name or "").strip().casefold()
+        cleaned = normalize_group_names([new_name], MAX_GROUPS)
+        if not old_key or not cleaned:
+            return list(self.groups)
+        name = cleaned[0]
+
+        assigned = any(
+            group.casefold() == old_key
+            for recipe in self.recipes.values()
+            for group in recipe.groups
+        )
+        if not assigned and not any(
+            group.casefold() == old_key for group in self.groups
+        ):
+            return list(self.groups)
+
+        renamed = [
+            name if group.casefold() == old_key else group
+            for group in self.groups
+        ]
+        self.groups = normalize_group_names([*renamed, name], MAX_GROUPS)
+
+        for recipe in self.recipes.values():
+            mapped = [
+                name if group.casefold() == old_key else group
+                for group in recipe.groups
+            ]
+            updated = normalize_group_names(mapped, MAX_RECIPE_GROUPS)
+            if updated != recipe.groups:
+                recipe.groups = updated
+
+        await self._async_save()
+        self.async_update_listeners()
+        return list(self.groups)
+
     async def async_refresh_recipe(self, source_url: str) -> Recipe:
         """Reload a single recipe from its source page."""
         try:

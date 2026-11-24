@@ -43,7 +43,7 @@ Einkaufsliste.
 - **Einkaufsliste ohne Dubletten**: gleiche Zutaten werden zusammengerechnet („2 Zwiebeln“ + „3 Zwiebeln“ → „5 Zwiebeln“, 500 g + 500 g → 1 kg), auch über mehrere Rezepte hinweg
 - **Nur fehlende Zutaten**: abgehakte Zutaten bleiben auf Wunsch von der Einkaufsliste
 - **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
-- **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
+- **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service
 - **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
@@ -164,8 +164,8 @@ show_tools: true        # Tabs für Daten (Import, Sicherung, eigenes Rezept) un
 
 Die Karte ist in drei Tabs aufgeteilt: **Rezepte**, **Daten** und
 **Wochenplan**. Mit `show_tools: false` bleibt nur die Rezeptliste sichtbar.
-Die Karte merkt sich im Browser den zuletzt geöffneten Tab und startet nach
-einem Neuladen dort wieder.
+Die Karte merkt sich im Browser den zuletzt geöffneten Tab und die zuletzt
+gewählte Gruppe und startet nach einem Neuladen dort wieder.
 
 Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
 Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der
@@ -175,21 +175,22 @@ endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
 
 Sobald Gruppen angelegt sind, sitzt über der Liste eine Tab-Leiste: **Alle**
 zeigt jedes Rezept, ein Tipp auf einen Gruppennamen nur die Rezepte dieser
-Gruppe. Der aktive Tab ist farbig hinterlegt.
+Gruppe. Der aktive Tab ist farbig hinterlegt und wird – wie der Haupttab – im
+Browser gemerkt.
 
 Gruppen legt man im Tab **Daten** unter **Gruppen** an: Namen in das Feld
 eintippen und **Anlegen** drücken. Jede Gruppe zeigt, wie viele Rezepte ihr
-zugewiesen sind; das × löscht sie wieder (der erste Klick fragt mit
-**Löschen?** nach) und nimmt die Zuordnung von allen Rezepten. Zuweisen lässt
-sich eine Gruppe in der Detailansicht unter **Gruppen**: Namen eintippen
-(bestehende Namen schlägt das Feld vor) und **Hinzufügen** drücken, das × am
-Chip nimmt das Rezept wieder heraus. Eine dort neu eingegebene Gruppe wird
-automatisch mit angelegt.
+zugewiesen sind; das ✎ benennt sie um, ohne die Zuweisungen anzufassen, und
+das × löscht sie wieder (der erste Klick fragt mit **Löschen?** nach) und nimmt
+die Zuordnung von allen Rezepten. Zuweisen lässt sich eine Gruppe in der
+Detailansicht unter **Gruppen**: Namen eintippen (bestehende Namen schlägt das
+Feld vor) und **Hinzufügen** drücken, das × am Chip nimmt das Rezept wieder
+heraus. Eine dort neu eingegebene Gruppe wird automatisch mit angelegt.
 
 Im Tab **Daten** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
 **Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Darunter
-legt **Gruppen** die Gruppen der Rezeptbox an und zeigt sie mit der Anzahl
-deren Rezepte. Es folgen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
+legt **Gruppen** die Gruppen der Rezeptbox an, benennt sie um und löscht sie;
+jede zeigt die Anzahl ihrer Rezepte. Es folgen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
 Speichern-Dialog des Browsers (Chrome/Edge); Browser ohne diesen Dialog legen
 die JSON-Datei im Download-Ordner ab, in der Home-Assistant-App erscheint
 stattdessen das Teilen-Menü. Darunter legt **Eigenes Rezept** ein Rezept mit
@@ -382,10 +383,22 @@ der Detailansicht.
 
 `add_group` legt eine Gruppe an, auch ohne zugewiesene Rezepte – so lässt sie
 sich vorbereiten und erscheint sofort als Tab in der Rezeptliste. `remove_group`
-löscht die Gruppe und entfernt sie von allen Rezepten. Beide antworten mit der
-aktualisierten Liste unter `groups`. Die Karte nutzt sie im Tab **Daten**.
+löscht die Gruppe und entfernt sie von allen Rezepten. Alle drei antworten mit
+der aktualisierten Liste unter `groups`. Die Karte nutzt sie im Tab **Daten**.
 Gruppen werden mit exportiert und beim Einlesen einer Sicherung
 wiederhergestellt.
+
+### `recipe_box.rename_group`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `group` | ja | Bisheriger Name der Gruppe |
+| `name` | ja | Neuer Name der Gruppe |
+
+Benennt eine Gruppe um und lässt alle Zuweisungen bestehen – die Rezepte
+müssen nicht einzeln angefasst werden. Gibt es den neuen Namen schon, werden
+die Rezepte der alten Gruppe dorthin zusammengeführt. Die Karte nutzt den
+Service über das ✎ im Tab **Daten**.
 
 ## Unterstützte Seiten
 

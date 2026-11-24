@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.2.0";
+const CARD_VERSION = "2.2.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -708,16 +708,20 @@ const tabsHtml = (active) => `<div class="tabs" role="tablist">${TABS.map(
 ).join("")}</div>`;
 
 const TAB_PREFIX = "recipe_box:tab:";
+const GROUP_PREFIX = "recipe_box:group:";
 
 const knownTab = (value) => TABS.some((tab) => tab.id === value);
 
-const tabStorageKey = (entities) => {
+const entityKey = (entities) => {
   const list = (Array.isArray(entities) ? entities : [])
     .filter(Boolean)
     .map((entityId) => String(entityId))
     .sort();
-  return `${TAB_PREFIX}${list.length ? list.join("|") : "all"}`;
+  return list.length ? list.join("|") : "all";
 };
+
+const tabStorageKey = (entities) => `${TAB_PREFIX}${entityKey(entities)}`;
+const groupStorageKey = (entities) => `${GROUP_PREFIX}${entityKey(entities)}`;
 
 /* The list remembers the last tab per card, so a reload does not jump back. */
 const readTab = (entities) => {
@@ -735,6 +739,23 @@ const writeTab = (entities, tab) => {
     window.localStorage.setItem(tabStorageKey(entities), tab);
   } catch (error) {
     /* localStorage may be unavailable (private mode); the tab stays for this session */
+  }
+};
+
+/* The chosen group is remembered per card as well; "" is the "Alle" tab. */
+const readGroup = (entities) => {
+  try {
+    return window.localStorage.getItem(groupStorageKey(entities)) || "";
+  } catch (error) {
+    return "";
+  }
+};
+
+const writeGroup = (entities, group) => {
+  try {
+    window.localStorage.setItem(groupStorageKey(entities), String(group || ""));
+  } catch (error) {
+    /* localStorage may be unavailable (private mode); the group stays for this session */
   }
 };
 
@@ -897,20 +918,31 @@ const groupTabsHtml = (groups, active) => {
     .join("")}</div>`;
 };
 
-const groupsManagerHtml = (groups, counts, pending) => `<div class="section groups-manager">
+const groupsManagerHtml = (groups, counts, pending, renaming) => `<div class="section groups-manager">
     <h3>Gruppen</h3>
-    <p class="tab-hint">Gruppen hier anlegen. Zuweisen kannst du sie im Rezept unter „Gruppen“; in der Rezeptliste erscheint je Gruppe ein Tab.</p>
+    <p class="tab-hint">Gruppen hier anlegen und umbenennen. Zuweisen kannst du sie im Rezept unter „Gruppen“; in der Rezeptliste erscheint je Gruppe ein Tab.</p>
     ${
       groups.length
         ? `<div class="group-chips">${groups
             .map((group) => {
               const count = counts.get(group) || 0;
+              if (renaming === group) {
+                return `<span class="group-chip editing"><input class="group-rename-input" type="text" maxlength="40" value="${escapeHtml(
+                  group
+                )}" aria-label="Neuer Name für ${escapeHtml(
+                  group
+                )}"><button class="group-rename-save" type="button" title="Umbenennen speichern" aria-label="Umbenennen speichern">OK</button><button class="group-rename-cancel" type="button" title="Umbenennen abbrechen" aria-label="Umbenennen abbrechen">×</button></span>`;
+              }
               const confirming = pending === group;
               return `<span class="group-chip">${escapeHtml(
                 group
               )}<span class="group-count">${
                 count === 1 ? "1 Rezept" : `${count} Rezepte`
-              }</span><button class="group-delete${
+              }</span><button class="group-rename" type="button" data-group="${escapeHtml(
+                group
+              )}" title="Gruppe umbenennen" aria-label="${escapeHtml(
+                group
+              )} umbenennen">✎</button><button class="group-delete${
                 confirming ? " confirm" : ""
               }" type="button" data-group="${escapeHtml(
                 group
@@ -1465,6 +1497,11 @@ const STYLES = `<style>
   button.group-tab { flex: 0 0 auto; background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); border: 1px solid transparent; border-radius: 999px; padding: 4px 12px; font-size: 0.8rem; color: var(--secondary-text-color); cursor: pointer; white-space: nowrap; }
   button.group-tab:hover { color: var(--primary-text-color); }
   button.group-tab.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
+  .group-chip.editing { padding-right: 4px; }
+  input.group-rename-input { width: 9em; max-width: 40vw; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--primary-color); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.8rem; font-family: inherit; }
+  button.group-rename, button.group-rename-save, button.group-rename-cancel { background: none; border: none; color: inherit; cursor: pointer; line-height: 1; padding: 0 4px; }
+  button.group-rename, button.group-rename-cancel { font-size: 0.85rem; }
+  button.group-rename-save { font-size: 0.75rem; font-weight: 600; }
   button.random { margin-left: auto; background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
   .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .tools button, .import-file-label { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
@@ -1594,6 +1631,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._deleteTimer = null;
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
+    this._renamingGroup = null;
     this._filter = { query: "", tag: "", group: "", maxTime: "", sort: "title" };
     this._tab = "recipes";
     this._restoreFocus = false;
@@ -1620,6 +1658,7 @@ class RecipeBoxListCard extends HTMLElement {
     };
     this._signature = null;
     this._tab = readTab(entities);
+    this._filter.group = readGroup(entities);
     this._render();
   }
 
@@ -1663,6 +1702,11 @@ class RecipeBoxListCard extends HTMLElement {
     writeTab(this._config ? this._config.entities : null, tab);
   }
 
+  _rememberGroup(group) {
+    this._filter.group = group;
+    writeGroup(this._config ? this._config.entities : null, group);
+  }
+
   _groupExists(group, entries) {
     if (!group) return false;
     if (groupRegistry(this._hass).includes(group)) return true;
@@ -1697,10 +1741,10 @@ class RecipeBoxListCard extends HTMLElement {
     }
     if (group) {
       list = list.filter(({ state }) => recipeGroups(state).includes(group));
-      if (!list.length && !this._groupExists(group, entries)) {
+      if (!list.length && this._hass && !this._groupExists(group, entries)) {
         // The whole group is gone; show the list instead of an empty result.
         list = entries;
-        this._filter.group = "";
+        this._rememberGroup("");
       }
     }
     if (maxTime) {
@@ -1887,7 +1931,7 @@ class RecipeBoxListCard extends HTMLElement {
       await this._hass.callService("recipe_box", "remove_group", {
         group: name,
       });
-      if (this._filter.group === name) this._filter.group = "";
+      if (this._filter.group === name) this._rememberGroup("");
       notify(this, `Gruppe gelöscht: ${name}`);
     } catch (error) {
       notify(
@@ -1895,6 +1939,51 @@ class RecipeBoxListCard extends HTMLElement {
         `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
       );
     } finally {
+      this._signature = null;
+      this._render();
+    }
+  }
+
+  _startGroupRename(name) {
+    if (!name) return;
+    this._renamingGroup = name;
+    this._render();
+    const input = this.shadowRoot.querySelector("input.group-rename-input");
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }
+
+  _cancelGroupRename() {
+    this._renamingGroup = null;
+    this._render();
+  }
+
+  async _saveGroupRename() {
+    if (!this._hass) return;
+    const input = this.shadowRoot.querySelector("input.group-rename-input");
+    const previous = this._renamingGroup;
+    const name = String((input && input.value) || "").trim();
+    if (!previous) return;
+    if (!name || name === previous) {
+      this._cancelGroupRename();
+      return;
+    }
+    try {
+      await this._hass.callService("recipe_box", "rename_group", {
+        group: previous,
+        name,
+      });
+      if (this._filter.group === previous) this._rememberGroup(name);
+      notify(this, `Gruppe umbenannt: ${previous} → ${name}`);
+    } catch (error) {
+      notify(
+        this,
+        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+      );
+    } finally {
+      this._renamingGroup = null;
       this._signature = null;
       this._render();
     }
@@ -1970,7 +2059,8 @@ class RecipeBoxListCard extends HTMLElement {
       data: `${importBar}${groupsManagerHtml(
         groups,
         groupCounts(entries),
-        this._pendingGroupDelete
+        this._pendingGroupDelete,
+        this._renamingGroup
       )}${tools}${manualFormHtml()}`,
       plan: entries.length
         ? planHtml(this._hass, entries)
@@ -2049,7 +2139,7 @@ class RecipeBoxListCard extends HTMLElement {
       button.addEventListener("click", () => {
         const next = button.getAttribute("data-group") || "";
         if (next === this._filter.group) return;
-        this._filter.group = next;
+        this._rememberGroup(next);
         this._renderList(entries);
       });
     });
@@ -2116,6 +2206,35 @@ class RecipeBoxListCard extends HTMLElement {
         this._requestGroupDelete(button.getAttribute("data-group"))
       );
     });
+    this.shadowRoot.querySelectorAll("button.group-rename").forEach((button) => {
+      button.addEventListener("click", () =>
+        this._startGroupRename(button.getAttribute("data-group"))
+      );
+    });
+    const renameSave = this.shadowRoot.querySelector("button.group-rename-save");
+    if (renameSave) {
+      renameSave.addEventListener("click", () => this._saveGroupRename());
+    }
+    const renameCancel = this.shadowRoot.querySelector(
+      "button.group-rename-cancel"
+    );
+    if (renameCancel) {
+      renameCancel.addEventListener("click", () => this._cancelGroupRename());
+    }
+    const renameInput = this.shadowRoot.querySelector(
+      "input.group-rename-input"
+    );
+    if (renameInput) {
+      renameInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          this._saveGroupRename();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          this._cancelGroupRename();
+        }
+      });
+    }
 
     this.shadowRoot.querySelectorAll("select.plan-select").forEach((select) => {
       select.addEventListener("change", () =>

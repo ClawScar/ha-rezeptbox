@@ -56,11 +56,12 @@ const context = {
 };
 
 vm.runInContext(
-  `${source}\nthis.RecipeBoxListCard = RecipeBoxListCard;\nthis.TAB_HELPERS = { readTab, writeTab, tabStorageKey };`,
+  `${source}\nthis.RecipeBoxListCard = RecipeBoxListCard;\nthis.TAB_HELPERS = { readTab, writeTab, tabStorageKey, readGroup, writeGroup, groupStorageKey };`,
   vm.createContext(context)
 );
 
-const { readTab, writeTab, tabStorageKey } = context.TAB_HELPERS;
+const { readTab, writeTab, tabStorageKey, readGroup, writeGroup, groupStorageKey } =
+  context.TAB_HELPERS;
 const { RecipeBoxListCard } = context;
 
 const makeCard = (entities) => {
@@ -104,4 +105,27 @@ writeTab(["sensor.recipe"], "plan");
 assert.equal(makeCard("sensor.recipe")._tab, "recipes");
 localStorage.broken = false;
 
-console.log("card_tab_test: 6 checks passed");
+// 7. The chosen group tab is remembered per card like the main tab.
+writeGroup(["sensor.recipe"], "Familie");
+assert.equal(storage.get(groupStorageKey(["sensor.recipe"])), "Familie");
+assert.equal(readGroup(["sensor.recipe"]), "Familie");
+assert.equal(makeCard("sensor.recipe")._filter.group, "Familie");
+
+// 8. Group and main tab are independent, also when the order changes.
+writeTab(["sensor.recipe"], "data");
+assert.equal(readGroup(["sensor.recipe"]), "Familie");
+assert.equal(readTab(["sensor.recipe"]), "data");
+writeGroup(["sensor.a", "sensor.b"], "Backen");
+assert.equal(readGroup(["sensor.b", "sensor.a"]), "Backen");
+assert.equal(readGroup(["sensor.other"]), "");
+
+// 9. "Alle" is stored as an empty value; a broken storage never breaks the card.
+writeGroup(["sensor.recipe"], "");
+assert.equal(readGroup(["sensor.recipe"]), "");
+localStorage.broken = true;
+assert.equal(readGroup(["sensor.recipe"]), "");
+writeGroup(["sensor.recipe"], "Familie");
+assert.equal(makeCard("sensor.recipe")._filter.group, "");
+localStorage.broken = false;
+
+console.log("card_tab_test: 9 checks passed");

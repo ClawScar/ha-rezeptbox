@@ -212,3 +212,16 @@ remove_group:
       example: Familie
       selector:
         text:
+
+rename_group:
+  fields:
+    group:
+      required: true
+      example: Familie
+      selector:
+        text:
+    name:
+      required: true
+      example: Familie & Gäste
+      selector:
+        text:

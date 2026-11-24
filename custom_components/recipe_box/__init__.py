@@ -33,6 +33,7 @@ from .const import (
     ATTR_INGREDIENTS_STRUCTURED,
     ATTR_INSTRUCTIONS,
     ATTR_MERGE,
+    ATTR_NAME,
     ATTR_PLAN,
     ATTR_RECIPES,
     ATTR_SERVINGS,
@@ -59,6 +60,7 @@ from .const import (
     SERVICE_REFRESH_RECIPE,
     SERVICE_REMOVE_GROUP,
     SERVICE_REMOVE_RECIPE,
+    SERVICE_RENAME_GROUP,
     SERVICE_SET_GROUPS,
 )
 from .coordinator import RecipeHub, normalize_group_names
@@ -146,6 +148,13 @@ SET_GROUPS_SCHEMA = vol.All(
 )
 
 GROUP_SCHEMA = vol.Schema({vol.Required(ATTR_GROUP): cv.string})
+
+RENAME_GROUP_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_GROUP): cv.string,
+        vol.Required(ATTR_NAME): cv.string,
+    }
+)
 
 IMPORT_RECIPES_SCHEMA = vol.Schema(
     {
@@ -289,6 +298,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_REMOVE_GROUP,
             partial(_async_remove_group, hass),
             schema=GROUP_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_RENAME_GROUP):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_RENAME_GROUP,
+            partial(_async_rename_group, hass),
+            schema=RENAME_GROUP_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -820,3 +838,17 @@ async def _async_remove_group(
     name = _group_name(call.data.get(ATTR_GROUP))
     groups = await hub.async_remove_group(name)
     return {"group": name, "groups": groups}
+
+
+async def _async_rename_group(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Rename a group and keep all of its assignments."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    old_name = _group_name(call.data.get(ATTR_GROUP))
+    new_name = _group_name(call.data.get(ATTR_NAME))
+    groups = await hub.async_rename_group(old_name, new_name)
+    return {"group": new_name, "old_group": old_name, "groups": groups}

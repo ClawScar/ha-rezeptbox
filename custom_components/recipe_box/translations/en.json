@@ -210,6 +210,20 @@
           "description": "Name of the group."
         }
       }
+    },
+    "rename_group": {
+      "name": "Rename a group",
+      "description": "Renames a group and keeps it assigned to all of its recipes.",
+      "fields": {
+        "group": {
+          "name": "Group",
+          "description": "Current name of the group."
+        },
+        "name": {
+          "name": "New name",
+          "description": "Name the group should get."
+        }
+      }
     }
   },
   "exceptions": {

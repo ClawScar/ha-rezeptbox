@@ -178,9 +178,26 @@ assert.match(manager, /<span class="group-count">2 Rezepte<\/span>/);
 assert.match(manager, /<span class="group-count">0 Rezepte<\/span>/);
 assert.match(manager, /data-group="Familie"/);
 assert.match(manager, /class="group-delete confirm"/);
+assert.match(manager, /class="group-rename" type="button" data-group="Familie"/);
 assert.doesNotMatch(groupsManagerHtml([], new Map(), null), /group-chip/);
 
-// 8. The detail view lists the groups as removable chips and offers a new one.
+// 8. A group is renamed in place, without touching every recipe.
+const renaming = groupsManagerHtml(
+  ["Familie"],
+  new Map([["Familie", 1]]),
+  null,
+  "Familie"
+);
+assert.match(renaming, /class="group-chip editing"/);
+assert.match(
+  renaming,
+  /class="group-rename-input" type="text" maxlength="40" value="Familie"/
+);
+assert.match(renaming, /class="group-rename-save"/);
+assert.match(renaming, /class="group-rename-cancel"/);
+assert.doesNotMatch(renaming, /class="group-delete/);
+
+// 9. The detail view lists the groups as removable chips and offers a new one.
 const editor = groupsEditorHtml(
   { groups: ["Familie", "Backen"] },
   { entityId: "sensor.lasagne", groups: ["Familie", "Backen", "Nudeln"] },
@@ -192,8 +209,8 @@ assert.match(editor, /class="group-add-button"/);
 assert.match(editor, /<option value="Nudeln"><\/option>/);
 assert.doesNotMatch(editor, /<option value="Familie"><\/option>/);
 
-// 9. Printing and the bare sensor view get no group editor.
+// 10. Printing and the bare sensor view get no group editor.
 assert.equal(groupsEditorHtml({ groups: [] }, { forPrint: true }, []), "");
 assert.equal(groupsEditorHtml({ groups: [] }, {}, []), "");
 
-console.log("card_groups_test: 10 checks passed");
+console.log("card_groups_test: 11 checks passed");

@@ -198,16 +198,19 @@ class FilesTest(unittest.TestCase):
             "groups-manager",
             "group-create-button",
             "group-delete",
+            "group-rename",
+            "group-rename-input",
             "group-add-button",
             "group-remove",
             "set_groups",
             "add_group",
             "remove_group",
+            "rename_group",
         ):
             self.assertIn(marker, card)
 
         services = (COMPONENT / "services.yaml").read_text("utf-8")
-        for name in ("set_groups", "add_group", "remove_group"):
+        for name in ("set_groups", "add_group", "remove_group", "rename_group"):
             self.assertIn(f"{name}:", services)
 
         for name in (
@@ -221,17 +224,24 @@ class FilesTest(unittest.TestCase):
             for service in ("add_group", "remove_group"):
                 self.assertIn(service, data["services"])
                 self.assertIn("group", data["services"][service]["fields"])
+            self.assertIn("rename_group", data["services"])
+            self.assertEqual(
+                set(data["services"]["rename_group"]["fields"]),
+                {"group", "name"},
+            )
             self.assertIn("invalid_group", data["exceptions"])
 
         const = (COMPONENT / "const.py").read_text("utf-8")
         self.assertIn('SERVICE_SET_GROUPS = "set_groups"', const)
         self.assertIn('SERVICE_ADD_GROUP = "add_group"', const)
         self.assertIn('SERVICE_REMOVE_GROUP = "remove_group"', const)
+        self.assertIn('SERVICE_RENAME_GROUP = "rename_group"', const)
 
         coordinator = (COMPONENT / "coordinator.py").read_text("utf-8")
         for marker in (
             "async_add_group",
             "async_remove_group",
+            "async_rename_group",
             "async_import_groups",
             'self.groups: list[str] = []',
         ):

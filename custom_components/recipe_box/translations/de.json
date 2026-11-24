@@ -210,6 +210,20 @@
           "description": "Name der Gruppe."
         }
       }
+    },
+    "rename_group": {
+      "name": "Gruppe umbenennen",
+      "description": "Benennt eine Gruppe um; die Zuweisung zu ihren Rezepten bleibt erhalten.",
+      "fields": {
+        "group": {
+          "name": "Gruppe",
+          "description": "Bisheriger Name der Gruppe."
+        },
+        "name": {
+          "name": "Neuer Name",
+          "description": "Name, den die Gruppe bekommen soll."
+        }
+      }
     }
   },
   "exceptions": {
