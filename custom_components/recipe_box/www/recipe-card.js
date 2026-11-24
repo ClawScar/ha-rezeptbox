@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.2.3";
+const CARD_VERSION = "2.2.4";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -2065,7 +2065,7 @@ class RecipeBoxListCard extends HTMLElement {
           <h3>Rezepte importieren</h3>
           <div class="import-bar">
             <textarea class="import-input" rows="2" placeholder="Rezept-URLs – eine pro Zeile"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
-            <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Importieren"}</button>
+            <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Rezept importieren"}</button>
           </div>
         </div>`
       : "";

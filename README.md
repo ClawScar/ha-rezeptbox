@@ -16,7 +16,7 @@ Einkaufsliste.
 - **Leere Rezeptbox starten**: Integration hinzufügen genügt, es wird kein
   Pflichtfeld abgefragt
 - **Import per Button**: eine oder mehrere URLs oben in der Rezeptliste
-  einfügen (eine pro Zeile) und **Importieren** drücken – alternativ der
+  einfügen (eine pro Zeile) und **Rezept importieren** drücken – alternativ der
   Service `recipe_box.import_recipe`
 - **Chefkoch-Adapter** über die offene `api.chefkoch.de/v2`-Schnittstelle
   (kein API-Key nötig), mit automatischem Fallback auf die Webseite
@@ -91,8 +91,8 @@ Das Aktualisierungsintervall für alle Rezepte lässt sich über
 ## Rezept importieren
 
 **Über die Karte:** In der Rezeptliste oben eine oder mehrere Rezept-URLs
-einfügen (eine pro Zeile, alternativ durch Komma getrennt) und **Importieren**
-drücken. Die Rezepte erscheinen sofort in der Liste, am Ende zeigt eine
+einfügen (eine pro Zeile, alternativ durch Komma getrennt) und **Rezept
+importieren** drücken. Die Rezepte erscheinen sofort in der Liste, am Ende zeigt eine
 Benachrichtigung die Zusammenfassung (z. B. „3 von 4 importiert, 1
 fehlgeschlagen“). Ein fehlerhafter Link blockiert die übrigen nicht. Mit
 **Strg+Enter** (bzw. Cmd+Enter) startest du den Import aus dem Feld.
@@ -190,15 +190,15 @@ Feld vor) und **Hinzufügen** drücken, das × am Chip nimmt das Rezept wieder
 heraus. Eine dort neu eingegebene Gruppe wird automatisch mit angelegt.
 
 Der Tab **Daten** ist in vier getrennte Abschnitte gegliedert: **Rezepte
-importieren** (eine oder mehrere URLs einfügen, **Importieren** drücken – die
-Liste füllt sich sofort, ohne Neustart), **Gruppen** (anlegen, sortieren,
+importieren** (eine oder mehrere URLs einfügen, **Rezept importieren** drücken –
+die Liste füllt sich sofort, ohne Neustart), **Gruppen** (anlegen, sortieren,
 umbenennen, löschen, jeweils mit der Anzahl ihrer Rezepte), **Sicherung** sowie
 **Eigenes Rezept**.
 
 Unter **Sicherung** öffnet **Exportieren** den Speichern-Dialog des Browsers
 (Chrome/Edge); Browser ohne diesen Dialog legen die JSON-Datei im
 Download-Ordner ab, in der Home-Assistant-App erscheint stattdessen das
-Teilen-Menü. **Importieren** liest eine solche Sicherung wieder ein. Unter
+Teilen-Menü. **Importieren** daneben liest eine solche Sicherung wieder ein. Unter
 **Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
 und Tags.
 

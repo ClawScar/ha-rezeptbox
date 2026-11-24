@@ -204,6 +204,7 @@ class FilesTest(unittest.TestCase):
             "data-panel",
             "data-section",
             ">Exportieren<",
+            "\"Rezept importieren\"",
             ">Importieren<",
             "group-add-button",
             "group-remove",
