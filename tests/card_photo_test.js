@@ -54,11 +54,11 @@ const context = {
 vm.runInContext(
   `${source}
 this.RecipeBoxListCard = RecipeBoxListCard;
-this.PHOTO_HELPERS = { manualFormHtml };`,
+this.PHOTO_HELPERS = { manualFormHtml, detailHtml, photoErrorMessage };`,
   vm.createContext(context)
 );
 
-const { manualFormHtml } = context.PHOTO_HELPERS;
+const { manualFormHtml, detailHtml, photoErrorMessage } = context.PHOTO_HELPERS;
 
 // 1. The manual form offers a photo picker with a preview and a remove button.
 const form = manualFormHtml();
@@ -175,7 +175,83 @@ const run = async () => {
   assert.equal(preview.hidden, true);
   assert.equal(srcRemoved, true);
 
-  console.log("card_photo_test: 7 checks passed");
+  // 8. Own recipes offer changing and removing the photo, imported ones do not.
+  const detailOptions = { show_image: true, show_steps: true };
+  const manualState = {
+    entity_id: "sensor.manual",
+    attributes: {
+      title: "Omas Kuchen",
+      source_url: "manual://omas-kuchen-1a2b3c4d",
+      ingredients: ["1 Ei"],
+      groups: [],
+    },
+  };
+  const meta = { entityId: "sensor.manual", groups: [] };
+  const withoutPhoto = detailHtml(manualState, detailOptions, new Set(), 2, meta);
+  assert.match(withoutPhoto, /class="photo-edit-input"/);
+  assert.match(withoutPhoto, /Foto hinzufügen/);
+  assert.doesNotMatch(withoutPhoto, /photo-remove/);
+
+  const withPhotoState = {
+    entity_id: "sensor.manual",
+    attributes: {
+      ...manualState.attributes,
+      image_url: "/api/image/serve/abc123/original",
+    },
+  };
+  const withPhoto = detailHtml(withPhotoState, detailOptions, new Set(), 2, meta);
+  assert.match(withPhoto, /Foto ändern/);
+  assert.match(withPhoto, /class="photo-remove"/);
+
+  const imported = detailHtml(
+    {
+      entity_id: "sensor.web",
+      attributes: {
+        title: "Lasagne",
+        source_url: "https://example.com/lasagne",
+        ingredients: ["1 Ei"],
+        groups: [],
+      },
+    },
+    detailOptions,
+    new Set(),
+    2,
+    { entityId: "sensor.web", groups: [] }
+  );
+  assert.doesNotMatch(imported, /photo-edit/);
+
+  // 9. HEIC photos get a concrete hint instead of a bare upload error.
+  const heicFile = { name: "IMG_1234.HEIC", type: "image/heic", size: 10 };
+  assert.match(
+    photoErrorMessage(new Error("400: Bad Request"), heicFile),
+    /HEIC-Fotos kann dieser Browser nicht umwandeln/
+  );
+  assert.match(
+    photoErrorMessage(new Error("400: Bad Request"), {
+      name: "karte.jpg",
+      type: "image/jpeg",
+    }),
+    /Bitte JPG oder PNG verwenden/
+  );
+  assert.match(
+    photoErrorMessage(new Error("413: Payload Too Large"), heicFile),
+    /HEIC-Fotos/
+  );
+  assert.equal(
+    photoErrorMessage(new Error("kaputt"), { name: "karte.jpg" }),
+    "kaputt"
+  );
+
+  // 10. An HEIC file the browser cannot convert is rejected with that hint.
+  const heicUpload = makeCard();
+  heicUpload._shrinkPhoto = async (item) => item;
+  await assert.rejects(
+    () => heicUpload._uploadPhoto(heicFile),
+    /HEIC-Fotos kann dieser Browser nicht umwandeln/
+  );
+  assert.equal(state.uploads.length, 0, "nothing is uploaded for HEIC");
+
+  console.log("card_photo_test: 10 checks passed");
 };
 
 run().catch((error) => {

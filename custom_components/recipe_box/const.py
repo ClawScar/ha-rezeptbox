@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
@@ -43,6 +43,7 @@ SERVICE_IMPORT_RECIPES = "import_recipes"
 SERVICE_PLAN_RECIPE = "plan_recipe"
 SERVICE_CLEAR_MEAL_PLAN = "clear_meal_plan"
 SERVICE_SET_GROUPS = "set_groups"
+SERVICE_SET_RECIPE_IMAGE = "set_recipe_image"
 SERVICE_ADD_GROUP = "add_group"
 SERVICE_REMOVE_GROUP = "remove_group"
 SERVICE_RENAME_GROUP = "rename_group"

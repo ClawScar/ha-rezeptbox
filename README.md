@@ -45,7 +45,7 @@ Einkaufsliste.
 - **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
 - **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
-- **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte
+- **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt
 - **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
 - **Sicherung**: alle Rezepte und den Wochenplan als JSON herunterladen und wieder einlesen
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
@@ -213,7 +213,11 @@ Teilen-Menü. **Laden** daneben liest eine solche Sicherung wieder ein. Unter
 und Tags. Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
 oder direkt mit der Handy-Kamera aufnehmen; es wird vor dem Hochladen auf
 handliche Größe verkleinert und erscheint danach als Rezeptbild in Liste und
-Detailansicht. **Foto entfernen** verwirft die Auswahl wieder.
+Detailansicht. **Foto entfernen** verwirft die Auswahl wieder. Bei einem
+gespeicherten eigenen Rezept stehen in der Detailansicht **Foto ändern** und
+**Foto entfernen** bereit. HEIC-Fotos vom iPhone kann nicht jeder Browser
+umwandeln; die Karte weist dann darauf hin, das Foto als JPG zu speichern oder
+direkt mit der Handy-Kamera aufzunehmen.
 
 Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
 **Woche auf die Einkaufsliste**).
@@ -342,6 +346,19 @@ stehen – aus zweimal „500 g Kartoffeln“ wird „1 kg Kartoffeln“.
 Legt ein Rezept ohne Quellseite an (Familienrezept, Karte, PDF-Abschrift).
 Ohne `url` bekommt es einen internen Schlüssel (`manual://…`); es erscheint wie
 ein importiertes Rezept als Gerät mit Sensoren und Button.
+
+### `recipe_box.set_recipe_image`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `image_url` | nein | Adresse des Fotos, z. B. `/api/image/serve/…/original`; leer entfernt das Foto |
+| `entity_id` oder `url` | eins von beiden | Rezept-Sensor oder Quelladresse |
+
+Setzt oder entfernt das Foto eines **eigenen** Rezepts (angelegt mit
+`add_recipe`). Importierte Rezepte behalten das Bild ihrer Quellseite, weil ein
+späteres Aktualisieren es sonst wieder überschreiben würde. Die Karte nutzt
+denselben Service für **Foto ändern** und **Foto entfernen** in der
+Detailansicht.
 
 ### `recipe_box.refresh_recipe`
 

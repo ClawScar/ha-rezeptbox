@@ -219,6 +219,18 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         self.async_update_listeners()
         return recipe
 
+    async def async_set_image(
+        self, source_url: str, image_url: str
+    ) -> Recipe | None:
+        """Set or clear the photo of a recipe."""
+        recipe = self.recipes.get(source_url)
+        if recipe is None:
+            return None
+        recipe.image_url = str(image_url or "")
+        await self._async_save()
+        self.async_update_listeners()
+        return recipe
+
     async def async_add_group(self, name: str) -> list[str]:
         """Create a group even before a recipe is assigned to it."""
         groups = normalize_group_names([*self.groups, name], MAX_GROUPS)

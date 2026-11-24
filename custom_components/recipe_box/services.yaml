@@ -62,6 +62,23 @@ add_recipe:
         text:
           type: url
 
+set_recipe_image:
+  fields:
+    image_url:
+      example: /api/image/serve/0123456789abcdef0123456789abcdef/original
+      selector:
+        text:
+    url:
+      example: manual://omas-apfelkuchen-1a2b3c4d
+      selector:
+        text:
+    entity_id:
+      example: sensor.omas_apfelkuchen
+      selector:
+        entity:
+          integration: recipe_box
+          domain: sensor
+
 remove_recipe:
   fields:
     url:

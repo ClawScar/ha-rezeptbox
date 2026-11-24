@@ -191,6 +191,24 @@
         }
       }
     },
+    "set_recipe_image": {
+      "name": "Rezeptfoto ändern",
+      "description": "Setzt oder entfernt das Foto eines eigenen Rezepts. Importierte Rezepte behalten das Bild ihrer Quellseite.",
+      "fields": {
+        "image_url": {
+          "name": "Foto",
+          "description": "Adresse des Fotos, zum Beispiel /api/image/serve/…/original. Leer lassen, um das Foto zu entfernen."
+        },
+        "entity_id": {
+          "name": "Rezept",
+          "description": "Rezeptbox-Sensor des Rezepts."
+        },
+        "url": {
+          "name": "Rezept-URL",
+          "description": "Quelladresse (Alternative zum Sensor)."
+        }
+      }
+    },
     "add_group": {
       "name": "Gruppe anlegen",
       "description": "Legt eine Gruppe in der Rezeptbox an, auch ohne zugewiesene Rezepte.",
@@ -264,6 +282,9 @@
     },
     "manual_recipe": {
       "message": "Eigene Rezepte ohne Quellseite lassen sich nicht aktualisieren."
+    },
+    "not_manual_recipe": {
+      "message": "Nur eigene Rezepte können ein eigenes Foto bekommen. Importierte Rezepte laden ihr Bild von der Quellseite."
     },
     "invalid_group": {
       "message": "Eine Gruppe braucht einen Namen."

@@ -64,6 +64,7 @@ from .const import (
     SERVICE_REMOVE_RECIPE,
     SERVICE_RENAME_GROUP,
     SERVICE_SET_GROUPS,
+    SERVICE_SET_RECIPE_IMAGE,
 )
 from .coordinator import RecipeHub, normalize_group_names
 from .frontend import (
@@ -142,6 +143,17 @@ SET_GROUPS_SCHEMA = vol.All(
     vol.Schema(
         {
             vol.Required(ATTR_GROUPS): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+)
+
+SET_RECIPE_IMAGE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional(ATTR_IMAGE_URL, default=""): cv.string,
             vol.Optional(ATTR_URL): cv.string,
             vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
         }
@@ -289,6 +301,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_SET_GROUPS,
             partial(_async_set_groups, hass),
             schema=SET_GROUPS_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_RECIPE_IMAGE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_RECIPE_IMAGE,
+            partial(_async_set_recipe_image, hass),
+            schema=SET_RECIPE_IMAGE_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -700,6 +721,31 @@ async def _async_add_recipe(
     await hub.async_add_recipe(recipe)
     _LOGGER.debug("Added manual recipe %s", recipe.title)
     return {"title": recipe.title, "url": recipe.source_url}
+
+
+async def _async_set_recipe_image(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Set or clear the photo of a manually created recipe."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
+    if not source_url.startswith(MANUAL_URL_PREFIX):
+        # A refresh would replace the photo of an imported recipe again.
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="not_manual_recipe"
+        )
+
+    image_url = str(call.data.get(ATTR_IMAGE_URL) or "").strip()
+    await hub.async_set_image(source_url, image_url)
+    _LOGGER.debug("Set image for %s", source_url)
+    return {
+        "title": recipe.title,
+        "url": source_url,
+        "image_url": image_url,
+    }
 
 
 async def _async_refresh_recipe(

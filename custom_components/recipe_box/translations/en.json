@@ -191,6 +191,24 @@
         }
       }
     },
+    "set_recipe_image": {
+      "name": "Change recipe photo",
+      "description": "Sets or removes the photo of a manually created recipe. Imported recipes keep the image from their source page.",
+      "fields": {
+        "image_url": {
+          "name": "Photo",
+          "description": "URL of the photo, for example /api/image/serve/…/original. Leave empty to remove the photo."
+        },
+        "entity_id": {
+          "name": "Recipe",
+          "description": "Rezeptbox sensor of the recipe."
+        },
+        "url": {
+          "name": "Recipe URL",
+          "description": "Source URL (alternative to the sensor)."
+        }
+      }
+    },
     "add_group": {
       "name": "Create a group",
       "description": "Creates a group in the recipe box, even before a recipe is assigned to it.",
@@ -264,6 +282,9 @@
     },
     "manual_recipe": {
       "message": "Own recipes without a source page cannot be refreshed."
+    },
+    "not_manual_recipe": {
+      "message": "Only manually created recipes can have a custom photo. Imported recipes load theirs from the source page."
     },
     "invalid_group": {
       "message": "A group needs a name."

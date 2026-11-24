@@ -179,6 +179,9 @@ class FilesTest(unittest.TestCase):
         self.assertIn("Eigenes Rezept", card)
         self.assertIn("manual-photo", card)
         self.assertIn("image/upload", card)
+        self.assertIn("photo-edit-input", card)
+        self.assertIn("set_recipe_image", card)
+        self.assertIn("HEIC", card)
         self.assertIn("Wochenplan", card)
         self.assertIn("tabsHtml", card)
         self.assertIn("recipe_box:tab:", card)
@@ -214,6 +217,7 @@ class FilesTest(unittest.TestCase):
             "group-add-button",
             "group-remove",
             "set_groups",
+            "set_recipe_image",
             "add_group",
             "remove_group",
             "rename_group",
@@ -227,6 +231,7 @@ class FilesTest(unittest.TestCase):
         services = (COMPONENT / "services.yaml").read_text("utf-8")
         for name in (
             "set_groups",
+            "set_recipe_image",
             "add_group",
             "remove_group",
             "rename_group",
