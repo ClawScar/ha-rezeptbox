@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.3";
+const CARD_VERSION = "2.4.4";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -773,6 +773,25 @@ const shrinkPhoto = async (file) => {
   }
 };
 
+const uploadError = async (response) => {
+  const status = Number(response && response.status) || 0;
+  let detail = "";
+  try {
+    if (response && typeof response.text === "function") {
+      detail = String(await response.text()).trim().slice(0, 200);
+    }
+  } catch (error) {
+    detail = "";
+  }
+  const raw = [
+    status ? String(status) : "",
+    detail || (response && response.statusText) || "",
+  ]
+    .filter(Boolean)
+    .join(": ");
+  return new Error(raw || "Upload fehlgeschlagen");
+};
+
 const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   const blob = await shrink(file);
   if (blob === file && looksHeic(file)) {
@@ -786,7 +805,26 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   /* The prefix marks the upload as ours, so the cleanup never touches
    * profile photos or images from other integrations. */
   form.append("file", blob, `rezeptbox-${base}.jpg`);
-  const result = await hass.callApi("POST", "image/upload", form);
+
+  let result = null;
+  /* hass.callApi serialises its payload as JSON, which turns the multipart
+   * body into an empty object and makes the upload fail. fetchWithAuth sends
+   * the FormData untouched. */
+  if (hass && typeof hass.fetchWithAuth === "function") {
+    const response = await hass.fetchWithAuth("/api/image/upload", {
+      method: "POST",
+      body: form,
+    });
+    if (!response || !response.ok) {
+      throw await uploadError(response);
+    }
+    result = await response.json();
+  } else if (hass && typeof hass.callApi === "function") {
+    result = await hass.callApi("POST", "image/upload", form);
+  } else {
+    throw new Error("Dieser Browser kann keine Fotos hochladen.");
+  }
+
   if (!result || !result.id) {
     throw new Error("Der Upload hat keine Bild-ID geliefert.");
   }

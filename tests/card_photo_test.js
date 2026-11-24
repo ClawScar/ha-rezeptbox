@@ -90,6 +90,10 @@ const makeCard = () => {
     callService: async (domain, service, data) => {
       state.calls.push({ domain, service, data });
     },
+    fetchWithAuth: async (path, init) => {
+      state.uploads.push({ path, form: init && init.body });
+      return { ok: true, json: async () => ({ id: "abc123" }) };
+    },
     callApi: async (method, path, body) => {
       state.uploads.push({ method, path, form: body });
       return { id: "abc123" };
@@ -122,8 +126,7 @@ const run = async () => {
   const file = { name: "Omas Karte.JPG", size: 4096, type: "image/jpeg" };
   const url = await uploading._uploadPhoto(file);
   assert.equal(state.uploads.length, 1);
-  assert.equal(state.uploads[0].method, "POST");
-  assert.equal(state.uploads[0].path, "image/upload");
+  assert.equal(state.uploads[0].path, "/api/image/upload");
   assert.equal(state.uploads[0].form.entries.length, 1);
   assert.equal(
     state.uploads[0].form.entries[0][2],
@@ -150,12 +153,18 @@ const run = async () => {
   // 4. A failed upload aborts the save so the recipe is not stored silently.
   const failing = makeCard();
   failing.shadowRoot = formRoot(file);
-  failing._hass.callApi = async () => {
-    throw new Error("kaputt");
-  };
+  failing._hass.fetchWithAuth = async () => ({
+    ok: false,
+    status: 400,
+    statusText: "Bad Request",
+    text: async () => "",
+  });
   await failing._saveManual();
   assert.equal(state.calls.length, 0, "no recipe without its photo");
-  assert.match(state.notifications[0], /Foto: kaputt/);
+  assert.match(
+    state.notifications[0],
+    /Foto: Dieses Bildformat wird nicht unterstützt/
+  );
   assert.equal(failing.shadowRoot.querySelector("button.manual-save").disabled, false);
 
   // 5. Without a photo the recipe is saved exactly as before.
@@ -322,7 +331,39 @@ const run = async () => {
     /fehlende Fotos bei 2 Rezepten\./
   );
 
-  console.log("card_photo_test: 14 checks passed");
+  // 15. Without fetchWithAuth the legacy callApi path still works.
+  const legacy = makeCard();
+  legacy._hass.fetchWithAuth = undefined;
+  legacy._shrinkPhoto = async () => ({ size: 1 });
+  const legacyUrl = await legacy._uploadPhoto({
+    name: "karte.jpg",
+    type: "image/jpeg",
+  });
+  assert.equal(state.uploads[0].path, "image/upload");
+  assert.equal(legacyUrl, "/api/image/serve/abc123/original");
+
+  // 16. A too large upload gets its own hint.
+  const big = makeCard();
+  big._hass.fetchWithAuth = async () => ({
+    ok: false,
+    status: 413,
+    statusText: "Payload Too Large",
+    text: async () => "",
+  });
+  big._shrinkPhoto = async () => ({ size: 1 });
+  await assert.rejects(
+    () => big._uploadPhoto({ name: "karte.jpg", type: "image/jpeg" }),
+    /413: Payload Too Large/
+  );
+  assert.match(
+    photoErrorMessage(
+      new Error("413: Payload Too Large"),
+      { name: "karte.jpg" }
+    ),
+    /zu groß/
+  );
+
+  console.log("card_photo_test: 16 checks passed");
 };
 
 run().catch((error) => {
