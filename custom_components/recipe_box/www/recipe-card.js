@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.2.5";
+const CARD_VERSION = "2.2.6";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1285,6 +1285,7 @@ const selectionBarHtml = (count, groups) => `<div class="selection-bar">
     )
     .join("")}</select>
   <button class="selection-assign" type="button">Zuweisen</button>
+  <button class="selection-remove" type="button">Entfernen</button>
   <button class="selection-delete" type="button">Löschen</button>
   <button class="selection-cancel" type="button">Abbrechen</button>
 </div>`;
@@ -1533,7 +1534,7 @@ const STYLES = `<style>
   ul.recipe-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
   ul.recipe-list li + li { border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.2)); }
   li.recipe-row { display: flex; align-items: center; gap: 2px; }
-  button.recipe-item { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 12px; padding: 10px 0; background: none; border: none; text-align: left; color: var(--primary-text-color); cursor: pointer; }
+  button.recipe-item { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 12px; padding: 10px 0; background: none; border: none; text-align: left; color: var(--primary-text-color); cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
   button.delete { flex: 0 0 auto; display: inline-flex; align-items: center; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; padding: 8px 6px; border-radius: 6px; font-size: 0.78rem; --mdc-icon-size: 20px; }
   button.delete:hover { color: var(--error-color, #db4437); background: rgba(219, 68, 55, 0.08); }
   button.delete.confirm { color: var(--error-color, #db4437); font-weight: 600; }
@@ -1727,6 +1728,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._confirmDelete = null;
     this._selection = new Set();
     this._suppressClickUntil = 0;
+    this._pressStart = null;
     this._longPressTimer = null;
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
@@ -2026,11 +2028,18 @@ class RecipeBoxListCard extends HTMLElement {
     this._render();
   }
 
-  _startLongPress(entityId) {
+  /* A little finger movement is normal on a touch screen; only a clear drag
+   * counts as scrolling and cancels the pending long press. */
+  _startLongPress(entityId, event) {
     if (!entityId || this._selection.size) return;
     this._clearLongPress();
+    this._pressStart = {
+      x: Number(event && event.clientX) || 0,
+      y: Number(event && event.clientY) || 0,
+    };
     this._longPressTimer = setTimeout(() => {
       this._longPressTimer = null;
+      this._pressStart = null;
       this._suppressClickUntil = Date.now() + 600;
       this._selection.add(entityId);
       this._signature = null;
@@ -2038,37 +2047,56 @@ class RecipeBoxListCard extends HTMLElement {
     }, 500);
   }
 
+  _moveLongPress(event) {
+    if (!this._longPressTimer || !this._pressStart) return;
+    const x = Number(event && event.clientX) || 0;
+    const y = Number(event && event.clientY) || 0;
+    if (Math.hypot(x - this._pressStart.x, y - this._pressStart.y) > 14) {
+      this._clearLongPress();
+    }
+  }
+
   _clearLongPress() {
     if (this._longPressTimer) {
       clearTimeout(this._longPressTimer);
       this._longPressTimer = null;
     }
+    this._pressStart = null;
   }
 
-  async _assignGroupToSelection(group) {
+  async _changeSelectionGroup(group, remove) {
     const name = String(group || "").trim();
     if (!name || !this._hass || !this._selection.size) return;
     const entries = this._recipes();
-    let assigned = 0;
+    let changed = 0;
     try {
       for (const entityId of [...this._selection]) {
         const entry = entries.find((item) => item.entityId === entityId);
         if (!entry) continue;
         const current = recipeGroups(entry.state);
-        if (current.some((item) => item.toLowerCase() === name.toLowerCase())) {
-          continue;
-        }
+        const has = current.some(
+          (item) => item.toLowerCase() === name.toLowerCase()
+        );
+        if (remove ? !has : has) continue;
+        const groups = remove
+          ? current.filter((item) => item.toLowerCase() !== name.toLowerCase())
+          : [...current, name];
         await this._hass.callService("recipe_box", "set_groups", {
           entity_id: entityId,
-          groups: [...current, name],
+          groups,
         });
-        assigned += 1;
+        changed += 1;
       }
+      const label = `${changed} ${changed === 1 ? "Rezept" : "Rezepte"}`;
       notify(
         this,
-        assigned
-          ? `${name}: ${assigned} ${assigned === 1 ? "Rezept" : "Rezepte"} zugewiesen.`
-          : `Alle ausgewählten Rezepte sind schon in „${name}“.`
+        remove
+          ? changed
+            ? `Aus „${name}“ entfernt: ${label}.`
+            : `Keines der ausgewählten Rezepte ist in „${name}“.`
+          : changed
+            ? `${name}: ${label} zugewiesen.`
+            : `Alle ausgewählten Rezepte sind schon in „${name}“.`
       );
     } catch (error) {
       notify(
@@ -2080,6 +2108,14 @@ class RecipeBoxListCard extends HTMLElement {
       this._signature = null;
       this._render();
     }
+  }
+
+  _assignGroupToSelection(group) {
+    return this._changeSelectionGroup(group, false);
+  }
+
+  _removeGroupFromSelection(group) {
+    return this._changeSelectionGroup(group, true);
   }
 
   async _createGroup() {
@@ -2339,15 +2375,16 @@ class RecipeBoxListCard extends HTMLElement {
       });
       button.addEventListener("pointerdown", (event) => {
         if (event.button && event.button !== 0) return;
-        this._startLongPress(entityId);
+        this._startLongPress(entityId, event);
       });
+      button.addEventListener("pointermove", (event) =>
+        this._moveLongPress(event)
+      );
       ["pointerup", "pointerleave", "pointercancel"].forEach((type) =>
         button.addEventListener(type, () => this._clearLongPress())
       );
-      button.addEventListener("contextmenu", (event) => {
-        this._clearLongPress();
-        if (this._selection.size) event.preventDefault();
-      });
+      /* No context menu over the list: it would interrupt the long press. */
+      button.addEventListener("contextmenu", (event) => event.preventDefault());
     });
 
     this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
@@ -2369,6 +2406,20 @@ class RecipeBoxListCard extends HTMLElement {
           return;
         }
         this._assignGroupToSelection(group);
+      });
+    }
+    const selectionRemove = this.shadowRoot.querySelector(
+      "button.selection-remove"
+    );
+    if (selectionRemove) {
+      selectionRemove.addEventListener("click", () => {
+        const select = this.shadowRoot.querySelector("select.selection-group");
+        const group = String((select && select.value) || "").trim();
+        if (!group) {
+          notify(this, "Bitte eine Gruppe wählen.");
+          return;
+        }
+        this._removeGroupFromSelection(group);
       });
     }
     const selectionDelete = this.shadowRoot.querySelector(

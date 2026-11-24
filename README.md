@@ -193,9 +193,11 @@ dort neu eingegebene Gruppe wird automatisch mit angelegt.
 Mehrere Rezepte auf einmal bearbeiten: in der Rezeptliste ein Rezept länger
 gedrückt halten (oder lange mit der Maus drücken), danach weitere antippen.
 Über der Liste erscheint dann eine Leiste, in der sich die markierten Rezepte
-gemeinsam einer vorhandenen Gruppe zuweisen oder löschen lassen; **Abbrechen**
-beendet die Auswahl. Vor dem Löschen fragt die Karte in einem Dialog noch
-einmal nach.
+gemeinsam einer vorhandenen Gruppe zuweisen (**Zuweisen**) oder daraus
+entfernen (**Entfernen**) sowie löschen lassen; **Abbrechen** beendet die
+Auswahl. Vor dem Löschen fragt die Karte in einem Dialog noch einmal nach.
+Kleine Bewegungen des Fingers beim Halten stören die Auswahl nicht, und das
+Kontextmenü des Browsers erscheint über der Liste nicht.
 
 Der Tab **Daten** ist in vier getrennte Abschnitte gegliedert: **Rezepte
 importieren** (eine oder mehrere URLs einfügen, **Importieren** drücken –

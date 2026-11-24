@@ -85,6 +85,7 @@ assert.match(bar, /3 ausgewählt/);
 assert.match(bar, /<option value="Familie">Familie<\/option>/);
 assert.match(bar, /<option value="Backen">Backen<\/option>/);
 assert.match(bar, /class="selection-assign"/);
+assert.match(bar, /class="selection-remove"/);
 assert.match(bar, /class="selection-delete"/);
 assert.match(bar, /class="selection-cancel"/);
 assert.match(selectionBarHtml(1, []), /Gruppe wählen/);
@@ -196,14 +197,33 @@ const run = async () => {
   assert.equal(deleting._selection.size, 0);
   assert.match(state.notifications[0], /2 Rezepte gelöscht/);
 
-  // 9. Cancelling the dialog deletes nothing.
+  // 9. Removing a group only touches recipes that have it.
+  const removing = makeCard();
+  removing._selection = new Set(["sensor.a", "sensor.b"]);
+  await removing._removeGroupFromSelection("Alt");
+  assert.equal(state.calls.length, 1);
+  assert.equal(state.calls[0].service, "set_groups");
+  assert.deepEqual([...state.calls[0].data.groups], []);
+  assert.match(state.notifications[0], /Aus „Alt“ entfernt: 1 Rezept/);
+  assert.equal(removing._selection.size, 0);
+
+  // 10. Small finger movements keep the long press, a drag cancels it.
+  const pressing = makeCard();
+  pressing._startLongPress("sensor.a", { clientX: 10, clientY: 10 });
+  assert.ok(pressing._longPressTimer, "the press timer is running");
+  pressing._moveLongPress({ clientX: 14, clientY: 18 });
+  assert.ok(pressing._longPressTimer, "a few pixels do not cancel the press");
+  pressing._moveLongPress({ clientX: 10, clientY: 40 });
+  assert.equal(pressing._longPressTimer, null, "scrolling cancels the press");
+
+  // 11. Cancelling the dialog deletes nothing.
   const cancelled = makeCard();
   cancelled._confirmDelete = ["sensor.a"];
   cancelled._cancelDelete();
   assert.equal(cancelled._confirmDelete, null);
   assert.equal(state.calls.length, 0);
 
-  console.log("card_selection_test: 9 checks passed");
+  console.log("card_selection_test: 11 checks passed");
 };
 
 run().catch((error) => {
