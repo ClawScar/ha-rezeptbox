@@ -20,10 +20,10 @@ from .const import (
     DOMAIN,
     MAX_GROUPS,
     MAX_RECIPE_GROUPS,
-    PHOTO_NAME_PREFIX,
     STORAGE_VERSION,
 )
-from .parser import Recipe, RecipeError, clean_text, image_id_from_url
+from .parser import Recipe, RecipeError, clean_text
+from .photos import image_id_from_url, orphaned_photo_ids, owned_photo_ids
 from .scraper import async_scrape_recipe
 
 _LOGGER = logging.getLogger(__name__)
@@ -263,33 +263,27 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             if (image_id := image_id_from_url(recipe.image_url))
         }
 
-    def _owned_image_ids(self) -> set[str]:
-        """Return the image ids that Rezeptbox uploaded itself."""
-        owned = set(self.photos)
-        uploads = self.hass.data.get("image_upload")
-        for image_id, item in getattr(uploads, "data", {}).items():
-            name = str(item.get("name") or "").casefold()
-            if name.startswith(PHOTO_NAME_PREFIX):
-                owned.add(image_id)
-        return owned
-
     async def async_cleanup_images(self) -> dict[str, Any]:
         """Delete photos that no recipe uses any more.
 
-        Only images uploaded by Rezeptbox are touched, so profile photos and
-        images from other integrations are never removed.
+        The selection itself lives in the pure helpers of ``photos.py``; only
+        images uploaded by Rezeptbox are touched, so profile photos and images
+        from other integrations are never removed.
         """
         uploads = self.hass.data.get("image_upload")
         if uploads is None:
             return {"removed": 0, "kept": 0, "available": False}
 
+        names = {
+            str(image_id): str(item.get("name") or "")
+            for image_id, item in getattr(uploads, "data", {}).items()
+        }
         referenced = self._referenced_image_ids()
+        doomed = orphaned_photo_ids(self.photos, referenced, names)
+        kept = len(owned_photo_ids(self.photos, names) & referenced)
+
         removed: list[str] = []
-        kept = 0
-        for image_id in sorted(self._owned_image_ids()):
-            if image_id in referenced:
-                kept += 1
-                continue
+        for image_id in doomed:
             try:
                 await uploads.async_delete_item(image_id)
             except Exception as err:  # noqa: BLE001 - private API may change
@@ -307,6 +301,20 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             "kept": kept,
             "available": True,
         }
+
+    def missing_image_titles(self, uploads: Any = None) -> list[str]:
+        """Return the recipes whose own photo no longer exists."""
+        if uploads is None:
+            uploads = self.hass.data.get("image_upload")
+        if uploads is None:
+            return []
+        known = {str(item) for item in getattr(uploads, "data", {})}
+        return [
+            recipe.title
+            for recipe in self.recipes.values()
+            if (image_id := image_id_from_url(recipe.image_url))
+            and image_id not in known
+        ]
 
     async def async_add_group(self, name: str) -> list[str]:
         """Create a group even before a recipe is assigned to it."""

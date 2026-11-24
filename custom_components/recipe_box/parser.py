@@ -907,15 +907,6 @@ def site_name(url: str) -> str:
     return host
 
 
-IMAGE_SERVE_RE = re.compile(r"/api/image/serve/([0-9a-f]{32})/")
-
-
-def image_id_from_url(url: Any) -> str:
-    """Return the Home Assistant image id from a served image URL."""
-    match = IMAGE_SERVE_RE.search(str(url or ""))
-    return match.group(1) if match else ""
-
-
 def _image_url(value: Any, base_url: str) -> str:
     """Pick the first usable image URL and make it absolute."""
     if isinstance(value, (list, tuple)):

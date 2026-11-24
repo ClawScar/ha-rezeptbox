@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.2";
+const CARD_VERSION = "2.4.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -716,6 +716,18 @@ const photoErrorMessage = (error, file) => {
     return "Dieses Bildformat wird nicht unterstützt. Bitte JPG oder PNG verwenden.";
   }
   return raw || "Upload fehlgeschlagen";
+};
+
+/* A backup stays importable when photos were cleaned up, but recipes whose
+ * own photo is gone would restore with a broken image. */
+const missingImageWarning = (data) => {
+  const missing = Array.isArray(data && data.missing_images)
+    ? data.missing_images.length
+    : 0;
+  if (!missing) return "";
+  return ` – Achtung: fehlende Fotos bei ${missing} ${
+    missing === 1 ? "Rezept" : "Rezepten"
+  }.`;
 };
 
 /* Downscale in the browser: keeps uploads small and turns phone photos
@@ -2466,7 +2478,7 @@ class RecipeBoxListCard extends HTMLElement {
       </div>
       <div class="data-section">
         <h3>Fotos</h3>
-        <p class="tab-hint">Entfernt Fotos eigener Rezepte, die zu keinem Rezept mehr gehören. Bilder anderer Integrationen und Profilfotos bleiben unangetastet.</p>
+        <p class="tab-hint">Entfernt Fotos eigener Rezepte, die zu keinem Rezept mehr gehören. Bilder anderer Integrationen und Profilfotos bleiben unangetastet. Sicherungen von zuvor gelöschten Rezepten enthalten deren Fotos danach nicht mehr.</p>
         <div class="tools">
           <button class="cleanup-photos" type="button">Fotos aufräumen</button>
         </div>
@@ -2982,7 +2994,12 @@ class RecipeBoxListCard extends HTMLElement {
           const writable = await handle.createWritable();
           await writable.write(new Blob([text], { type }));
           await writable.close();
-          notify(this, `Sicherung gespeichert: ${handle.name || filename}`);
+          notify(
+            this,
+            `Sicherung gespeichert: ${handle.name || filename}${missingImageWarning(
+              data
+            )}`
+          );
           return;
         } catch (error) {
           if (error && error.name === "AbortError") return;
@@ -3004,7 +3021,10 @@ class RecipeBoxListCard extends HTMLElement {
         if (navigator.canShare({ files: [file] })) {
           try {
             await navigator.share({ files: [file], title: "Rezeptbox-Sicherung" });
-            notify(this, "Sicherung gespeichert.");
+            notify(
+              this,
+              `Sicherung gespeichert.${missingImageWarning(data)}`
+            );
             return;
           } catch (error) {
             if (error && error.name === "AbortError") return;
@@ -3023,7 +3043,10 @@ class RecipeBoxListCard extends HTMLElement {
       link.remove();
       // Revoking right after the click cancels the download in some browsers.
       setTimeout(() => URL.revokeObjectURL(url), 30000);
-      notify(this, `Sicherung heruntergeladen: ${filename}`);
+      notify(
+        this,
+        `Sicherung heruntergeladen: ${filename}${missingImageWarning(data)}`
+      );
     } catch (error) {
       notify(
         this,

@@ -806,6 +806,9 @@ async def _async_export_recipes(
         "recipes": [recipe.as_dict() for recipe in hub.recipes.values()],
         "plan": hub.plan,
         "groups": hub.groups,
+        # Recipes whose photo was cleaned up still import fine, but the card
+        # warns while saving so a backup is not mistaken for a complete one.
+        "missing_images": hub.missing_image_titles(),
     }
 
 

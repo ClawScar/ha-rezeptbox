@@ -184,6 +184,7 @@ class FilesTest(unittest.TestCase):
         self.assertIn("cleanup-photos", card)
         self.assertIn("cleanup_recipe_images", card)
         self.assertIn("rezeptbox-", card)
+        self.assertIn("missingImageWarning", card)
         self.assertIn("HEIC", card)
         self.assertIn("Wochenplan", card)
         self.assertIn("tabsHtml", card)

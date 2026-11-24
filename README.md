@@ -228,6 +228,12 @@ Integrationen bleiben unangetastet. Fotos aus Versionen vor 2.4.2, deren
 Rezept längst gelöscht wurde, lassen sich nicht sicher zuordnen und bleiben
 deshalb liegen.
 
+Sicherungen bleiben nach dem Aufräumen einlesbar. Fotos von Rezepten, die beim
+Sichern noch existieren, werden nie gelöscht; nur Sicherungen von zuvor
+gelöschten Rezepten verlieren deren Bilder. Verweist ein Rezept auf ein nicht
+mehr vorhandenes Foto, warnt die Karte beim Sichern mit „Achtung: fehlende
+Fotos bei …“.
+
 Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
 **Woche auf die Einkaufsliste**).
 
@@ -390,9 +396,10 @@ aktualisieren.
 
 ### `recipe_box.export_recipes`
 
-Gibt `recipes`, `plan` und `groups` als JSON zurück (für Sicherungen oder
-eigene Skripte). Der Button **Sichern** unter **Daten → Sicherung** nutzt
-denselben Service.
+Gibt `recipes`, `plan`, `groups` und `missing_images` als JSON zurück (für
+Sicherungen oder eigene Skripte). `missing_images` nennt Rezepte, deren eigenes
+Foto nicht mehr existiert; die Karte hängt dann beim Sichern einen Hinweis an.
+Der Button **Sichern** unter **Daten → Sicherung** nutzt denselben Service.
 
 ### `recipe_box.import_recipes`
 

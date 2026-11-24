@@ -54,12 +54,23 @@ const context = {
 vm.runInContext(
   `${source}
 this.RecipeBoxListCard = RecipeBoxListCard;
-this.PHOTO_HELPERS = { manualFormHtml, detailHtml, photoErrorMessage, bindDetail };`,
+this.PHOTO_HELPERS = {
+  manualFormHtml,
+  detailHtml,
+  photoErrorMessage,
+  bindDetail,
+  missingImageWarning,
+};`,
   vm.createContext(context)
 );
 
-const { manualFormHtml, detailHtml, photoErrorMessage, bindDetail } =
-  context.PHOTO_HELPERS;
+const {
+  manualFormHtml,
+  detailHtml,
+  photoErrorMessage,
+  bindDetail,
+  missingImageWarning,
+} = context.PHOTO_HELPERS;
 
 // 1. The manual form offers a photo picker with a preview and a remove button.
 const form = manualFormHtml();
@@ -300,7 +311,18 @@ const run = async () => {
   await cleaning._cleanupPhotos();
   assert.match(state.notifications[0], /2 Fotos aufgeräumt/);
 
-  console.log("card_photo_test: 13 checks passed");
+  // 14. Saving a backup warns about recipes whose photo is gone.
+  assert.equal(missingImageWarning({ recipes: [] }), "");
+  assert.match(
+    missingImageWarning({ missing_images: ["A"] }),
+    /fehlende Fotos bei 1 Rezept\./
+  );
+  assert.match(
+    missingImageWarning({ missing_images: ["A", "B"] }),
+    /fehlende Fotos bei 2 Rezepten\./
+  );
+
+  console.log("card_photo_test: 14 checks passed");
 };
 
 run().catch((error) => {
