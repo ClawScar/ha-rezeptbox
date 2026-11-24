@@ -278,6 +278,18 @@ class IngredientStructureTest(unittest.TestCase):
         # The recipe's own amount stays untouched, even when it is already plural.
         self.assertEqual(scaled("1 Dose Tomaten", 0.5), "0,5 Dose Tomaten")
 
+    def test_scaled_line_pairs(self) -> None:
+        pairs = recipe_parser.scale_ingredient_lines(
+            [recipe_parser.parse_ingredient_text("1 Ei")], None, 2
+        )
+        self.assertEqual(pairs, [("1 Ei", "2 Eier")])
+
+        fallback = recipe_parser.scale_ingredient_lines(None, ["1 Ei"], 3)
+        self.assertEqual(fallback, [("1 Ei", "3 Eier")])
+
+        unchanged = recipe_parser.scale_ingredient_lines(None, ["500 g Mehl"], 1)
+        self.assertEqual(unchanged, [("500 g Mehl", "500 g Mehl")])
+
     def test_text_fallback(self) -> None:
         self.assertEqual(
             recipe_parser.scale_ingredients(

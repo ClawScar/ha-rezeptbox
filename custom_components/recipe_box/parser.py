@@ -696,6 +696,192 @@ def scale_ingredients(
     ]
 
 
+def scale_ingredient_lines(
+    structured: list[dict[str, Any]] | None,
+    ingredients: list[str] | None,
+    factor: float,
+) -> list[tuple[str, str]]:
+    """Return ``(original, scaled)`` lines for filtering and merging."""
+    pairs: list[tuple[str, str]] = []
+    if structured:
+        for item in structured:
+            if not item:
+                continue
+            original = str(item.get("text") or ingredient_text(item))
+            pairs.append((original, scale_ingredient(item, factor)))
+        return pairs
+
+    for text in ingredients or []:
+        original = str(text)
+        if not original.strip():
+            continue
+        pairs.append(
+            (original, scale_ingredient(parse_ingredient_text(original), factor))
+        )
+    return pairs
+
+
+def canonical_ingredient_name(name: str) -> str:
+    """Return a comparable name with the ingredient noun in singular."""
+    text = " ".join(str(name or "").split())
+    if not text:
+        return ""
+    head_end = len(text)
+    for separator in (",", ";", "("):
+        index = text.find(separator)
+        if index != -1:
+            head_end = min(head_end, index)
+    for word in _WORD_RE.finditer(text[:head_end]):
+        singular = _inflected_word(word.group(), plural=False)
+        if singular is not None:
+            text = f"{text[:word.start()]}{singular}{text[word.end():]}"
+            break
+    return text.casefold()
+
+
+UNIT_SINGULARS = {plural: singular for singular, plural in UNIT_PLURALS.items()}
+
+MASS_UNITS = {"g": 1.0, "kg": 1000.0}
+VOLUME_UNITS = {"ml": 1.0, "cl": 10.0, "dl": 100.0, "l": 1000.0}
+BASE_UNITS = {"mass": "g", "volume": "ml"}
+BIG_UNITS = {"mass": "kg", "volume": "l"}
+
+
+def _unit_family(unit: str) -> str:
+    """Return ``mass``, ``volume`` or the singular unit for a merge group."""
+    if unit in MASS_UNITS:
+        return "mass"
+    if unit in VOLUME_UNITS:
+        return "volume"
+    return UNIT_SINGULARS.get(unit, unit).casefold()
+
+
+def _base_amount(amount: float, unit: str, family: str) -> float:
+    """Convert an amount to the base unit of its family."""
+    if family == "mass":
+        return amount * MASS_UNITS[unit]
+    if family == "volume":
+        return amount * VOLUME_UNITS[unit]
+    return amount
+
+
+def ingredient_merge_key(item: dict[str, Any]) -> tuple[str, str]:
+    """Return the shopping list group key of one parsed ingredient."""
+    unit = str(item.get("unit") or "")
+    family = _unit_family(unit)
+    name = canonical_ingredient_name(str(item.get("name") or ""))
+    return family, name
+
+
+def _render_merged(
+    item: dict[str, Any],
+    amount: float,
+    amount_max: float | None,
+    unit: str,
+) -> str:
+    """Render a merged ingredient line with pluralised unit and noun."""
+    merged = {**item, "unit": unit}
+    largest = amount_max if amount_max else amount
+    text = format_amount(amount)
+    if amount_max:
+        text = f"{text}–{format_amount(amount_max)}"
+    # Gram and millilitre values are not counts, so the noun keeps the form of
+    # the original line ("500 g Kartoffeln" stays plural).
+    count_amount = None if _unit_family(unit) in BASE_UNITS else largest
+    return ingredient_text(
+        merged, text, ingredient_unit(merged, largest), count_amount
+    )
+
+
+def merge_ingredient_lines(lines: list[str]) -> list[str]:
+    """Sum equal ingredients and drop exact duplicate lines.
+
+    Lines with the same name and comparable unit are added up (``2 Zwiebeln``
+    plus ``3 Zwiebeln`` becomes ``5 Zwiebeln``); grams and millilitres are
+    converted to kilograms and litres once the sum reaches 1000. Lines
+    without an amount are only removed when they are complete duplicates.
+    """
+    entries: dict[tuple[str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str]] = []
+
+    for raw in lines:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        item = parse_ingredient_text(text)
+        amount = item.get("amount")
+        if not isinstance(amount, (int, float)) or isinstance(amount, bool) or amount <= 0:
+            key = ("", text.casefold())
+            if key not in entries:
+                entries[key] = {"text": text}
+                order.append(key)
+            continue
+
+        unit = str(item.get("unit") or "")
+        family = _unit_family(unit)
+        key = ingredient_merge_key(item)
+        entry = entries.get(key)
+        if entry is None:
+            entry = {
+                "item": item,
+                "origin": text,
+                "count": 0,
+                "family": family,
+                "unit": BASE_UNITS.get(family, UNIT_SINGULARS.get(unit, unit)),
+                "amount": 0.0,
+                "max": 0.0,
+                "has_max": False,
+            }
+            entries[key] = entry
+            order.append(key)
+
+        entry["count"] += 1
+        base = _base_amount(float(amount), unit, family)
+        entry["amount"] += base
+        amount_max = item.get("amount_max")
+        if (
+            isinstance(amount_max, (int, float))
+            and not isinstance(amount_max, bool)
+            and amount_max > amount
+        ):
+            entry["max"] += _base_amount(float(amount_max), unit, family)
+            entry["has_max"] = True
+        else:
+            entry["max"] += base
+
+    result: list[str] = []
+    for key in order:
+        entry = entries[key]
+        if "text" in entry:
+            result.append(entry["text"])
+            continue
+        if entry["count"] == 1:
+            # Nothing was merged, so the original spelling ("1/2 TL") stays.
+            result.append(entry["origin"])
+            continue
+
+        family = entry["family"]
+        unit = entry["unit"]
+        amount = float(entry["amount"])
+        amount_max = float(entry["max"]) if entry["has_max"] else None
+        if family in BASE_UNITS and (
+            amount >= 1000 or (amount_max is not None and amount_max >= 1000)
+        ):
+            unit = BIG_UNITS[family]
+            amount /= 1000
+            if amount_max is not None:
+                amount_max /= 1000
+        result.append(
+            _render_merged(
+                entry["item"],
+                round(amount, 2),
+                round(amount_max, 2) if amount_max is not None else None,
+                unit,
+            )
+        )
+    return result
+
+
 def normalize_url(raw: str) -> str:
     """Validate and normalise a user supplied recipe URL."""
     text = (raw or "").strip()

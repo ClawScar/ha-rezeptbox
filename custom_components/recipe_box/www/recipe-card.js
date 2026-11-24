@@ -20,7 +20,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "1.3.4";
+const CARD_VERSION = "2.0.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -460,6 +460,277 @@ const structuredIngredients = (attributes) => {
     .map((text) => parseIngredientLine(String(text)));
 };
 
+const SESSION_PREFIX = "recipe_box:session:";
+
+const isWebUrl = (value) => /^https?:\/\//i.test(String(value || ""));
+
+const readSession = (entityId) => {
+  try {
+    const raw = window.localStorage.getItem(`${SESSION_PREFIX}${entityId}`);
+    const data = raw ? JSON.parse(raw) : null;
+    return data && typeof data === "object" ? data : {};
+  } catch (error) {
+    return {};
+  }
+};
+
+const loadSession = (entityId) => {
+  const data = readSession(entityId);
+  const servings = Number(data.servings);
+  return {
+    servings: Number.isFinite(servings) && servings > 0 ? servings : null,
+    checked: new Set(
+      Array.isArray(data.checked) ? data.checked.map((item) => String(item)) : []
+    ),
+  };
+};
+
+const writeSession = (entityId, session) => {
+  try {
+    window.localStorage.setItem(
+      `${SESSION_PREFIX}${entityId}`,
+      JSON.stringify({
+        servings: session.servings || null,
+        checked: [...session.checked],
+      })
+    );
+  } catch (error) {
+    /* localStorage may be unavailable (private mode); the session is kept in memory */
+  }
+};
+
+const TIMERS = new Map();
+const TIMER_RE =
+  /(\d+(?:[.,]\d+)?)\s*(Minuten?|Min\.?|Stunden?|Std\.?|Sekunden?|Sek\.?)/gi;
+
+const stepTimers = (text) => {
+  const minutes = [];
+  for (const match of String(text || "").matchAll(TIMER_RE)) {
+    let value = Number(String(match[1]).replace(",", "."));
+    const unit = match[2].toLowerCase();
+    if (unit.startsWith("std") || unit.startsWith("stunde")) value *= 60;
+    else if (unit.startsWith("sek")) value /= 60;
+    if (Number.isFinite(value) && value >= 1 && value <= 600) {
+      minutes.push(Math.round(value));
+    }
+  }
+  return [...new Set(minutes)].slice(0, 2);
+};
+
+const timerLabel = (remaining) => {
+  const total = Math.max(0, Math.ceil(remaining / 1000));
+  const minutes = String(Math.floor(total / 60)).padStart(2, "0");
+  const seconds = String(total % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+};
+
+const beep = () => {
+  try {
+    const Audio = window.AudioContext || window.webkitAudioContext;
+    if (!Audio) return;
+    const context = new Audio();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.08;
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    setTimeout(() => {
+      oscillator.stop();
+      context.close();
+    }, 600);
+  } catch (error) {
+    /* sound is a bonus, timers work without it */
+  }
+};
+
+const timerKey = (entityId, index, minutes) => `${entityId}|${index}|${minutes}`;
+
+const startStepTimer = (entityId, index, minutes, button) => {
+  const key = timerKey(entityId, index, minutes);
+  const running = TIMERS.get(key);
+  if (running) {
+    clearInterval(running.interval);
+    TIMERS.delete(key);
+    if (button) button.textContent = `⏱ ${minutes} Min.`;
+    return;
+  }
+
+  const endsAt = Date.now() + minutes * 60000;
+  const tick = () => {
+    const left = endsAt - Date.now();
+    if (left <= 0) {
+      clearInterval(interval);
+      TIMERS.delete(key);
+      if (button) button.textContent = "Fertig ✓";
+      beep();
+      return;
+    }
+    if (button) button.textContent = `⏱ ${timerLabel(left)}`;
+  };
+  const interval = setInterval(tick, 1000);
+  TIMERS.set(key, { endsAt, interval });
+  tick();
+};
+
+const restoreTimers = (root, entityId) => {
+  root.querySelectorAll("button.step-timer").forEach((button) => {
+    const index = Number(button.getAttribute("data-timer"));
+    const minutes = Number(button.getAttribute("data-minutes"));
+    const running = TIMERS.get(timerKey(entityId, index, minutes));
+    if (running && running.endsAt > Date.now()) {
+      button.textContent = `⏱ ${timerLabel(running.endsAt - Date.now())}`;
+    }
+  });
+};
+
+const nutritionHtml = (attributes) => {
+  const nutrition = attributes.nutrition;
+  if (!nutrition || typeof nutrition !== "object") return "";
+  const rows = Object.entries(nutrition)
+    .filter(([, value]) => value)
+    .slice(0, 8);
+  if (!rows.length) return "";
+  return `<div class="section"><h3>Nährwerte</h3><div class="nutrition">${rows
+    .map(
+      ([label, value]) =>
+        `<span><b>${escapeHtml(label)}</b> ${escapeHtml(value)}</span>`
+    )
+    .join("")}</div></div>`;
+};
+
+const updateHintHtml = (attributes) => {
+  const error = String((attributes && attributes.update_error) || "");
+  if (!error) return "";
+  return `<p class="error">Letzter Abruf fehlgeschlagen (${escapeHtml(
+    error
+  )}). Angezeigt wird die gespeicherte Version.</p>`;
+};
+
+const mealPlanEntries = (hass) => {
+  for (const state of Object.values((hass && hass.states) || {})) {
+    const attributes = state.attributes || {};
+    if (Array.isArray(attributes.plan) && !attributes.source_url) {
+      return attributes.plan;
+    }
+  }
+  return [];
+};
+
+const isoDate = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+
+const weekDays = (count = 7) => {
+  const today = new Date();
+  const days = [];
+  for (let offset = 0; offset < count; offset += 1) {
+    const date = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() + offset
+    );
+    days.push({
+      iso: isoDate(date),
+      label: date.toLocaleDateString("de-DE", {
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit",
+      }),
+    });
+  }
+  return days;
+};
+
+const filterBarHtml = (entries, filter) => {
+  const tags = [
+    ...new Set(
+      entries.flatMap(({ state }) =>
+        ((state.attributes || {}).tags || []).filter(Boolean)
+      )
+    ),
+  ].sort((first, second) => first.localeCompare(second, "de"));
+  const tagOptions = tags
+    .map(
+      (tag) =>
+        `<option value="${escapeHtml(tag)}"${
+          filter.tag === tag ? " selected" : ""
+        }>${escapeHtml(tag)}</option>`
+    )
+    .join("");
+  return `<div class="filter-bar">
+    <input class="filter-search" type="search" placeholder="Rezepte durchsuchen" value="${escapeHtml(
+      filter.query
+    )}">
+    ${
+      tags.length
+        ? `<select class="filter-tag"><option value="">Alle Tags</option>${tagOptions}</select>`
+        : ""
+    }
+    <select class="filter-time">
+      <option value="">Beliebige Zeit</option>
+      <option value="30"${filter.maxTime === "30" ? " selected" : ""}>bis 30 Min.</option>
+      <option value="60"${filter.maxTime === "60" ? " selected" : ""}>bis 60 Min.</option>
+    </select>
+    <select class="filter-sort">
+      <option value="title"${filter.sort === "title" ? " selected" : ""}>A–Z</option>
+      <option value="time"${filter.sort === "time" ? " selected" : ""}>Schnellste zuerst</option>
+    </select>
+    <button class="random" type="button">Was kochen?</button>
+  </div>`;
+};
+
+const manualFormHtml = () => `<details class="manual">
+  <summary>Eigenes Rezept</summary>
+  <div class="manual-body">
+    <input class="manual-title" type="text" placeholder="Titel">
+    <input class="manual-servings" type="number" min="1" max="100" placeholder="Portionen">
+    <textarea class="manual-ingredients" rows="3" placeholder="Zutaten – eine pro Zeile"></textarea>
+    <textarea class="manual-instructions" rows="3" placeholder="Zubereitung – ein Schritt pro Zeile"></textarea>
+    <input class="manual-tags" type="text" placeholder="Tags, mit Komma getrennt">
+    <button class="manual-save" type="button">Rezept speichern</button>
+  </div>
+</details>`;
+
+const planHtml = (hass, entries) => {
+  const planned = new Map(
+    mealPlanEntries(hass).map((entry) => [String(entry.date), entry])
+  );
+  const rows = weekDays()
+    .map((day) => {
+      const current = planned.get(day.iso);
+      const options = entries
+        .map(({ entityId, state }) => {
+          const sourceUrl = String((state.attributes || {}).source_url || "");
+          const selected =
+            current && String(current.source_url || "") === sourceUrl;
+          return `<option value="${escapeHtml(entityId)}"${
+            selected ? " selected" : ""
+          }>${escapeHtml(recipeTitle(state))}</option>`;
+        })
+        .join("");
+      return `<div class="plan-row">
+        <span class="plan-day">${escapeHtml(day.label)}</span>
+        <select class="plan-select" data-date="${day.iso}"><option value="">—</option>${options}</select>
+        ${
+          current
+            ? `<button class="plan-clear" type="button" data-date="${day.iso}" title="Tag leeren" aria-label="Tag leeren">✕</button>`
+            : ""
+        }
+      </div>`;
+    })
+    .join("");
+  return `<details class="plan">
+    <summary>Wochenplan</summary>
+    <div class="plan-body">
+      ${rows}
+      <button class="week-shopping" type="button">Woche auf die Einkaufsliste</button>
+    </div>
+  </details>`;
+};
+
 const isRecipeState = (state) => {
   const attributes = (state && state.attributes) || {};
   if (attributes.integration === INTEGRATION) return true;
@@ -583,11 +854,19 @@ const stepsHtml = (attributes) => {
     : [];
   if (!steps.length) return "";
   return `<div class="section"><h3>Zubereitung</h3><ol class="steps">${steps
-    .map((step) => `<li>${escapeHtml(step)}</li>`)
+    .map(
+      (step, index) =>
+        `<li><span class="step-text">${escapeHtml(step)}</span>${stepTimers(step)
+          .map(
+            (minutes) =>
+              `<button class="step-timer" type="button" data-timer="${index}" data-minutes="${minutes}">⏱ ${minutes} Min.</button>`
+          )
+          .join("")}</li>`
+    )
     .join("")}</ol></div>`;
 };
 
-const detailHtml = (state, options, checked, servings) => {
+const detailHtml = (state, options, checked, servings, meta = {}) => {
   const attributes = state.attributes || {};
   const baseServings = Number(attributes.servings);
   const chosenServings = Number(servings);
@@ -607,12 +886,20 @@ const detailHtml = (state, options, checked, servings) => {
     : "";
   const ingredients = ingredientsHtml(attributes, checked, factor);
   const steps = options.show_steps ? stepsHtml(attributes) : "";
-  const source = attributes.source_url
+  const source = isWebUrl(attributes.source_url)
     ? `<a class="source" href="${escapeHtml(attributes.source_url)}" target="_blank" rel="noopener noreferrer">Originalrezept ↗</a>`
     : "<span></span>";
+  const refresh =
+    meta.entityId && isWebUrl(attributes.source_url)
+      ? `<button class="refresh" type="button">Aktualisieren</button>`
+      : "";
+  const print = `<button class="print" type="button">Drucken</button>`;
   const shopping =
     Array.isArray(attributes.ingredients) && attributes.ingredients.length
-      ? `<button class="shopping" type="button">Zutaten auf die Liste</button>`
+      ? `<div class="shopping-row">
+          <label class="only-missing"><input class="only-missing-input" type="checkbox" checked> nur fehlende</label>
+          <button class="shopping" type="button">Zutaten auf die Liste</button>
+        </div>`
       : "";
 
   return `${image}
@@ -621,9 +908,11 @@ const detailHtml = (state, options, checked, servings) => {
       ${chipsHtml(attributes, chosenServings)}
       ${description}
       ${tagsHtml(attributes)}
+      ${updateHintHtml(attributes)}
       ${ingredients ? `<div class="section"><h3>Zutaten</h3>${servingsControlHtml(attributes, chosenServings)}${ingredients}</div>` : ""}
+      ${nutritionHtml(attributes)}
       ${steps}
-      <div class="footer">${source}${shopping}</div>
+      <div class="footer">${source}${refresh}${print}${shopping}</div>
     </div>`;
 };
 
@@ -646,6 +935,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
       const value = input.getAttribute("data-ingredient") || "";
       if (input.checked) checked.add(value);
       else checked.delete(value);
+      if (typeof options.onSession === "function") options.onSession();
     });
   });
 
@@ -658,6 +948,37 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
     });
   });
 
+  root.querySelectorAll("button.step-timer").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.getAttribute("data-timer"));
+      const minutes = Number(button.getAttribute("data-minutes"));
+      if (Number.isFinite(index) && Number.isFinite(minutes) && minutes > 0) {
+        startStepTimer(entityId, index, minutes, button);
+      }
+    });
+  });
+  restoreTimers(root, entityId);
+
+  const refresh = root.querySelector("button.refresh");
+  if (refresh && hass) {
+    refresh.addEventListener("click", async () => {
+      refresh.disabled = true;
+      try {
+        await hass.callService("recipe_box", "refresh_recipe", {
+          entity_id: entityId,
+        });
+        notify(dispatcher, "Rezept aktualisiert.");
+      } catch (error) {
+        notify(dispatcher, `Aktualisieren: ${error.message || error.code || error}`);
+      } finally {
+        refresh.disabled = false;
+      }
+    });
+  }
+
+  const print = root.querySelector("button.print");
+  if (print) print.addEventListener("click", () => window.print());
+
   const button = root.querySelector("button.shopping");
   if (!button || !hass) return;
 
@@ -666,9 +987,18 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
     const params = { entity_id: entityId };
     const servings = Number(options.servings);
     if (Number.isFinite(servings) && servings > 0) params.servings = servings;
+    const onlyMissing = root.querySelector("input.only-missing-input");
+    if (onlyMissing && onlyMissing.checked && checked.size) {
+      params.exclude = [...checked];
+    }
     try {
       await hass.callService("recipe_box", "add_to_shopping_list", params);
-      notify(dispatcher, "Zutaten zur Einkaufsliste hinzugefügt.");
+      notify(
+        dispatcher,
+        params.exclude
+          ? "Fehlende Zutaten zur Einkaufsliste hinzugefügt."
+          : "Zutaten zur Einkaufsliste hinzugefügt."
+      );
     } catch (error) {
       notify(dispatcher, `Einkaufsliste: ${error.message || error}`);
     } finally {
@@ -732,16 +1062,56 @@ const STYLES = `<style>
   .list-bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
   button.back { background: none; border: none; padding: 4px 0; color: var(--primary-color); font-size: 0.9rem; cursor: pointer; white-space: nowrap; }
   .list-bar-title { color: var(--secondary-text-color); font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button.step-timer { margin-left: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); color: var(--primary-text-color); border-radius: 999px; font-size: 0.75rem; padding: 1px 8px; cursor: pointer; }
+  button.step-timer:hover { border-color: var(--primary-color); }
+  .nutrition { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.82rem; color: var(--secondary-text-color); }
+  .nutrition b { color: var(--primary-text-color); font-weight: 600; }
+  .error { margin: 0; color: var(--error-color, #db4437); font-size: 0.82rem; }
+  .shopping-row { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+  .only-missing { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--secondary-text-color); cursor: pointer; }
+  button.refresh, button.print { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
+  button.refresh:hover, button.print:hover { border-color: var(--primary-color); }
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .filter-bar input, .filter-bar select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
+  .filter-bar input.filter-search { flex: 1 1 150px; min-width: 0; }
+  button.random { margin-left: auto; background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tools button, .import-file-label { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
+  .import-file-label { display: inline-flex; }
+  .import-file { display: none; }
+  details.manual, details.plan { border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); padding-top: 8px; }
+  details summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--secondary-text-color); }
+  .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
+  .manual-body button, button.week-shopping { align-self: flex-start; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.88rem; cursor: pointer; }
+  .plan-row { display: flex; align-items: center; gap: 8px; }
+  .plan-day { min-width: 74px; font-size: 0.82rem; color: var(--secondary-text-color); }
+  .plan-select { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
+  button.plan-clear { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.85rem; padding: 4px 6px; }
+  @media print {
+    .servings, .shopping-row, .filter-bar, .tools, .import-bar, details, .footer button, .list-bar, button.delete { display: none !important; }
+    ha-card { box-shadow: none; }
+    .content { padding: 0; gap: 8px; }
+    .recipe-image { max-height: 180px; }
+    .chips .chip, .tag { border: 1px solid #999; }
+    a.source { display: none; }
+  }
 </style>`;
 
 class RecipeBoxCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._checked = new Set();
-    this._servings = new Map();
+    this._sessions = new Map();
     this._state = undefined;
     this._hass = undefined;
+  }
+
+  _session(entityId) {
+    if (!this._sessions.has(entityId)) {
+      this._sessions.set(entityId, loadSession(entityId));
+    }
+    return this._sessions.get(entityId);
   }
 
   static getStubConfig(hass) {
@@ -782,25 +1152,29 @@ class RecipeBoxCard extends HTMLElement {
     }
 
     const entityId = this._config.entity;
+    const session = this._session(entityId);
     const baseServings = Number((this._state.attributes || {}).servings);
-    const servings = this._servings.has(entityId)
-      ? this._servings.get(entityId)
-      : baseServings;
+    const servings = session.servings || baseServings;
 
     this.shadowRoot.innerHTML = `${STYLES}
-      <ha-card>${detailHtml(this._state, this._config, this._checked, servings)}</ha-card>`;
+      <ha-card>${detailHtml(this._state, this._config, session.checked, servings, {
+        entityId,
+      })}</ha-card>`;
     bindDetail(
       this.shadowRoot,
       this._hass,
       entityId,
-      this._checked,
+      session.checked,
       this,
       {
         servings,
+        entityId,
         onServings: (next) => {
-          this._servings.set(entityId, next);
+          session.servings = next;
+          writeSession(entityId, session);
           this._render();
         },
+        onSession: () => writeSession(entityId, session),
       }
     );
   }
@@ -810,8 +1184,7 @@ class RecipeBoxListCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._checked = new Set();
-    this._servings = new Map();
+    this._sessions = new Map();
     this._selected = null;
     this._signature = null;
     this._hass = undefined;
@@ -819,6 +1192,8 @@ class RecipeBoxListCard extends HTMLElement {
     this._importing = false;
     this._pendingDelete = null;
     this._deleteTimer = null;
+    this._filter = { query: "", tag: "", maxTime: "", sort: "title" };
+    this._restoreFocus = false;
   }
 
   static getStubConfig() {
@@ -836,6 +1211,7 @@ class RecipeBoxListCard extends HTMLElement {
       show_steps: true,
       show_import: true,
       show_delete: true,
+      show_tools: true,
       ...config,
       entities,
     };
@@ -854,7 +1230,10 @@ class RecipeBoxListCard extends HTMLElement {
     const signature =
       recipes
         .map(({ entityId, state }) => `${entityId}:${state.last_updated}`)
-        .join("|") + `#${this._selected || ""}`;
+        .join("|") +
+      `#${this._selected || ""}#${JSON.stringify(this._filter)}#${JSON.stringify(
+        mealPlanEntries(hass)
+      )}`;
     if (signature === this._signature) return;
     this._signature = signature;
     this._render(recipes);
@@ -866,6 +1245,59 @@ class RecipeBoxListCard extends HTMLElement {
 
   _recipes() {
     return this._hass ? recipeEntities(this._hass, this._config.entities) : [];
+  }
+
+  _session(entityId) {
+    if (!this._sessions.has(entityId)) {
+      this._sessions.set(entityId, loadSession(entityId));
+    }
+    return this._sessions.get(entityId);
+  }
+
+  _filtered(entries) {
+    const { query, tag, maxTime, sort } = this._filter;
+    let list = entries;
+    const needle = query.trim().toLowerCase();
+    if (needle) {
+      list = list.filter(({ state }) => {
+        const attributes = state.attributes || {};
+        const haystack = [
+          recipeTitle(state),
+          attributes.site,
+          ...(attributes.tags || []),
+          ...(attributes.ingredients || []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(needle);
+      });
+    }
+    if (tag) {
+      list = list.filter(({ state }) =>
+        ((state.attributes || {}).tags || []).some(
+          (value) => String(value) === String(tag)
+        )
+      );
+    }
+    if (maxTime) {
+      list = list.filter(({ state }) => {
+        const minutes = Number((state.attributes || {}).total_time_minutes);
+        return (
+          Number.isFinite(minutes) && minutes > 0 && minutes <= Number(maxTime)
+        );
+      });
+    }
+    if (sort === "time") {
+      list = [...list].sort(
+        (first, second) =>
+          (Number((first.state.attributes || {}).total_time_minutes) ||
+            Number.MAX_SAFE_INTEGER) -
+          (Number((second.state.attributes || {}).total_time_minutes) ||
+            Number.MAX_SAFE_INTEGER)
+      );
+    }
+    return list;
   }
 
   _render(recipes) {
@@ -986,7 +1418,8 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _renderList(entries) {
-    const items = entries.map(({ entityId, state }) => {
+    const filtered = this._filtered(entries);
+    const items = filtered.map(({ entityId, state }) => {
       const attributes = state.attributes || {};
       const meta = [
         formatMinutes(attributes.total_time_minutes),
@@ -1024,19 +1457,38 @@ class RecipeBoxListCard extends HTMLElement {
         </div>`
       : "";
 
-    const body = entries.length
+    const tools = this._config.show_tools
+      ? `<div class="tools">
+        <button class="export" type="button">Sichern</button>
+        <label class="import-file-label">Laden<input class="import-file" type="file" accept="application/json"></label>
+      </div>`
+      : "";
+
+    const filterBar = entries.length > 1 ? filterBarHtml(entries, this._filter) : "";
+    const emptyText = entries.length
+      ? "Keine Rezepte passen zu Suche oder Filter."
+      : "Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch.";
+    const body = filtered.length
       ? `<ul class="recipe-list">${items.join("")}</ul>`
-      : `<p class="empty">Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch.</p>`;
+      : `<p class="empty">${emptyText}</p>`;
+    const count =
+      filtered.length === entries.length
+        ? entries.length
+        : `${filtered.length}/${entries.length}`;
 
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
         <div class="content">
           ${importBar}
+          ${tools}
           <div class="list-header">
             <h2>${escapeHtml(this._config.title)}</h2>
-            <span class="count">${entries.length}</span>
+            <span class="count">${count}</span>
           </div>
+          ${filterBar}
           ${body}
+          ${this._config.show_tools && entries.length ? planHtml(this._hass, entries) : ""}
+          ${this._config.show_tools ? manualFormHtml() : ""}
         </div>
       </ha-card>`;
 
@@ -1071,13 +1523,277 @@ class RecipeBoxListCard extends HTMLElement {
     if (importButton) {
       importButton.addEventListener("click", () => this._import());
     }
+
+    const search = this.shadowRoot.querySelector("input.filter-search");
+    if (search) {
+      search.addEventListener("input", () => {
+        this._filter.query = search.value;
+        this._restoreFocus = true;
+        this._renderList(entries);
+      });
+      if (this._restoreFocus) {
+        search.focus();
+        search.setSelectionRange(search.value.length, search.value.length);
+        this._restoreFocus = false;
+      }
+    }
+
+    const tag = this.shadowRoot.querySelector("select.filter-tag");
+    if (tag) {
+      tag.addEventListener("change", () => {
+        this._filter.tag = tag.value;
+        this._renderList(entries);
+      });
+    }
+    const time = this.shadowRoot.querySelector("select.filter-time");
+    if (time) {
+      time.addEventListener("change", () => {
+        this._filter.maxTime = time.value;
+        this._renderList(entries);
+      });
+    }
+    const sort = this.shadowRoot.querySelector("select.filter-sort");
+    if (sort) {
+      sort.addEventListener("change", () => {
+        this._filter.sort = sort.value;
+        this._renderList(entries);
+      });
+    }
+
+    const random = this.shadowRoot.querySelector("button.random");
+    if (random) random.addEventListener("click", () => this._openRandom(entries));
+
+    const exportButton = this.shadowRoot.querySelector("button.export");
+    if (exportButton) {
+      exportButton.addEventListener("click", () => this._export());
+    }
+
+    const file = this.shadowRoot.querySelector("input.import-file");
+    if (file) {
+      file.addEventListener("change", () => {
+        const chosen = file.files && file.files[0];
+        file.value = "";
+        this._importFile(chosen);
+      });
+    }
+
+    const manualSave = this.shadowRoot.querySelector("button.manual-save");
+    if (manualSave) {
+      manualSave.addEventListener("click", () => this._saveManual());
+    }
+
+    this.shadowRoot.querySelectorAll("select.plan-select").forEach((select) => {
+      select.addEventListener("change", () =>
+        this._plan(select.getAttribute("data-date"), select.value)
+      );
+    });
+    this.shadowRoot.querySelectorAll("button.plan-clear").forEach((button) => {
+      button.addEventListener("click", () =>
+        this._plan(button.getAttribute("data-date"), "")
+      );
+    });
+    const weekShopping = this.shadowRoot.querySelector("button.week-shopping");
+    if (weekShopping) {
+      weekShopping.addEventListener("click", () => this._weekShopping());
+    }
+  }
+
+  _openRandom(entries) {
+    const pool = this._filtered(entries);
+    if (!pool.length) {
+      notify(this, "Keine Rezepte in der aktuellen Auswahl.");
+      return;
+    }
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    this._selected = pick.entityId;
+    this._signature = null;
+    this._render();
+  }
+
+  async _saveManual() {
+    if (!this._hass) return;
+    const root = this.shadowRoot;
+    const title = (root.querySelector("input.manual-title") || {}).value || "";
+    const ingredients = (root.querySelector("textarea.manual-ingredients") || {})
+      .value || "";
+    const instructions = (
+      root.querySelector("textarea.manual-instructions") || {}
+    ).value || "";
+    const tags = (root.querySelector("input.manual-tags") || {}).value || "";
+    const servings = Number((root.querySelector("input.manual-servings") || {}).value);
+
+    const data = {
+      title: title.trim(),
+      ingredients: ingredients
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+      instructions: instructions
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+      tags: tags
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    };
+    if (!data.title || !data.ingredients.length) {
+      notify(this, "Titel und mindestens eine Zutat werden benötigt.");
+      return;
+    }
+    if (Number.isFinite(servings) && servings > 0) data.servings = servings;
+
+    try {
+      await this._hass.callService(
+        "recipe_box",
+        "add_recipe",
+        data,
+        undefined,
+        false,
+        true
+      );
+      notify(this, `Rezept gespeichert: ${data.title}`);
+      this._signature = null;
+      this._render();
+    } catch (error) {
+      notify(
+        this,
+        `Speichern fehlgeschlagen: ${
+          (error && (error.message || error.code)) || "unbekannter Fehler"
+        }`
+      );
+    }
+  }
+
+  async _export() {
+    if (!this._hass) return;
+    try {
+      const data = await this._hass.callService(
+        "recipe_box",
+        "export_recipes",
+        {},
+        undefined,
+        false,
+        true
+      );
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `rezeptbox-${isoDate(new Date())}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      notify(this, "Sicherung heruntergeladen.");
+    } catch (error) {
+      notify(
+        this,
+        `Sichern fehlgeschlagen: ${
+          (error && (error.message || error.code)) || "unbekannter Fehler"
+        }`
+      );
+    }
+  }
+
+  async _importFile(file) {
+    if (!file || !this._hass) return;
+    try {
+      const data = JSON.parse(await file.text());
+      const recipes = Array.isArray(data) ? data : data.recipes;
+      if (!Array.isArray(recipes)) {
+        throw new Error("Keine Rezeptliste in der Datei.");
+      }
+      const response = await this._hass.callService(
+        "recipe_box",
+        "import_recipes",
+        { recipes, plan: (data && data.plan) || {} },
+        undefined,
+        false,
+        true
+      );
+      notify(
+        this,
+        `Sicherung eingelesen: ${(response && response.imported) || 0} Rezepte.`
+      );
+      this._signature = null;
+      this._render();
+    } catch (error) {
+      notify(
+        this,
+        `Laden fehlgeschlagen: ${
+          (error && (error.message || error)) || "unbekannter Fehler"
+        }`
+      );
+    }
+  }
+
+  async _plan(date, entityId) {
+    if (!this._hass || !date) return;
+    try {
+      if (entityId) {
+        await this._hass.callService("recipe_box", "plan_recipe", {
+          date,
+          entity_id: entityId,
+        });
+        notify(this, "Rezept eingeplant.");
+      } else {
+        await this._hass.callService("recipe_box", "clear_meal_plan", { date });
+        notify(this, "Tag geleert.");
+      }
+    } catch (error) {
+      notify(
+        this,
+        `Wochenplan: ${(error && (error.message || error.code)) || "Fehler"}`
+      );
+    } finally {
+      this._signature = null;
+      this._render();
+    }
+  }
+
+  async _weekShopping() {
+    if (!this._hass) return;
+    const entries = this._recipes();
+    const targets = [];
+    for (const item of mealPlanEntries(this._hass)) {
+      const match = entries.find(
+        ({ state }) =>
+          String((state.attributes || {}).source_url || "") ===
+          String(item.source_url || "")
+      );
+      if (match) targets.push({ entityId: match.entityId, servings: item.servings });
+    }
+    if (!targets.length) {
+      notify(this, "Im Wochenplan steht noch kein Rezept.");
+      return;
+    }
+
+    try {
+      for (const target of targets) {
+        const params = { entity_id: target.entityId };
+        const servings = Number(target.servings);
+        if (Number.isFinite(servings) && servings > 0) params.servings = servings;
+        await this._hass.callService("recipe_box", "add_to_shopping_list", params);
+      }
+      notify(
+        this,
+        `${targets.length} Rezept(e) aus dem Wochenplan auf die Einkaufsliste übernommen.`
+      );
+    } catch (error) {
+      notify(
+        this,
+        `Einkaufsliste: ${(error && (error.message || error.code)) || "Fehler"}`
+      );
+    }
   }
 
   _renderDetail(entry) {
+    const session = this._session(entry.entityId);
     const baseServings = Number((entry.state.attributes || {}).servings);
-    const servings = this._servings.has(entry.entityId)
-      ? this._servings.get(entry.entityId)
-      : baseServings;
+    const servings = session.servings || baseServings;
 
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
@@ -1086,21 +1802,26 @@ class RecipeBoxListCard extends HTMLElement {
           <span class="list-bar-title">${escapeHtml(recipeTitle(entry.state))}</span>
           ${this._config.show_delete ? deleteButtonHtml(entry.entityId, this._pendingDelete === entry.entityId) : ""}
         </div>
-        ${detailHtml(entry.state, this._config, this._checked, servings)}
+        ${detailHtml(entry.state, this._config, session.checked, servings, {
+          entityId: entry.entityId,
+        })}
       </ha-card>`;
 
     bindDetail(
       this.shadowRoot,
       this._hass,
       entry.entityId,
-      this._checked,
+      session.checked,
       this,
       {
         servings,
+        entityId: entry.entityId,
         onServings: (next) => {
-          this._servings.set(entry.entityId, next);
+          session.servings = next;
+          writeSession(entry.entityId, session);
           this._render();
         },
+        onSession: () => writeSession(entry.entityId, session),
       }
     );
 

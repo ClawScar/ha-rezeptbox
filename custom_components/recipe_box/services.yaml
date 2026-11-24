@@ -14,7 +14,69 @@ import_recipe:
           type: url
           multiple: true
 
+add_recipe:
+  fields:
+    title:
+      required: true
+      example: Omas Apfelkuchen
+      selector:
+        text:
+    ingredients:
+      required: true
+      example:
+        - 4 Äpfel
+        - 200 g Mehl
+      selector:
+        text:
+          multiple: true
+    instructions:
+      example:
+        - Äpfel schälen und schneiden.
+        - Teig ausrollen und 45 Minuten backen.
+      selector:
+        text:
+          multiple: true
+    servings:
+      example: 8
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+    tags:
+      example:
+        - Kuchen
+        - Familie
+      selector:
+        text:
+          multiple: true
+    image_url:
+      example: https://example.com/kuchen.jpg
+      selector:
+        text:
+          type: url
+    url:
+      example: https://example.com/omas-apfelkuchen
+      selector:
+        text:
+          type: url
+
 remove_recipe:
+  fields:
+    url:
+      example: https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html
+      selector:
+        text:
+          type: url
+    entity_id:
+      example: sensor.lasagne
+      selector:
+        entity:
+          integration: recipe_box
+          domain: sensor
+
+refresh_recipe:
   fields:
     url:
       example: https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html
@@ -37,6 +99,7 @@ add_to_shopping_list:
         entity:
           integration: recipe_box
           domain: sensor
+          multiple: true
     servings:
       example: 6
       selector:
@@ -45,3 +108,69 @@ add_to_shopping_list:
           max: 100
           step: 1
           mode: box
+    exclude:
+      example:
+        - 2 Zwiebeln
+      selector:
+        text:
+          multiple: true
+    merge:
+      default: true
+      selector:
+        boolean:
+
+export_recipes:
+  fields: {}
+
+import_recipes:
+  fields:
+    recipes:
+      required: true
+      example:
+        - title: Omas Apfelkuchen
+          source_url: https://example.com/omas-apfelkuchen
+          ingredients:
+            - 4 Äpfel
+      selector:
+        object:
+    plan:
+      example:
+        "2026-11-25":
+          url: https://example.com/omas-apfelkuchen
+          servings: 8
+      selector:
+        object:
+
+plan_recipe:
+  fields:
+    date:
+      required: true
+      example: "2026-11-25"
+      selector:
+        date:
+    entity_id:
+      example: sensor.lasagne
+      selector:
+        entity:
+          integration: recipe_box
+          domain: sensor
+    url:
+      example: https://example.com/omas-apfelkuchen
+      selector:
+        text:
+          type: url
+    servings:
+      example: 4
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+
+clear_meal_plan:
+  fields:
+    date:
+      example: "2026-11-25"
+      selector:
+        date:

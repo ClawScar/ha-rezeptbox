@@ -119,6 +119,49 @@ class FilesTest(unittest.TestCase):
         self.assertEqual(set(genders), set(plurals))
         self.assertTrue(all(value in {"m", "f", "n"} for value in genders.values()))
 
+    def test_new_services_are_documented(self) -> None:
+        services = (COMPONENT / "services.yaml").read_text("utf-8")
+        strings = json.loads((COMPONENT / "strings.json").read_text("utf-8"))
+        for name in (
+            "add_recipe",
+            "refresh_recipe",
+            "export_recipes",
+            "import_recipes",
+            "plan_recipe",
+            "clear_meal_plan",
+        ):
+            self.assertIn(name, strings["services"])
+            self.assertIn(f"{name}:", services)
+
+        fields = strings["services"]["add_to_shopping_list"]["fields"]
+        self.assertIn("exclude", fields)
+        self.assertIn("merge", fields)
+
+    def test_button_and_plan_platform(self) -> None:
+        button = (COMPONENT / "button.py").read_text("utf-8")
+        self.assertIn("ButtonEntity", button)
+        self.assertIn("add_to_shopping_list", button)
+        self.assertIn("Platform.BUTTON", (COMPONENT / "const.py").read_text("utf-8"))
+
+        sensor = (COMPONENT / "sensor.py").read_text("utf-8")
+        self.assertIn("meal_plan", sensor)
+        self.assertIn("update_error", sensor)
+
+    def test_card_extras(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        for marker in (
+            "filter-search",
+            "localStorage",
+            "step-timer",
+            "nutrition",
+            "@media print",
+            "manual-save",
+            "week-shopping",
+            "export_recipes",
+            "only-missing-input",
+        ):
+            self.assertIn(marker, card)
+
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")
         self.assertNotIn("CONF_URL", content)

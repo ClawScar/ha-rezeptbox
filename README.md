@@ -40,6 +40,15 @@ Einkaufsliste.
 - **Offline-Cache**: das zuletzt geladene Rezept wird lokal gespeichert und
   bleibt verfügbar, wenn die Quellseite nicht erreichbar ist
 - **Einstellbares Aktualisierungsintervall** (Standard: 24 Stunden, 0 = nie)
+- **Einkaufsliste ohne Dubletten**: gleiche Zutaten werden zusammengerechnet („2 Zwiebeln“ + „3 Zwiebeln“ → „5 Zwiebeln“, 500 g + 500 g → 1 kg), auch über mehrere Rezepte hinweg
+- **Nur fehlende Zutaten**: abgehakte Zutaten bleiben auf Wunsch von der Einkaufsliste
+- **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
+- **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
+- **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service
+- **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
+- **Sicherung**: alle Rezepte und den Wochenplan als JSON herunterladen und wieder einlesen
+- **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
+- **Button-Entität** „Zutaten auf die Liste“ je Rezept für Dashboard und Automationen
 
 Getestet gegen Home Assistant ab Version **2025.1**.
 
@@ -138,12 +147,20 @@ show_image: true        # Vorschaubilder in der Liste
 show_steps: true        # Zubereitung in der Detailansicht
 show_import: true       # Importfeld für neue Rezepte
 show_delete: true       # Löschen-Button je Rezept
+show_tools: true        # Wochenplan, Sicherung und eigenes Rezept einblenden
 ```
 
 Oben in der Liste sitzt das Importfeld: eine oder mehrere URLs einfügen,
 **Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Rechts neben jedem Eintrag entfernt
 der Papierkorb das Rezept – der erste Klick fragt mit **Löschen?** nach, der
 zweite löscht endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
+
+Über der Liste stehen **Sichern** (JSON-Download) und **Laden** (Sicherung
+einlesen). Darunter filtern Suchfeld, Tag-Auswahl, Zeitfilter und Sortierung die
+Liste; **Was kochen?** öffnet ein zufälliges Rezept aus der aktuellen Auswahl.
+Unter der Liste lassen sich ein **Wochenplan** für die nächsten sieben Tage
+füllen (inklusive **Woche auf die Einkaufsliste**) und ein **eigenes Rezept**
+mit Titel, Portionen, Zutaten, Schritten und Tags anlegen.
 
 ### Einzelnes Rezept
 
@@ -155,7 +172,17 @@ show_steps: true   # optional
 ```
 
 Beide Karten bieten eine Zutaten-Checkliste (zum Abhaken beim Kochen) und den
-Button **Zutaten auf die Liste**, der den Service aufruft.
+Button **Zutaten auf die Liste**, der den Service aufruft. Die Häkchen und die
+eingestellte Portionszahl werden im Browser gespeichert und sind nach einem
+Neuladen wieder da. Mit **nur fehlende** landen abgehakte Zutaten nicht auf der
+Liste.
+
+In der Detailansicht stehen außerdem Nährwerte (falls die Quelle sie liefert),
+ein **Drucken**-Button mit aufgeräumter Druckansicht, ein **Aktualisieren**-
+Button für genau dieses Rezept (mit Hinweis, wenn der letzte Abruf scheiterte)
+und Timer-Knöpfe an Schritten mit Zeitangabe („25 Minuten köcheln“ →
+`⏱ 25 Min.`, mit Signalton am Ende). Zeitangaben über einer Stunde werden
+ ebenfalls erkannt.
 
 Über der Zutatenliste sitzt die Portionssteuerung **− 4 Portionen +**. Jeder
 Klick rechnet die Mengen sofort um; der Chip oben zeigt die gewählte
@@ -169,6 +196,8 @@ importierte Rezept selbst bleibt unverändert.
 | --- | --- |
 | `sensor.<rezept>` | Gesamtzeit in Minuten (Device-Class `duration`) |
 | `sensor.<rezept>_portionen` | Anzahl der Portionen |
+| `sensor.rezeptbox_wochenplan` | Anzahl der geplanten Tage; Attribut `plan` mit Datum, Titel, Quelle und Portionen |
+| `button.<rezept>_zutaten_auf_die_liste` | Fügt die Zutaten des Rezepts der Einkaufsliste hinzu |
 
 Der Haupt-Sensor trägt alle Rezeptdaten als Attribute:
 
@@ -186,6 +215,7 @@ Der Haupt-Sensor trägt alle Rezeptdaten als Attribute:
 | `tags`, `cuisine`, `category`, `difficulty` | Einordnung |
 | `rating`, `rating_count` | Bewertung |
 | `nutrition` | Nährwerte, falls vorhanden |
+| `updated_at`, `update_error` | Zeitpunkt des letzten erfolgreichen Abrufs und Fehlercode, falls der letzte Abruf scheiterte |
 
 Beispiel für eine Automation:
 
@@ -229,11 +259,69 @@ nach einem Neustart nicht wiederhergestellt.
 | --- | --- | --- |
 | `entity_id` | ja | Rezept-Sensor (auch mehrere möglich) |
 | `servings` | nein | Ziel-Portionszahl; die Zutatenmengen werden umgerechnet (Standard: Portionen des Rezepts) |
+| `exclude` | nein | Zutatenzeilen, die nicht auf die Liste sollen (z. B. bereits vorhandene) |
+| `merge` | nein | Gleiche Zutaten mit vorhandenen Einträgen zusammenrechnen (Standard: `true`) |
 
 Der Service nutzt die eingebaute Einkaufsliste (`shopping_list`). Ist sie nicht
 eingerichtet, meldet Home Assistant einen Fehler. Ohne `servings` werden die
 Originalmengen übernommen; Rezepte aus älteren Versionen ohne strukturierte
-Zutaten werden dabei aus dem Zutatentext umgerechnet.
+Zutaten werden dabei aus dem Zutatentext umgerechnet. Mit `merge` werden
+gleiche Zutaten zusammengeführt, auch mit Einträgen, die schon auf der Liste
+stehen – aus zweimal „500 g Kartoffeln“ wird „1 kg Kartoffeln“.
+
+### `recipe_box.add_recipe`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `title` | ja | Name des Rezepts |
+| `ingredients` | ja | Zutatenzeilen, eine pro Eintrag |
+| `instructions` | nein | Zubereitungsschritte |
+| `servings` | nein | Portionen |
+| `tags` | nein | Schlagwörter für die Suche |
+| `image_url` | nein | Bild zum Rezept |
+| `url` | nein | Quelladresse, falls vorhanden |
+
+Legt ein Rezept ohne Quellseite an (Familienrezept, Karte, PDF-Abschrift).
+Ohne `url` bekommt es einen internen Schlüssel (`manual://…`); es erscheint wie
+ein importiertes Rezept als Gerät mit Sensoren und Button.
+
+### `recipe_box.refresh_recipe`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `url` | eins von beiden | Quelladresse |
+| `entity_id` | eins von beiden | Rezept-Sensor |
+
+Lädt genau ein Rezept neu, ohne auf das Aktualisierungsintervall zu warten.
+Bei einem Fehler bleibt der gespeicherte Stand sichtbar und `update_error` am
+Sensor nennt den Grund. Eigene Rezepte ohne Quellseite lassen sich nicht
+aktualisieren.
+
+### `recipe_box.export_recipes`
+
+Gibt `recipes` und `plan` als JSON zurück (für Sicherungen oder eigene
+Skripte). Der Button **Sichern** in der Liste nutzt denselben Service.
+
+### `recipe_box.import_recipes`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `recipes` | ja | Rezeptdaten aus einem Export |
+| `plan` | nein | Wochenplan aus einem Export |
+
+Liest eine Sicherung wieder ein und antwortet mit `imported` und `failed`.
+
+### `recipe_box.plan_recipe` / `recipe_box.clear_meal_plan`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `date` | ja / nein | Tag im Format `YYYY-MM-DD` (bei `clear_meal_plan` ohne Datum: ganzer Plan) |
+| `entity_id` oder `url` | ja (nur `plan_recipe`) | Rezept, das eingeplant wird |
+| `servings` | nein | Portionen für diesen Tag |
+
+Der Plan liegt im Speicher der Integration und ist über
+`sensor.rezeptbox_wochenplan` verfügbar; die Karte zeigt die nächsten sieben
+Tage und kann die ganze Woche auf die Einkaufsliste übernehmen.
 
 ## Unterstützte Seiten
 
@@ -291,7 +379,9 @@ custom_components/recipe_box/
   coordinator.py     Rezeptsammlung, Abruf, Cache, Aktualisierungsintervall
   scraper.py         HTTP: Chefkoch-API und HTML-Abruf
   parser.py          Reine Parser (JSON-LD, Chefkoch, Zeiten, Mengen)
-  sensor.py          Rezept- und Portionen-Sensor
+  sensor.py          Rezept-, Portionen- und Wochenplan-Sensor
+  button.py          Button „Zutaten auf die Liste“ je Rezept
+  shopping.py        Schreiben und Zusammenführen auf der Einkaufsliste
   frontend.py        Auslieferung der Lovelace-Karte
   www/recipe-card.js Lovelace-Karten und Sidebar-Panel
   brand/icon.png     Integrations-Icon (256 px, 512 px als @2x)

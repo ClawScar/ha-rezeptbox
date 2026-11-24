@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import re
 from functools import partial
 from typing import Any
+from uuid import uuid4
 
 import voluptuous as vol
 
@@ -22,19 +24,35 @@ from homeassistant.exceptions import (
 from homeassistant.helpers import config_validation as cv
 
 from .const import (
+    ATTR_DATE,
+    ATTR_EXCLUDE,
+    ATTR_IMAGE_URL,
     ATTR_INGREDIENTS,
     ATTR_INGREDIENTS_STRUCTURED,
+    ATTR_INSTRUCTIONS,
+    ATTR_MERGE,
+    ATTR_PLAN,
+    ATTR_RECIPES,
     ATTR_SERVINGS,
+    ATTR_TAGS,
+    ATTR_TITLE,
     ATTR_URL,
     ATTR_URLS,
     CONF_URL,
     DATA_HUB,
     DOMAIN,
     KNOWN_IMPORT_ERRORS,
+    MANUAL_URL_PREFIX,
     NAME,
     PLATFORMS,
+    SERVICE_ADD_RECIPE,
     SERVICE_ADD_TO_SHOPPING_LIST,
+    SERVICE_CLEAR_MEAL_PLAN,
+    SERVICE_EXPORT_RECIPES,
     SERVICE_IMPORT_RECIPE,
+    SERVICE_IMPORT_RECIPES,
+    SERVICE_PLAN_RECIPE,
+    SERVICE_REFRESH_RECIPE,
     SERVICE_REMOVE_RECIPE,
 )
 from .coordinator import RecipeHub
@@ -43,7 +61,15 @@ from .frontend import (
     async_register_panel,
     async_remove_panel,
 )
-from .parser import Recipe, RecipeError, normalize_url, scale_ingredients
+from .parser import (
+    Recipe,
+    RecipeError,
+    clean_text,
+    normalize_url,
+    parse_ingredient_text,
+    scale_ingredient_lines,
+)
+from .shopping import async_add_ingredient_lines
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -55,6 +81,57 @@ ADD_TO_SHOPPING_LIST_SCHEMA = vol.Schema(
         vol.Optional(ATTR_SERVINGS): vol.All(
             vol.Coerce(float), vol.Range(min=0.5, max=100)
         ),
+        vol.Optional(ATTR_EXCLUDE): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_MERGE, default=True): cv.boolean,
+    }
+)
+
+ADD_RECIPE_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_TITLE): cv.string,
+        vol.Required(ATTR_INGREDIENTS): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_INSTRUCTIONS, default=[]): vol.All(
+            cv.ensure_list, [cv.string]
+        ),
+        vol.Optional(ATTR_SERVINGS): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=100)
+        ),
+        vol.Optional(ATTR_TAGS, default=[]): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_IMAGE_URL, default=""): cv.string,
+        vol.Optional(ATTR_URL, default=""): cv.string,
+    }
+)
+
+REFRESH_RECIPE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+)
+
+PLAN_RECIPE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Required(ATTR_DATE): cv.date,
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
+            vol.Optional(ATTR_SERVINGS): vol.All(
+                vol.Coerce(float), vol.Range(min=0.5, max=100)
+            ),
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+)
+
+CLEAR_MEAL_PLAN_SCHEMA = vol.Schema({vol.Optional(ATTR_DATE): cv.date})
+
+IMPORT_RECIPES_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_RECIPES): vol.All(cv.ensure_list, [dict]),
+        vol.Optional(ATTR_PLAN, default=dict): dict,
     }
 )
 
@@ -107,6 +184,60 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_ADD_TO_SHOPPING_LIST,
             partial(_async_add_to_shopping_list, hass),
             schema=ADD_TO_SHOPPING_LIST_SCHEMA,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_ADD_RECIPE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_ADD_RECIPE,
+            partial(_async_add_recipe, hass),
+            schema=ADD_RECIPE_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_REFRESH_RECIPE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REFRESH_RECIPE,
+            partial(_async_refresh_recipe, hass),
+            schema=REFRESH_RECIPE_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_EXPORT_RECIPES):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_EXPORT_RECIPES,
+            partial(_async_export_recipes, hass),
+            schema=vol.Schema({}),
+            supports_response=SupportsResponse.ONLY,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_IMPORT_RECIPES):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_IMPORT_RECIPES,
+            partial(_async_import_recipes, hass),
+            schema=IMPORT_RECIPES_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_PLAN_RECIPE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_PLAN_RECIPE,
+            partial(_async_plan_recipe, hass),
+            schema=PLAN_RECIPE_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_CLEAR_MEAL_PLAN):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CLEAR_MEAL_PLAN,
+            partial(_async_clear_meal_plan, hass),
+            schema=CLEAR_MEAL_PLAN_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
         )
 
     try:
@@ -179,8 +310,13 @@ def _get_hub(hass: HomeAssistant) -> RecipeHub | None:
 
 def _resolve_recipe(hub: RecipeHub, url: str) -> tuple[str, Recipe]:
     """Find an imported recipe by URL, tolerating small URL differences."""
+    text = str(url or "").strip()
+    recipe = hub.recipe(text)
+    if recipe is not None:
+        return text, recipe
+
     try:
-        wanted = normalize_url(url)
+        wanted = normalize_url(text)
     except RecipeError as err:
         raise ServiceValidationError(
             translation_domain=DOMAIN, translation_key="invalid_url"
@@ -329,7 +465,7 @@ async def _async_remove_recipe(
 async def _async_add_to_shopping_list(
     hass: HomeAssistant, call: ServiceCall
 ) -> None:
-    """Add every ingredient of the selected recipe to the shopping list."""
+    """Add the ingredients of the selected recipes to the shopping list."""
     if "shopping_list" not in hass.config.components:
         raise HomeAssistantError(
             "The Home Assistant shopping list (shopping_list) is not set up."
@@ -340,8 +476,11 @@ async def _async_add_to_shopping_list(
         entity_ids = [entity_ids]
 
     target_servings = call.data.get(ATTR_SERVINGS)
+    excluded = {
+        str(item) for item in (call.data.get(ATTR_EXCLUDE) or []) if str(item)
+    }
+    lines: list[str] = []
 
-    added = 0
     for entity_id in entity_ids:
         state = hass.states.get(entity_id)
         if state is None:
@@ -358,12 +497,26 @@ async def _async_add_to_shopping_list(
         ):
             factor = float(target_servings) / float(base_servings)
 
-        names = scale_ingredients(
+        pairs = scale_ingredient_lines(
             state.attributes.get(ATTR_INGREDIENTS_STRUCTURED) or [],
             state.attributes.get(ATTR_INGREDIENTS) or [],
             factor,
         )
-        for name in names:
+        lines.extend(
+            scaled
+            for original, scaled in pairs
+            if original not in excluded and str(scaled).strip()
+        )
+
+    if not lines:
+        _LOGGER.warning("No ingredients were found for %s", entity_ids)
+        return
+
+    if call.data.get(ATTR_MERGE, True):
+        added = await async_add_ingredient_lines(hass, lines)
+    else:
+        added = 0
+        for name in lines:
             name = str(name).strip()
             if not name:
                 continue
@@ -375,7 +528,185 @@ async def _async_add_to_shopping_list(
             )
             added += 1
 
-    if not added:
-        _LOGGER.warning("No ingredients were found for %s", entity_ids)
+    _LOGGER.debug("Added %s ingredients to the shopping list", added)
+
+
+def _call_recipe_url(hass: HomeAssistant, call: ServiceCall) -> str:
+    """Return the recipe URL from the service call or the entity."""
+    url = call.data.get(ATTR_URL)
+    if url:
+        return str(url)
+
+    entity_id = call.data.get(ATTR_ENTITY_ID)
+    state = hass.states.get(entity_id) if entity_id else None
+    source_url = state.attributes.get("source_url") if state else None
+    if not source_url:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="recipe_not_found"
+        )
+    return str(source_url)
+
+
+def _manual_source_url(title: str) -> str:
+    """Return a stable-looking key for a manually created recipe."""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.casefold()).strip("-")[:40]
+    return f"{MANUAL_URL_PREFIX}{slug or 'rezept'}-{uuid4().hex[:8]}"
+
+
+async def _async_add_recipe(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Create a recipe without a source page (family recipes, cards, PDFs)."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    title = clean_text(call.data.get(ATTR_TITLE))
+    ingredients = [
+        text
+        for text in (clean_text(item) for item in call.data.get(ATTR_INGREDIENTS) or [])
+        if text
+    ]
+    if not title or not ingredients:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="invalid_recipe"
+        )
+
+    instructions = [
+        text
+        for text in (
+            clean_text(item) for item in call.data.get(ATTR_INSTRUCTIONS) or []
+        )
+        if text
+    ]
+    tags = [
+        text
+        for text in (clean_text(item) for item in call.data.get(ATTR_TAGS) or [])
+        if text
+    ]
+
+    source_url = str(call.data.get(ATTR_URL) or "").strip()
+    if source_url:
+        try:
+            source_url = normalize_url(source_url)
+        except RecipeError as err:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="invalid_url"
+            ) from err
     else:
-        _LOGGER.debug("Added %s ingredients to the shopping list", added)
+        source_url = _manual_source_url(title)
+
+    recipe = Recipe(
+        title=title,
+        source_url=source_url,
+        site="Eigenes Rezept",
+        image_url=str(call.data.get(ATTR_IMAGE_URL) or ""),
+        servings=call.data.get(ATTR_SERVINGS),
+        ingredients=ingredients,
+        ingredients_structured=[
+            parse_ingredient_text(text) for text in ingredients
+        ],
+        instructions=instructions,
+        tags=tags,
+    )
+    await hub.async_add_recipe(recipe)
+    _LOGGER.debug("Added manual recipe %s", recipe.title)
+    return {"title": recipe.title, "url": recipe.source_url}
+
+
+async def _async_refresh_recipe(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Reload one recipe from its source page."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    source_url, _recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
+    if not source_url.startswith(("http://", "https://")):
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="manual_recipe"
+        )
+
+    try:
+        recipe = await hub.async_refresh_recipe(source_url)
+    except RecipeError as err:
+        code = err.code if err.code in KNOWN_IMPORT_ERRORS else "unknown"
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key=code
+        ) from err
+
+    return {"title": recipe.title, "url": recipe.source_url}
+
+
+async def _async_export_recipes(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Return all recipes and the meal plan as a JSON serialisable dict."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+    return {
+        "recipes": [recipe.as_dict() for recipe in hub.recipes.values()],
+        "plan": hub.plan,
+    }
+
+
+async def _async_import_recipes(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Add recipes from a previous export back to the recipe box."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    imported = 0
+    failed = 0
+    for data in call.data.get(ATTR_RECIPES) or []:
+        if not isinstance(data, dict):
+            failed += 1
+            continue
+        try:
+            recipe = Recipe.from_dict(data)
+        except (TypeError, KeyError):
+            failed += 1
+            continue
+        if not recipe.title or not recipe.source_url:
+            failed += 1
+            continue
+        await hub.async_add_recipe(recipe)
+        imported += 1
+
+    plan = call.data.get(ATTR_PLAN) or {}
+    if isinstance(plan, dict) and plan:
+        await hub.async_import_plan(plan)
+
+    _LOGGER.debug("Imported %s recipes, %s failed", imported, failed)
+    return {"imported": imported, "failed": failed}
+
+
+async def _async_plan_recipe(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Plan a recipe for one day."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
+    date = str(call.data.get(ATTR_DATE))
+    await hub.async_set_plan(date, source_url, call.data.get(ATTR_SERVINGS))
+    return {"date": date, "title": recipe.title, "url": source_url}
+
+
+async def _async_clear_meal_plan(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Clear one day or the whole meal plan."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    date = call.data.get(ATTR_DATE)
+    await hub.async_clear_plan(str(date) if date else None)
+    return {"cleared": str(date) if date else "all"}

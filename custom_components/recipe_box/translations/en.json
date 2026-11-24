@@ -33,6 +33,40 @@
         }
       }
     },
+    "add_recipe": {
+      "name": "Create a recipe",
+      "description": "Creates a recipe without a source page – for family recipes, cards or PDFs.",
+      "fields": {
+        "title": {
+          "name": "Title",
+          "description": "Name of the recipe."
+        },
+        "ingredients": {
+          "name": "Ingredients",
+          "description": "Ingredient lines, one per entry (for example \"200 g flour\")."
+        },
+        "instructions": {
+          "name": "Instructions",
+          "description": "Cooking steps, one per entry."
+        },
+        "servings": {
+          "name": "Servings",
+          "description": "How many servings the recipe is written for."
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "Keywords for searching the recipe list."
+        },
+        "image_url": {
+          "name": "Image URL",
+          "description": "Optional picture of the recipe."
+        },
+        "url": {
+          "name": "Source URL",
+          "description": "Optional web address the recipe can be found at."
+        }
+      }
+    },
     "remove_recipe": {
       "name": "Remove a recipe",
       "description": "Removes an imported recipe, its entities and its device from the recipe box.",
@@ -47,9 +81,23 @@
         }
       }
     },
+    "refresh_recipe": {
+      "name": "Refresh a recipe",
+      "description": "Reloads a single recipe from its source page.",
+      "fields": {
+        "url": {
+          "name": "Recipe URL",
+          "description": "Source URL of the recipe."
+        },
+        "entity_id": {
+          "name": "Recipe",
+          "description": "Recipe sensor (alternative to the URL)."
+        }
+      }
+    },
     "add_to_shopping_list": {
       "name": "Add ingredients to shopping list",
-      "description": "Adds every ingredient of the selected recipe to the Home Assistant shopping list.",
+      "description": "Adds the ingredients of the selected recipes to the shopping list and merges equal ingredients.",
       "fields": {
         "entity_id": {
           "name": "Recipe",
@@ -58,6 +106,64 @@
         "servings": {
           "name": "Servings",
           "description": "Target number of servings. The ingredient amounts are scaled accordingly."
+        },
+        "exclude": {
+          "name": "Skip",
+          "description": "Ingredient lines that should not be added (for example ones you already have)."
+        },
+        "merge": {
+          "name": "Merge",
+          "description": "Add up equal ingredients with the items already on the list."
+        }
+      }
+    },
+    "export_recipes": {
+      "name": "Export recipes",
+      "description": "Returns all recipes and the meal plan as JSON."
+    },
+    "import_recipes": {
+      "name": "Import recipes (backup)",
+      "description": "Reads recipes and the meal plan from a previous export.",
+      "fields": {
+        "recipes": {
+          "name": "Recipes",
+          "description": "List of recipe data from the export."
+        },
+        "plan": {
+          "name": "Meal plan",
+          "description": "Optional meal plan from the export."
+        }
+      }
+    },
+    "plan_recipe": {
+      "name": "Plan a recipe",
+      "description": "Puts a recipe on a day of the meal plan.",
+      "fields": {
+        "date": {
+          "name": "Date",
+          "description": "Day the recipe is planned for."
+        },
+        "entity_id": {
+          "name": "Recipe",
+          "description": "Rezeptbox sensor of the recipe."
+        },
+        "url": {
+          "name": "Recipe URL",
+          "description": "Source URL (alternative to the sensor)."
+        },
+        "servings": {
+          "name": "Servings",
+          "description": "Servings for this day."
+        }
+      }
+    },
+    "clear_meal_plan": {
+      "name": "Clear meal plan",
+      "description": "Removes one day or the whole meal plan.",
+      "fields": {
+        "date": {
+          "name": "Date",
+          "description": "Day to clear. Without a date the whole plan is cleared."
         }
       }
     }
@@ -80,12 +186,26 @@
     },
     "recipe_not_found": {
       "message": "This recipe is not in the recipe box."
+    },
+    "invalid_recipe": {
+      "message": "A title and at least one ingredient are required."
+    },
+    "manual_recipe": {
+      "message": "Own recipes without a source page cannot be refreshed."
     }
   },
   "entity": {
     "sensor": {
       "servings": {
         "name": "Servings"
+      },
+      "meal_plan": {
+        "name": "Meal plan"
+      }
+    },
+    "button": {
+      "shopping_list": {
+        "name": "Add ingredients to shopping list"
       }
     }
   }

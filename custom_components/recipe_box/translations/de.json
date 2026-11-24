@@ -33,6 +33,40 @@
         }
       }
     },
+    "add_recipe": {
+      "name": "Eigenes Rezept anlegen",
+      "description": "Legt ein Rezept ohne Quellseite an – für Familienrezepte, Karten oder PDFs.",
+      "fields": {
+        "title": {
+          "name": "Titel",
+          "description": "Name des Rezepts."
+        },
+        "ingredients": {
+          "name": "Zutaten",
+          "description": "Zutatenzeilen, eine pro Eintrag (zum Beispiel „200 g Mehl“)."
+        },
+        "instructions": {
+          "name": "Zubereitung",
+          "description": "Zubereitungsschritte, einer pro Eintrag."
+        },
+        "servings": {
+          "name": "Portionen",
+          "description": "Für wie viele Portionen das Rezept gedacht ist."
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "Schlagwörter für die Suche in der Rezeptliste."
+        },
+        "image_url": {
+          "name": "Bild-URL",
+          "description": "Optionales Bild zum Rezept."
+        },
+        "url": {
+          "name": "Quelladresse",
+          "description": "Optional: Webadresse, unter der das Rezept zu finden ist."
+        }
+      }
+    },
     "remove_recipe": {
       "name": "Rezept entfernen",
       "description": "Entfernt ein importiertes Rezept samt Entitäten und Gerät aus der Rezeptbox.",
@@ -47,9 +81,23 @@
         }
       }
     },
+    "refresh_recipe": {
+      "name": "Rezept aktualisieren",
+      "description": "Lädt ein einzelnes Rezept neu von seiner Quellseite.",
+      "fields": {
+        "url": {
+          "name": "Rezept-URL",
+          "description": "Quelladresse des Rezepts."
+        },
+        "entity_id": {
+          "name": "Rezept",
+          "description": "Rezept-Sensor (Alternative zur URL)."
+        }
+      }
+    },
     "add_to_shopping_list": {
       "name": "Zutaten auf die Einkaufsliste",
-      "description": "Fügt alle Zutaten des gewählten Rezepts der Einkaufsliste von Home Assistant hinzu.",
+      "description": "Fügt die Zutaten der gewählten Rezepte der Einkaufsliste hinzu und führt gleiche Zutaten zusammen.",
       "fields": {
         "entity_id": {
           "name": "Rezept",
@@ -58,6 +106,64 @@
         "servings": {
           "name": "Portionen",
           "description": "Ziel-Portionszahl. Die Zutatenmengen werden entsprechend umgerechnet."
+        },
+        "exclude": {
+          "name": "Auslassen",
+          "description": "Zutatenzeilen, die nicht auf die Liste sollen (zum Beispiel bereits vorhandene)."
+        },
+        "merge": {
+          "name": "Zusammenführen",
+          "description": "Gleiche Zutaten mit den bereits vorhandenen Einträgen zusammenrechnen."
+        }
+      }
+    },
+    "export_recipes": {
+      "name": "Rezepte exportieren",
+      "description": "Gibt alle Rezepte und den Wochenplan als JSON zurück."
+    },
+    "import_recipes": {
+      "name": "Rezepte importieren (Sicherung)",
+      "description": "Liest Rezepte und Wochenplan aus einer zuvor exportierten Sicherung ein.",
+      "fields": {
+        "recipes": {
+          "name": "Rezepte",
+          "description": "Liste der Rezeptdaten aus dem Export."
+        },
+        "plan": {
+          "name": "Wochenplan",
+          "description": "Optionaler Wochenplan aus dem Export."
+        }
+      }
+    },
+    "plan_recipe": {
+      "name": "Rezept einplanen",
+      "description": "Legt ein Rezept auf einen Tag im Wochenplan.",
+      "fields": {
+        "date": {
+          "name": "Datum",
+          "description": "Tag, für den das Rezept geplant wird."
+        },
+        "entity_id": {
+          "name": "Rezept",
+          "description": "Rezeptbox-Sensor des Rezepts."
+        },
+        "url": {
+          "name": "Rezept-URL",
+          "description": "Quelladresse (Alternative zum Sensor)."
+        },
+        "servings": {
+          "name": "Portionen",
+          "description": "Portionen für diesen Tag."
+        }
+      }
+    },
+    "clear_meal_plan": {
+      "name": "Wochenplan leeren",
+      "description": "Entfernt einen Tag oder den ganzen Wochenplan.",
+      "fields": {
+        "date": {
+          "name": "Datum",
+          "description": "Tag, der geleert wird. Ohne Datum wird der ganze Plan geleert."
         }
       }
     }
@@ -80,12 +186,26 @@
     },
     "recipe_not_found": {
       "message": "Dieses Rezept ist nicht in der Rezeptbox."
+    },
+    "invalid_recipe": {
+      "message": "Titel und mindestens eine Zutat werden benötigt."
+    },
+    "manual_recipe": {
+      "message": "Eigene Rezepte ohne Quellseite lassen sich nicht aktualisieren."
     }
   },
   "entity": {
     "sensor": {
       "servings": {
         "name": "Portionen"
+      },
+      "meal_plan": {
+        "name": "Wochenplan"
+      }
+    },
+    "button": {
+      "shopping_list": {
+        "name": "Zutaten auf die Liste"
       }
     }
   }

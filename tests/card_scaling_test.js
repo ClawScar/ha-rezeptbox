@@ -19,17 +19,17 @@ const CARD = path.join(
 
 const source = fs.readFileSync(CARD, "utf8");
 const start = source.indexOf("const FRACTION_TEXT = {");
-const end = source.indexOf("const structuredIngredients");
+const end = source.indexOf("class RecipeBoxCard");
 assert.ok(start !== -1 && end > start, "scaling helpers not found in recipe-card.js");
 
 const context = vm.createContext({});
 vm.runInContext(
   `${source.slice(start, end)}
-this.helpers = { parseIngredientLine, scaleIngredient };`,
+this.helpers = { parseIngredientLine, scaleIngredient, stepTimers, isWebUrl };`,
   context
 );
 
-const { parseIngredientLine, scaleIngredient } = context.helpers;
+const { parseIngredientLine, scaleIngredient, stepTimers, isWebUrl } = context.helpers;
 const scaled = (text, factor) => scaleIngredient(parseIngredientLine(text), factor);
 
 const cases = [
@@ -93,4 +93,21 @@ for (const [text, factor, expected] of cases) {
   assert.equal(scaled(text, factor), expected, `${text} × ${factor}`);
 }
 
-console.log(`card_scaling_test: ${cases.length} checks passed`);
+// Timer buttons are offered for durations inside a step.
+const timerCases = [
+  ["25 Minuten köcheln lassen", [25]],
+  ["1 Stunde backen", [60]],
+  ["5 Min. ziehen, dann 2 Minuten mixen", [5, 2]],
+  ["30 Sekunden rühren", []],
+  ["Ohne Zeitangabe", []],
+];
+for (const [text, expected] of timerCases) {
+  assert.deepEqual(Array.from(stepTimers(text)), expected, text);
+}
+
+// Only real web pages are linked and refreshable.
+assert.equal(isWebUrl("https://example.com/rezept"), true);
+assert.equal(isWebUrl("manual://apfelkuchen-1234"), false);
+assert.equal(isWebUrl(""), false);
+
+console.log(`card_scaling_test: ${cases.length + timerCases.length + 3} checks passed`);

@@ -35,7 +35,8 @@ async def async_setup_entry(
 
     for recipe in hub.recipes.values():
         add(recipe)
-    hub.set_entity_adder(add)
+    hub.add_entity_adder(add)
+    async_add_entities([RecipePlanSensor(hub)])
 
 
 class RecipeSensorBase(CoordinatorEntity[RecipeHub], SensorEntity):
@@ -58,7 +59,11 @@ class RecipeSensorBase(CoordinatorEntity[RecipeHub], SensorEntity):
             manufacturer=NAME,
             model=recipe.site or "Rezept",
             entry_type=DeviceEntryType.SERVICE,
-            configuration_url=recipe.source_url,
+            configuration_url=(
+                recipe.source_url
+                if recipe.source_url.startswith(("http://", "https://"))
+                else None
+            ),
         )
 
     @property
@@ -94,7 +99,13 @@ class RecipeSensor(RecipeSensorBase):
         """Return all recipe details as attributes."""
         if self.recipe is None:
             return {}
-        return {"integration": DOMAIN, **self.recipe.as_attributes()}
+        status = self.coordinator.status.get(self._source_url) or {}
+        return {
+            "integration": DOMAIN,
+            **self.recipe.as_attributes(),
+            "updated_at": status.get("updated_at"),
+            "update_error": status.get("error"),
+        }
 
     @property
     def entity_picture(self) -> str | None:
@@ -102,6 +113,35 @@ class RecipeSensor(RecipeSensorBase):
         if self.recipe is None:
             return None
         return self.recipe.image_url or None
+
+
+class RecipePlanSensor(CoordinatorEntity[RecipeHub], SensorEntity):
+    """Number of planned meals with the whole plan as attributes."""
+
+    _attr_has_entity_name = True
+    _attr_name = None
+    _attr_translation_key = "meal_plan"
+    _attr_icon = "mdi:calendar-week"
+    _attr_unique_id = f"{DOMAIN}_meal_plan"
+
+    def __init__(self, hub: RecipeHub) -> None:
+        super().__init__(hub)
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, "meal_plan")},
+            name=f"{NAME} Wochenplan",
+            manufacturer=NAME,
+            entry_type=DeviceEntryType.SERVICE,
+        )
+
+    @property
+    def native_value(self) -> int:
+        """Return how many days are planned."""
+        return len(self.coordinator.plan_entries())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the planned recipes with date and servings."""
+        return {"plan": self.coordinator.plan_entries()}
 
 
 class RecipeServingsSensor(RecipeSensorBase):
