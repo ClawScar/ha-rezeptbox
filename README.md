@@ -189,14 +189,18 @@ Detailansicht unter **Gruppen**: Namen eintippen (bestehende Namen schlägt das
 Feld vor) und **Hinzufügen** drücken, das × am Chip nimmt das Rezept wieder
 heraus. Eine dort neu eingegebene Gruppe wird automatisch mit angelegt.
 
-Im Tab **Daten** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
-**Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Darunter
-legt **Gruppen** die Gruppen der Rezeptbox an, sortiert sie, benennt sie um und
-löscht sie; jede zeigt die Anzahl ihrer Rezepte. Es folgen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
-Speichern-Dialog des Browsers (Chrome/Edge); Browser ohne diesen Dialog legen
-die JSON-Datei im Download-Ordner ab, in der Home-Assistant-App erscheint
-stattdessen das Teilen-Menü. Darunter legt **Eigenes Rezept** ein Rezept mit
-Titel, Portionen, Zutaten, Schritten und Tags an.
+Der Tab **Daten** ist in vier getrennte Abschnitte gegliedert: **Rezepte
+importieren** (eine oder mehrere URLs einfügen, **Importieren** drücken – die
+Liste füllt sich sofort, ohne Neustart), **Gruppen** (anlegen, sortieren,
+umbenennen, löschen, jeweils mit der Anzahl ihrer Rezepte), **Sicherung** sowie
+**Eigenes Rezept**.
+
+Unter **Sicherung** öffnet **Exportieren** den Speichern-Dialog des Browsers
+(Chrome/Edge); Browser ohne diesen Dialog legen die JSON-Datei im
+Download-Ordner ab, in der Home-Assistant-App erscheint stattdessen das
+Teilen-Menü. **Importieren** liest eine solche Sicherung wieder ein. Unter
+**Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
+und Tags.
 
 Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
 **Woche auf die Einkaufsliste**).
@@ -341,7 +345,8 @@ aktualisieren.
 ### `recipe_box.export_recipes`
 
 Gibt `recipes`, `plan` und `groups` als JSON zurück (für Sicherungen oder
-eigene Skripte). Der Button **Sichern** in der Liste nutzt denselben Service.
+eigene Skripte). Der Button **Exportieren** unter **Daten → Sicherung** nutzt
+denselben Service.
 
 ### `recipe_box.import_recipes`
 

@@ -201,6 +201,10 @@ class FilesTest(unittest.TestCase):
             "group-rename",
             "group-rename-input",
             "group-move",
+            "data-panel",
+            "data-section",
+            ">Exportieren<",
+            ">Importieren<",
             "group-add-button",
             "group-remove",
             "set_groups",
@@ -208,6 +212,9 @@ class FilesTest(unittest.TestCase):
             "remove_group",
             "rename_group",
             "move_group",
+            "Rezepte importieren",
+            "Sicherung",
+            "Eigenes Rezept",
         ):
             self.assertIn(marker, card)
 

@@ -182,7 +182,10 @@ const run = async () => {
   reset();
   await makeCard({})._export();
   assert.equal(state.download, null);
-  assert.match(state.notifications[0], /^Sichern fehlgeschlagen: .*Sicherungsdaten/);
+  assert.match(
+    state.notifications[0],
+    /^Exportieren fehlgeschlagen: .*Sicherungsdaten/
+  );
 
   console.log("card_export_test: 5 checks passed");
 };

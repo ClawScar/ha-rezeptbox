@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.2.2";
+const CARD_VERSION = "2.2.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -685,8 +685,9 @@ const filterBarHtml = (entries, filter) => {
   </div>`;
 };
 
-const manualFormHtml = () => `<div class="manual">
-  <p class="tab-hint">Eigenes Rezept anlegen – Zutaten und Zubereitung je eine Zeile.</p>
+const manualFormHtml = () => `<div class="manual data-section">
+  <h3>Eigenes Rezept</h3>
+  <p class="tab-hint">Zutaten und Zubereitung je eine Zeile.</p>
   <div class="manual-body">
     <input class="manual-title" type="text" placeholder="Titel">
     <input class="manual-servings" type="number" min="1" max="100" placeholder="Portionen">
@@ -918,7 +919,7 @@ const groupTabsHtml = (groups, active) => {
     .join("")}</div>`;
 };
 
-const groupsManagerHtml = (groups, counts, pending, renaming) => `<div class="section groups-manager">
+const groupsManagerHtml = (groups, counts, pending, renaming) => `<div class="section groups-manager data-section">
     <h3>Gruppen</h3>
     <p class="tab-hint">Gruppen hier anlegen, sortieren und umbenennen. Die Reihenfolge gilt für die Tabs in der Rezeptliste; neue Gruppen hängen hinten an. Zuweisen kannst du sie im Rezept unter „Gruppen“.</p>
     ${
@@ -1527,6 +1528,10 @@ const STYLES = `<style>
   button.tab:hover { color: var(--primary-text-color); }
   button.tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
   .tab-panel { display: flex; flex-direction: column; gap: 10px; }
+  .data-panel { display: flex; flex-direction: column; gap: 16px; }
+  .data-panel > * { padding-top: 16px; border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
+  .data-panel > :first-child { padding-top: 0; border-top: none; }
+  .data-section h3 { margin-bottom: 8px; }
   .tab-hint { margin: 0; font-size: 0.82rem; color: var(--secondary-text-color); }
   .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; }
   .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
@@ -2056,16 +2061,23 @@ class RecipeBoxListCard extends HTMLElement {
     });
 
     const importBar = this._config.show_import
-      ? `<div class="import-bar">
-          <textarea class="import-input" rows="2" placeholder="Rezept-URLs – eine pro Zeile"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
-          <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Importieren"}</button>
+      ? `<div class="data-section">
+          <h3>Rezepte importieren</h3>
+          <div class="import-bar">
+            <textarea class="import-input" rows="2" placeholder="Rezept-URLs – eine pro Zeile"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
+            <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Importieren"}</button>
+          </div>
         </div>`
       : "";
 
     const tools = this._config.show_tools
-      ? `<div class="tools">
-        <button class="export" type="button">Sichern</button>
-        <label class="import-file-label">Laden<input class="import-file" type="file" accept="application/json"></label>
+      ? `<div class="data-section">
+        <h3>Sicherung</h3>
+        <p class="tab-hint">Alle Rezepte, der Wochenplan und die Gruppen als JSON-Datei.</p>
+        <div class="tools">
+          <button class="export" type="button">Exportieren</button>
+          <label class="import-file-label">Importieren<input class="import-file" type="file" accept="application/json"></label>
+        </div>
       </div>`
       : "";
 
@@ -2088,12 +2100,12 @@ class RecipeBoxListCard extends HTMLElement {
     const tab = showTabs ? this._tab : "recipes";
     const panels = {
       recipes: `${groupTabsHtml(groups, this._filter.group)}${filterBar}${body}`,
-      data: `${importBar}${groupsManagerHtml(
+      data: `<div class="data-panel">${importBar}${groupsManagerHtml(
         groups,
         groupCounts(entries),
         this._pendingGroupDelete,
         this._renamingGroup
-      )}${tools}${manualFormHtml()}`,
+      )}${tools}${manualFormHtml()}</div>`,
       plan: entries.length
         ? planHtml(this._hass, entries)
         : `<p class="empty">Noch keine Rezepte für den Wochenplan.</p>`,
@@ -2440,7 +2452,7 @@ class RecipeBoxListCard extends HTMLElement {
     } catch (error) {
       notify(
         this,
-        `Sichern fehlgeschlagen: ${
+        `Exportieren fehlgeschlagen: ${
           (error && (error.message || error.code)) || "unbekannter Fehler"
         }`
       );
@@ -2476,7 +2488,7 @@ class RecipeBoxListCard extends HTMLElement {
     } catch (error) {
       notify(
         this,
-        `Laden fehlgeschlagen: ${
+        `Importieren fehlgeschlagen: ${
           (error && (error.message || error)) || "unbekannter Fehler"
         }`
       );
