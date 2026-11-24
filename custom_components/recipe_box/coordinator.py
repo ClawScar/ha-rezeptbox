@@ -20,9 +20,10 @@ from .const import (
     DOMAIN,
     MAX_GROUPS,
     MAX_RECIPE_GROUPS,
+    PHOTO_NAME_PREFIX,
     STORAGE_VERSION,
 )
-from .parser import Recipe, RecipeError, clean_text
+from .parser import Recipe, RecipeError, clean_text, image_id_from_url
 from .scraper import async_scrape_recipe
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,6 +86,8 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         self.plan: dict[str, dict[str, Any]] = {}
         self.status: dict[str, dict[str, Any]] = {}
         self.groups: list[str] = []
+        # Image ids Rezeptbox uploaded itself; only these are ever deleted.
+        self.photos: list[str] = []
 
     @property
     def recipes(self) -> dict[str, Recipe]:
@@ -159,6 +162,22 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             names.extend(recipe.groups)
         self.groups = normalize_group_names(names, MAX_GROUPS)
 
+        saved_photos = stored.get("photos") if isinstance(stored, dict) else None
+        self.photos = [
+            item
+            for item in (saved_photos if isinstance(saved_photos, list) else [])
+            if isinstance(item, str) and item
+        ]
+        # Photos attached before this version are ours as well.
+        for recipe in recipes.values():
+            self._remember_image(recipe.image_url)
+
+    def _remember_image(self, image_url: str) -> None:
+        """Remember an uploaded image so it can be cleaned up later."""
+        image_id = image_id_from_url(image_url)
+        if image_id and image_id not in self.photos:
+            self.photos.append(image_id)
+
     async def async_add_recipe(self, recipe: Recipe) -> bool:
         """Store an imported recipe and create its entities.
 
@@ -170,6 +189,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             self.groups = normalize_group_names(
                 [*self.groups, *recipe.groups], MAX_GROUPS
             )
+        self._remember_image(recipe.image_url)
         await self._async_save()
         self.async_update_listeners()
         if added:
@@ -195,6 +215,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         await self._async_save()
         self.async_update_listeners()
         await self._async_remove_entities(source_url)
+        await self.async_cleanup_images()
         _LOGGER.debug("Removed recipe %s", source_url)
         return recipe
 
@@ -227,9 +248,65 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         if recipe is None:
             return None
         recipe.image_url = str(image_url or "")
+        self._remember_image(recipe.image_url)
         await self._async_save()
         self.async_update_listeners()
+        # A replaced or removed photo is no longer referenced; clean it up.
+        await self.async_cleanup_images()
         return recipe
+
+    def _referenced_image_ids(self) -> set[str]:
+        """Return the image ids that any recipe still uses."""
+        return {
+            image_id
+            for recipe in self.recipes.values()
+            if (image_id := image_id_from_url(recipe.image_url))
+        }
+
+    def _owned_image_ids(self) -> set[str]:
+        """Return the image ids that Rezeptbox uploaded itself."""
+        owned = set(self.photos)
+        uploads = self.hass.data.get("image_upload")
+        for image_id, item in getattr(uploads, "data", {}).items():
+            name = str(item.get("name") or "").casefold()
+            if name.startswith(PHOTO_NAME_PREFIX):
+                owned.add(image_id)
+        return owned
+
+    async def async_cleanup_images(self) -> dict[str, Any]:
+        """Delete photos that no recipe uses any more.
+
+        Only images uploaded by Rezeptbox are touched, so profile photos and
+        images from other integrations are never removed.
+        """
+        uploads = self.hass.data.get("image_upload")
+        if uploads is None:
+            return {"removed": 0, "kept": 0, "available": False}
+
+        referenced = self._referenced_image_ids()
+        removed: list[str] = []
+        kept = 0
+        for image_id in sorted(self._owned_image_ids()):
+            if image_id in referenced:
+                kept += 1
+                continue
+            try:
+                await uploads.async_delete_item(image_id)
+            except Exception as err:  # noqa: BLE001 - private API may change
+                _LOGGER.debug("Could not delete unused photo %s: %s", image_id, err)
+                continue
+            removed.append(image_id)
+
+        if removed:
+            self.photos = [
+                item for item in self.photos if item not in removed
+            ]
+            await self._async_save()
+        return {
+            "removed": len(removed),
+            "kept": kept,
+            "available": True,
+        }
 
     async def async_add_group(self, name: str) -> list[str]:
         """Create a group even before a recipe is assigned to it."""
@@ -428,6 +505,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
                 "plan": self.plan,
                 "status": self.status,
                 "groups": self.groups,
+                "photos": self.photos,
             }
         )
 

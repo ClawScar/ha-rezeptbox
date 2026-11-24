@@ -114,7 +114,11 @@ const run = async () => {
   assert.equal(state.uploads[0].method, "POST");
   assert.equal(state.uploads[0].path, "image/upload");
   assert.equal(state.uploads[0].form.entries.length, 1);
-  assert.equal(state.uploads[0].form.entries[0][2], "Omas-Karte.jpg");
+  assert.equal(
+    state.uploads[0].form.entries[0][2],
+    "rezeptbox-Omas-Karte.jpg",
+    "the upload name marks the photo as ours"
+  );
   assert.equal(url, "/api/image/serve/abc123/original");
 
   // 3. Saving a manual recipe forwards the uploaded photo as image_url.
@@ -281,7 +285,22 @@ const run = async () => {
   assert.equal(picker.disabled, false, "the picker is enabled again");
   assert.equal(picker.value, "", "the same file can be chosen again");
 
-  console.log("card_photo_test: 11 checks passed");
+  // 12. The cleanup button reports what it did.
+  const cleanup = makeCard();
+  await cleanup._cleanupPhotos();
+  assert.equal(state.calls[0].service, "cleanup_recipe_images");
+  assert.match(state.notifications[0], /Keine verwaisten Fotos gefunden/);
+
+  // 13. Removed photos are counted in the message.
+  const cleaning = makeCard();
+  cleaning._hass.callService = async (domain, service) => {
+    state.calls.push({ domain, service });
+    return { removed: 2, kept: 1, available: true };
+  };
+  await cleaning._cleanupPhotos();
+  assert.match(state.notifications[0], /2 Fotos aufgeräumt/);
+
+  console.log("card_photo_test: 13 checks passed");
 };
 
 run().catch((error) => {

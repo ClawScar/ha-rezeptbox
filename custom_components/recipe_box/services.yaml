@@ -79,6 +79,9 @@ set_recipe_image:
           integration: recipe_box
           domain: sensor
 
+cleanup_recipe_images:
+  fields: {}
+
 remove_recipe:
   fields:
     url:

@@ -33,6 +33,23 @@ class DurationTest(unittest.TestCase):
         self.assertEqual(recipe_parser.parse_duration(30), 30)
 
 
+class ImageIdTest(unittest.TestCase):
+    def test_image_ids(self) -> None:
+        image = "0123456789abcdef0123456789abcdef"
+        self.assertEqual(
+            recipe_parser.image_id_from_url(f"/api/image/serve/{image}/original"),
+            image,
+        )
+        self.assertEqual(
+            recipe_parser.image_id_from_url(f"/api/image/serve/{image}/512x512"),
+            image,
+        )
+        self.assertEqual(
+            recipe_parser.image_id_from_url("https://example.com/a.jpg"), ""
+        )
+        self.assertEqual(recipe_parser.image_id_from_url(None), "")
+
+
 class ServingsTest(unittest.TestCase):
     def test_servings(self) -> None:
         self.assertEqual(recipe_parser.parse_servings("4 Portionen"), 4)

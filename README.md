@@ -45,7 +45,7 @@ Einkaufsliste.
 - **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
 - **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
-- **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt
+- **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt; nicht mehr benötigte Fotos räumt **Fotos aufräumen** im Tab **Daten** weg
 - **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
 - **Sicherung**: alle Rezepte und den Wochenplan als JSON herunterladen und wieder einlesen
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
@@ -219,6 +219,15 @@ gespeicherten eigenen Rezept stehen in der Detailansicht **Foto ändern** und
 umwandeln; die Karte weist dann darauf hin, das Foto als JPG zu speichern oder
 direkt mit der Handy-Kamera aufzunehmen.
 
+Unter **Fotos** im Tab **Daten** entfernt **Fotos aufräumen** die Bilder eigener
+Rezepte, die zu keinem Rezept mehr gehören – etwa nach dem Löschen eines
+Rezepts oder nach dem Ersetzen eines Fotos. Die Rezeptbox löscht dabei nur
+Bilder, die sie selbst hochgeladen hat (erkennbar am Namenspräfix
+`rezeptbox-` und an einer internen Liste); Profilfotos und Bilder anderer
+Integrationen bleiben unangetastet. Fotos aus Versionen vor 2.4.2, deren
+Rezept längst gelöscht wurde, lassen sich nicht sicher zuordnen und bleiben
+deshalb liegen.
+
 Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
 **Woche auf die Einkaufsliste**).
 
@@ -359,6 +368,13 @@ Setzt oder entfernt das Foto eines **eigenen** Rezepts (angelegt mit
 späteres Aktualisieren es sonst wieder überschreiben würde. Die Karte nutzt
 denselben Service für **Foto ändern** und **Foto entfernen** in der
 Detailansicht.
+
+### `recipe_box.cleanup_recipe_images`
+
+Entfernt ohne Felder alle Fotos eigener Rezepte, die kein Rezept mehr
+verwendet. Antwortet mit `removed`, `kept` und `available` (letzteres ist
+`false`, wenn der Bild-Upload in Home Assistant nicht aktiv ist). Die Karte
+nutzt denselben Service für **Fotos aufräumen** im Tab **Daten**.
 
 ### `recipe_box.refresh_recipe`
 

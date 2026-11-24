@@ -65,6 +65,7 @@ from .const import (
     SERVICE_RENAME_GROUP,
     SERVICE_SET_GROUPS,
     SERVICE_SET_RECIPE_IMAGE,
+    SERVICE_CLEANUP_RECIPE_IMAGES,
 )
 from .coordinator import RecipeHub, normalize_group_names
 from .frontend import (
@@ -160,6 +161,8 @@ SET_RECIPE_IMAGE_SCHEMA = vol.All(
     ),
     cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
 )
+
+CLEANUP_IMAGES_SCHEMA = vol.Schema({})
 
 GROUP_SCHEMA = vol.Schema({vol.Required(ATTR_GROUP): cv.string})
 
@@ -310,6 +313,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_SET_RECIPE_IMAGE,
             partial(_async_set_recipe_image, hass),
             schema=SET_RECIPE_IMAGE_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_CLEANUP_RECIPE_IMAGES):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CLEANUP_RECIPE_IMAGES,
+            partial(_async_cleanup_recipe_images, hass),
+            schema=CLEANUP_IMAGES_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -746,6 +758,16 @@ async def _async_set_recipe_image(
         "url": source_url,
         "image_url": image_url,
     }
+
+
+async def _async_cleanup_recipe_images(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Delete photos of own recipes that are no longer used."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+    return await hub.async_cleanup_images()
 
 
 async def _async_refresh_recipe(

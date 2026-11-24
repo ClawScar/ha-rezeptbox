@@ -209,6 +209,10 @@
         }
       }
     },
+    "cleanup_recipe_images": {
+      "name": "Rezeptfotos aufräumen",
+      "description": "Entfernt Fotos eigener Rezepte, die zu keinem Rezept mehr gehören. Fremde Bilder und Profilfotos bleiben unangetastet."
+    },
     "add_group": {
       "name": "Gruppe anlegen",
       "description": "Legt eine Gruppe in der Rezeptbox an, auch ohne zugewiesene Rezepte.",

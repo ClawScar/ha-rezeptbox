@@ -209,6 +209,10 @@
         }
       }
     },
+    "cleanup_recipe_images": {
+      "name": "Clean up recipe photos",
+      "description": "Removes photos of own recipes that no recipe uses any more. Images from other integrations and profile photos stay untouched."
+    },
     "add_group": {
       "name": "Create a group",
       "description": "Creates a group in the recipe box, even before a recipe is assigned to it.",
