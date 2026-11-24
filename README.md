@@ -159,7 +159,7 @@ Button **Zutaten auf die Liste**, der den Service aufruft.
 
 Über der Zutatenliste sitzt die Portionssteuerung **− 4 Portionen +**. Jeder
 Klick rechnet die Mengen sofort um; der Chip oben zeigt die gewählte
-Portionszahl. Einheiten und gängige Zutaten werden dabei mitpluralisiert („1 Prise“ → „2 Prisen“, „1 Glas“ → „2 Gläser“, „1 Zwiebel“ → „2 Zwiebeln“, „1 ganzer Apfel“ → „2 ganze Äpfel“, „1 Zwiebel rot“ → „2 Zwiebeln rot“); Rezepttitel, Markennamen und der Rest der Zutatenzeile bleiben unberührt. Ohne Änderung bleibt der Originaltext samt Bruchschreibweise erhalten. Der Button **Zutaten auf die Liste** übernimmt genau diese
+Portionszahl. Einheiten und gängige Zutaten werden dabei mitpluralisiert („1 Prise“ → „2 Prisen“, „1 Glas“ → „2 Gläser“, „1 Zwiebel“ → „2 Zwiebeln“, „1 ganzer Apfel“ → „2 ganze Äpfel“, „1 Zwiebel rot“ → „2 Zwiebeln rot“); Rezepttitel, Markennamen und der Rest der Zutatenzeile bleiben unberührt. Beim Verringern der Portionen geht es mit dem Genus der Zutat zurück in den Singular („2 ganze Äpfel“ → „1 ganzer Apfel“, „2 große Zwiebeln“ → „1 große Zwiebel“, „2 kleine Eier“ → „1 kleines Ei“). Ohne Änderung bleibt der Originaltext samt Bruchschreibweise erhalten. Der Button **Zutaten auf die Liste** übernimmt genau diese
 Mengen in die Einkaufsliste. Die Umrechnung ist nur eine Anzeige – das
 importierte Rezept selbst bleibt unverändert.
 

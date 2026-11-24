@@ -20,7 +20,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "1.3.3";
+const CARD_VERSION = "1.3.4";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -195,6 +195,51 @@ const INGREDIENT_SINGULARS = Object.fromEntries(
   Object.entries(INGREDIENT_PLURALS).map(([singular, plural]) => [plural, singular])
 );
 
+// Grammatical gender of the known ingredient nouns (m, f, n). It decides the
+// strong adjective ending when portions shrink back to the singular
+// ("2 ganze Äpfel" -> "1 ganzer Apfel", "2 kleine Eier" -> "1 kleines Ei").
+const INGREDIENT_GENDERS = {
+  "ei": "n",
+  "zwiebel": "f",
+  "tomate": "f",
+  "kartoffel": "f",
+  "karotte": "f",
+  "möhre": "f",
+  "gurke": "f",
+  "schote": "f",
+  "schalotte": "f",
+  "zehe": "f",
+  "apfel": "m",
+  "birne": "f",
+  "banane": "f",
+  "zitrone": "f",
+  "limette": "f",
+  "orange": "f",
+  "beere": "f",
+  "kirsche": "f",
+  "pflaume": "f",
+  "pfirsich": "m",
+  "aprikose": "f",
+  "dattel": "f",
+  "feige": "f",
+  "aubergine": "f",
+  "kürbis": "m",
+  "rübe": "f",
+  "pastinake": "f",
+  "pilz": "m",
+  "champignon": "m",
+  "olive": "f",
+  "erbse": "f",
+  "bohne": "f",
+  "linse": "f",
+  "mandel": "f",
+  "nuss": "f",
+  "semmel": "f",
+  "filet": "n",
+  "steak": "n",
+  "chili": "m",
+};
+
 const matchWordCase = (source, replacement) =>
   source[0] === source[0].toUpperCase()
     ? replacement[0].toUpperCase() + replacement.slice(1)
@@ -205,36 +250,52 @@ const replaceWordEnding = (word, ending, replacement) => {
   return `${word.slice(0, start)}${matchWordCase(word.slice(start), replacement)}`;
 };
 
-const inflectedWord = (word, plural) => {
+const matchingForm = (word, plural) => {
   const key = word.toLowerCase();
   const forms = plural ? INGREDIENT_PLURALS : INGREDIENT_SINGULARS;
   for (const [ending, replacement] of Object.entries(forms)) {
     if (key === ending || (ending.length >= 4 && key.endsWith(ending))) {
-      return replaceWordEnding(word, ending, replacement);
+      return { ending, replacement };
     }
   }
   return null;
 };
 
-// Strong adjective endings that become a plain "-e" in the plural.
-const STRONG_ADJECTIVE_ENDINGS = ["er", "es", "en", "em"];
+const inflectedWord = (word, plural) => {
+  const form = matchingForm(word, plural);
+  return form ? replaceWordEnding(word, form.ending, form.replacement) : null;
+};
 
-const pluralizeModifier = (text, modifier) => {
+const ingredientGender = (word, plural) => {
+  const form = matchingForm(word, plural);
+  if (!form) return null;
+  return INGREDIENT_GENDERS[plural ? form.ending : form.replacement] || null;
+};
+
+// Strong adjective endings; in the plural they all become a plain "-e".
+const STRONG_ADJECTIVE_ENDINGS = ["er", "es", "en", "em"];
+const MODIFIER_ENDINGS = ["e", "er", "es", "en", "em"];
+const GENDER_ENDINGS = { m: "er", f: "e", n: "es" };
+
+const inflectModifier = (text, modifier, ending) => {
   const word = modifier[0];
   if (
     word.length < 4 ||
     word[0] !== word[0].toLowerCase() ||
-    !STRONG_ADJECTIVE_ENDINGS.some((ending) => word.endsWith(ending)) ||
-    !/^\p{L}+$/u.test(word.slice(0, -2))
+    !MODIFIER_ENDINGS.some((suffix) => word.endsWith(suffix))
   ) {
     return text;
   }
+  const strong = STRONG_ADJECTIVE_ENDINGS.some((suffix) => word.endsWith(suffix));
+  const stem = word.slice(0, strong ? -2 : -1);
+  if (!/^\p{L}+$/u.test(stem)) return text;
   const rest = text.slice(modifier.index + word.length);
-  return `${text.slice(0, modifier.index)}${word.slice(0, -2)}e${rest}`;
+  return `${text.slice(0, modifier.index)}${stem}${ending}${rest}`;
 };
 
 // The noun may stand alone ("Zwiebel"), at the end of a phrase with an
 // adjective ("ganzer Apfel") or in front of a qualifier ("Zwiebel rot").
+// The adjective follows the noun's gender when portions shrink again.
 const inflectName = (name, plural) => {
   let headEnd = name.length;
   for (const separator of [",", ";", "("]) {
@@ -250,7 +311,14 @@ const inflectName = (name, plural) => {
     const text = `${name.slice(0, word.index)}${inflected}${name.slice(
       word.index + word[0].length
     )}`;
-    return plural && index ? pluralizeModifier(text, words[index - 1]) : text;
+    if (!index) return text;
+    let ending = "e";
+    if (!plural) {
+      const gender = ingredientGender(word[0], false);
+      if (!gender) return text;
+      ending = GENDER_ENDINGS[gender];
+    }
+    return inflectModifier(text, words[index - 1], ending);
   }
   return name;
 };

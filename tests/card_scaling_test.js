@@ -72,6 +72,21 @@ const cases = [
   ["2 Eier", 0.25, "0,5 Ei"],
   ["4 Zwiebeln", 0.5, "2 Zwiebeln"],
   ["1 Dose Tomaten", 0.5, "0,5 Dose Tomaten"],
+  // Gender decides the adjective ending when portions shrink again.
+  ["2 ganze Äpfel", 0.5, "1 ganzer Apfel"],
+  ["2 große Zwiebeln", 0.5, "1 große Zwiebel"],
+  ["2 kleine Eier", 0.5, "1 kleines Ei"],
+  ["2 ganze Tomaten", 0.5, "1 ganze Tomate"],
+  ["2 frische Gurken", 0.5, "1 frische Gurke"],
+  ["2 große Kartoffeln", 0.5, "1 große Kartoffel"],
+  ["4 ganze Äpfel", 0.25, "1 ganzer Apfel"],
+  ["2 große Steaks", 0.5, "1 großes Steak"],
+  ["2 große Gemüsezwiebeln", 0.5, "1 große Gemüsezwiebel"],
+  ["2 ganze Hokkaido-Kürbisse", 0.5, "1 ganzer Hokkaido-Kürbis"],
+  ["1 große Melone", 2, "2 große Melone"],
+  ["1 Blumenkohl", 2, "2 Blumenkohl"],
+  ["2 ganze Äpfel", 2, "4 ganze Äpfel"],
+  ["1 ganzer Apfel", 0.5, "0,5 ganzer Apfel"],
 ];
 
 for (const [text, factor, expected] of cases) {

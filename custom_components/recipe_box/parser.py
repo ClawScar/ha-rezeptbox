@@ -167,6 +167,51 @@ INGREDIENT_SINGULARS = {
     plural: singular for singular, plural in INGREDIENT_PLURALS.items()
 }
 
+# Grammatical gender of the known ingredient nouns (m, f, n). It decides the
+# strong adjective ending when portions shrink back to the singular
+# ("2 ganze Äpfel" -> "1 ganzer Apfel", "2 kleine Eier" -> "1 kleines Ei").
+INGREDIENT_GENDERS = {
+    "ei": "n",
+    "zwiebel": "f",
+    "tomate": "f",
+    "kartoffel": "f",
+    "karotte": "f",
+    "möhre": "f",
+    "gurke": "f",
+    "schote": "f",
+    "schalotte": "f",
+    "zehe": "f",
+    "apfel": "m",
+    "birne": "f",
+    "banane": "f",
+    "zitrone": "f",
+    "limette": "f",
+    "orange": "f",
+    "beere": "f",
+    "kirsche": "f",
+    "pflaume": "f",
+    "pfirsich": "m",
+    "aprikose": "f",
+    "dattel": "f",
+    "feige": "f",
+    "aubergine": "f",
+    "kürbis": "m",
+    "rübe": "f",
+    "pastinake": "f",
+    "pilz": "m",
+    "champignon": "m",
+    "olive": "f",
+    "erbse": "f",
+    "bohne": "f",
+    "linse": "f",
+    "mandel": "f",
+    "nuss": "f",
+    "semmel": "f",
+    "filet": "n",
+    "steak": "n",
+    "chili": "m",
+}
+
 UNICODE_FRACTIONS = {
     "½": "1/2",
     "¼": "1/4",
@@ -488,33 +533,50 @@ def _replace_word_ending(word: str, ending: str, replacement: str) -> str:
     return f"{word[:start]}{_match_word_case(word[start:], replacement)}"
 
 
-def _inflected_word(word: str, plural: bool) -> str | None:
-    """Return ``word`` in singular or plural, or ``None`` if it is unknown."""
+def _matching_form(word: str, plural: bool) -> tuple[str, str] | None:
+    """Return the matching dictionary entry for ``word``, if there is one."""
     key = word.lower()
     forms = INGREDIENT_PLURALS if plural else INGREDIENT_SINGULARS
     for ending, replacement in forms.items():
         if key == ending or (len(ending) >= 4 and key.endswith(ending)):
-            return _replace_word_ending(word, ending, replacement)
+            return ending, replacement
     return None
 
 
-# Strong adjective endings that become a plain ``-e`` in the plural.
+def _inflected_word(word: str, plural: bool) -> str | None:
+    """Return ``word`` in singular or plural, or ``None`` if it is unknown."""
+    match = _matching_form(word, plural)
+    if match is None:
+        return None
+    return _replace_word_ending(word, *match)
+
+
+def ingredient_gender(word: str, plural: bool = False) -> str | None:
+    """Return ``m``, ``f`` or ``n`` for a known ingredient noun."""
+    match = _matching_form(word, plural)
+    if match is None:
+        return None
+    ending, replacement = match
+    return INGREDIENT_GENDERS.get(ending if plural else replacement)
+
+
+# Strong adjective endings; in the plural they all become a plain ``-e``.
 STRONG_ADJECTIVE_ENDINGS = ("er", "es", "en", "em")
+MODIFIER_ENDINGS = ("e", "er", "es", "en", "em")
+GENDER_ENDINGS = {"m": "er", "f": "e", "n": "es"}
 
 _WORD_RE = re.compile(r"\S+")
 
 
-def _pluralize_modifier(text: str, modifier: re.Match[str]) -> str:
-    """Give a lowercase adjective in front of the noun its plural ``-e``."""
+def _inflect_modifier(text: str, modifier: re.Match[str], ending: str) -> str:
+    """Give a lowercase adjective in front of the noun the ``ending``."""
     word = modifier.group()
-    if (
-        len(word) < 4
-        or not word[:1].islower()
-        or not word.endswith(STRONG_ADJECTIVE_ENDINGS)
-        or not word[:-2].isalpha()
-    ):
+    if len(word) < 4 or not word[:1].islower() or not word.endswith(MODIFIER_ENDINGS):
         return text
-    return f"{text[:modifier.start()]}{word[:-2]}e{text[modifier.end():]}"
+    stem = word[:-2] if word.endswith(STRONG_ADJECTIVE_ENDINGS) else word[:-1]
+    if not stem.isalpha():
+        return text
+    return f"{text[:modifier.start()]}{stem}{ending}{text[modifier.end():]}"
 
 
 def _inflect_ingredient_name(name: str, plural: bool) -> str:
@@ -522,6 +584,8 @@ def _inflect_ingredient_name(name: str, plural: bool) -> str:
 
     The noun may stand alone ("Zwiebel"), at the end of a phrase with an
     adjective ("ganzer Apfel") or in front of a qualifier ("Zwiebel rot").
+    An adjective in front uses the gender of the noun, so shrinking portions
+    gives "1 ganzer Apfel" and "1 kleines Ei" instead of a bare "-e".
     """
     head_end = len(name)
     for separator in (",", ";", "("):
@@ -535,9 +599,15 @@ def _inflect_ingredient_name(name: str, plural: bool) -> str:
         if inflected is None:
             continue
         text = f"{name[:word.start()]}{inflected}{name[word.end():]}"
-        if plural and index:
-            text = _pluralize_modifier(text, words[index - 1])
-        return text
+        if not index:
+            return text
+        ending = "e"
+        if not plural:
+            gender = ingredient_gender(word.group())
+            if gender is None:
+                return text
+            ending = GENDER_ENDINGS[gender]
+        return _inflect_modifier(text, words[index - 1], ending)
     return name
 
 

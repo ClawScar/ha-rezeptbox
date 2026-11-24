@@ -107,12 +107,17 @@ class FilesTest(unittest.TestCase):
         parser_source = (COMPONENT / "parser.py").read_text("utf-8")
         card_source = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
 
-        tables = table(parser_source, "INGREDIENT_PLURALS = {")
-        self.assertIn("ei", tables)
-        self.assertIn("zwiebel", tables)
+        plurals = table(parser_source, "INGREDIENT_PLURALS = {")
+        self.assertIn("ei", plurals)
+        self.assertIn("zwiebel", plurals)
         self.assertEqual(
-            tables, table(card_source, "const INGREDIENT_PLURALS = {")
+            plurals, table(card_source, "const INGREDIENT_PLURALS = {")
         )
+
+        genders = table(parser_source, "INGREDIENT_GENDERS = {")
+        self.assertEqual(genders, table(card_source, "const INGREDIENT_GENDERS = {"))
+        self.assertEqual(set(genders), set(plurals))
+        self.assertTrue(all(value in {"m", "f", "n"} for value in genders.values()))
 
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")

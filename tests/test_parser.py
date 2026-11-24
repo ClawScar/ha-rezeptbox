@@ -220,6 +220,33 @@ class IngredientStructureTest(unittest.TestCase):
         )
         self.assertEqual(scaled("1 Tomate am Stiel", 2), "2 Tomaten am Stiel")
 
+    def test_gender_aware_singular_modifiers(self) -> None:
+        def scaled(text: str, factor: float) -> str:
+            return recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text(text), factor
+            )
+
+        self.assertEqual(scaled("2 ganze Äpfel", 0.5), "1 ganzer Apfel")
+        self.assertEqual(scaled("2 große Zwiebeln", 0.5), "1 große Zwiebel")
+        self.assertEqual(scaled("2 kleine Eier", 0.5), "1 kleines Ei")
+        self.assertEqual(scaled("2 ganze Tomaten", 0.5), "1 ganze Tomate")
+        self.assertEqual(scaled("2 frische Gurken", 0.5), "1 frische Gurke")
+        self.assertEqual(scaled("2 große Kartoffeln", 0.5), "1 große Kartoffel")
+        self.assertEqual(scaled("4 ganze Äpfel", 0.25), "1 ganzer Apfel")
+        self.assertEqual(scaled("2 große Steaks", 0.5), "1 großes Steak")
+        self.assertEqual(
+            scaled("2 große Gemüsezwiebeln", 0.5), "1 große Gemüsezwiebel"
+        )
+        self.assertEqual(
+            scaled("2 ganze Hokkaido-Kürbisse", 0.5), "1 ganzer Hokkaido-Kürbis"
+        )
+        # Unknown nouns stay as they are instead of inventing a plural.
+        self.assertEqual(scaled("1 große Melone", 2), "2 große Melone")
+        self.assertEqual(scaled("1 Blumenkohl", 2), "2 Blumenkohl")
+        # Increasing portions keeps working.
+        self.assertEqual(scaled("2 ganze Äpfel", 2), "4 ganze Äpfel")
+        self.assertEqual(scaled("1 ganzer Apfel", 0.5), "0,5 ganzer Apfel")
+
     def test_phrases_without_ingredient_noun_stay_unchanged(self) -> None:
         def scaled(text: str, factor: float) -> str:
             return recipe_parser.scale_ingredient(
