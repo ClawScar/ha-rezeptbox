@@ -26,6 +26,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     ATTR_DATE,
     ATTR_EXCLUDE,
+    ATTR_GROUPS,
     ATTR_IMAGE_URL,
     ATTR_INGREDIENTS,
     ATTR_INGREDIENTS_STRUCTURED,
@@ -54,6 +55,7 @@ from .const import (
     SERVICE_PLAN_RECIPE,
     SERVICE_REFRESH_RECIPE,
     SERVICE_REMOVE_RECIPE,
+    SERVICE_SET_GROUPS,
 )
 from .coordinator import RecipeHub
 from .frontend import (
@@ -127,6 +129,17 @@ PLAN_RECIPE_SCHEMA = vol.All(
 )
 
 CLEAR_MEAL_PLAN_SCHEMA = vol.Schema({vol.Optional(ATTR_DATE): cv.date})
+
+SET_GROUPS_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Required(ATTR_GROUPS): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+)
 
 IMPORT_RECIPES_SCHEMA = vol.Schema(
     {
@@ -240,6 +253,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_CLEAR_MEAL_PLAN,
             partial(_async_clear_meal_plan, hass),
             schema=CLEAR_MEAL_PLAN_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_GROUPS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_GROUPS,
+            partial(_async_set_groups, hass),
+            schema=SET_GROUPS_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -713,3 +735,35 @@ async def _async_clear_meal_plan(
     date = call.data.get(ATTR_DATE)
     await hub.async_clear_plan(str(date) if date else None)
     return {"cleared": str(date) if date else "all"}
+
+
+def _normalize_groups(groups: list[str]) -> list[str]:
+    """Trim, shorten and de-duplicate group names."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in groups:
+        name = clean_text(value)[:40].strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(name)
+    return result[:20]
+
+
+async def _async_set_groups(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Replace the groups a recipe belongs to."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
+    groups = _normalize_groups(
+        [str(item) for item in call.data.get(ATTR_GROUPS) or []]
+    )
+    await hub.async_set_groups(source_url, groups)
+    return {"title": recipe.title, "url": source_url, "groups": groups}

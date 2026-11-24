@@ -168,6 +168,18 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         await self.async_add_recipe(recipe)
         return recipe
 
+    async def async_set_groups(
+        self, source_url: str, groups: list[str]
+    ) -> Recipe | None:
+        """Replace the groups a recipe belongs to."""
+        recipe = self.recipes.get(source_url)
+        if recipe is None:
+            return None
+        recipe.groups = list(groups)
+        await self._async_save()
+        self.async_update_listeners()
+        return recipe
+
     async def async_refresh_recipe(self, source_url: str) -> Recipe:
         """Reload a single recipe from its source page."""
         try:
@@ -178,6 +190,10 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             self.async_update_listeners()
             raise
 
+        current = self.recipes.get(recipe.source_url)
+        if current is not None:
+            # Groups belong to the user, a refresh only replaces the page data.
+            recipe.groups = list(current.groups)
         self.data = {**self.recipes, recipe.source_url: recipe}
         self._set_status(recipe.source_url, None)
         await self._async_save()
@@ -274,7 +290,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         for url in urls:
             cached = self.recipes.get(url)
             try:
-                updated[url] = await async_scrape_recipe(self.hass, url)
+                recipe = await async_scrape_recipe(self.hass, url)
             except RecipeError as err:
                 self._set_status(url, err.code)
                 if cached is not None:
@@ -289,6 +305,9 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
                         "Could not load recipe %s (%s)", url, err.code
                     )
             else:
+                if cached is not None:
+                    recipe.groups = list(cached.groups)
+                updated[url] = recipe
                 self._set_status(url, None)
 
         if not updated:

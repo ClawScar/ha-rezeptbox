@@ -429,5 +429,21 @@ class ChefkochTest(unittest.TestCase):
             recipe_parser.recipe_from_chefkoch({}, "https://www.chefkoch.de/x")
 
 
+class RecipeGroupsTest(unittest.TestCase):
+    def test_groups_roundtrip(self) -> None:
+        recipe = recipe_parser.Recipe(
+            title="Apfelkuchen", source_url="https://example.com/kuchen"
+        )
+        self.assertEqual(recipe.groups, [])
+
+        recipe.groups = ["Familie", "Backen"]
+        self.assertEqual(recipe.as_dict()["groups"], ["Familie", "Backen"])
+        restored = recipe_parser.Recipe.from_dict(recipe.as_dict())
+        self.assertEqual(restored.groups, ["Familie", "Backen"])
+        self.assertEqual(
+            recipe.as_attributes()["groups"], ["Familie", "Backen"]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

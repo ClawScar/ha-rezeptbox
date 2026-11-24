@@ -267,6 +267,7 @@ class Recipe:
     ingredients_structured: list[dict[str, Any]] = field(default_factory=list)
     instructions: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
     cuisine: str = ""
     category: str = ""
     difficulty: str = ""
@@ -302,6 +303,7 @@ class Recipe:
             "ingredients_structured": self.ingredients_structured,
             "instructions": self.instructions,
             "tags": self.tags,
+            "groups": self.groups,
             "cuisine": self.cuisine,
             "category": self.category,
             "difficulty": self.difficulty,

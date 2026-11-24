@@ -43,6 +43,7 @@ Einkaufsliste.
 - **Einkaufsliste ohne Dubletten**: gleiche Zutaten werden zusammengerechnet („2 Zwiebeln“ + „3 Zwiebeln“ → „5 Zwiebeln“, 500 g + 500 g → 1 kg), auch über mehrere Rezepte hinweg
 - **Nur fehlende Zutaten**: abgehakte Zutaten bleiben auf Wunsch von der Einkaufsliste
 - **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
+- **Gruppen**: Rezepte eigenen Gruppen wie „Familie“ oder „Backen“ zuweisen, die Liste nach Gruppe filtern und Zuweisungen im Rezept wieder entfernen
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service
 - **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
@@ -166,11 +167,17 @@ Die Karte ist in drei Tabs aufgeteilt: **Rezepte**, **Daten** und
 Die Karte merkt sich im Browser den zuletzt geöffneten Tab und startet nach
 einem Neuladen dort wieder.
 
-Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
-Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der
-aktuellen Auswahl. Rechts neben jedem Eintrag entfernt der Papierkorb das
-Rezept – der erste Klick fragt mit **Löschen?** nach, der zweite löscht
-endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
+Der Tab **Rezepte** zeigt die Liste: Suchfeld, Gruppen- und Tag-Auswahl,
+Zeitfilter und Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges
+Rezept aus der aktuellen Auswahl. Rechts neben jedem Eintrag entfernt der
+Papierkorb das Rezept – der erste Klick fragt mit **Löschen?** nach, der zweite
+löscht endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
+
+Gruppen legt man direkt am Rezept an: In der Detailansicht unter **Gruppen**
+einen Namen eintippen (bestehende Namen schlägt das Feld vor) und
+**Hinzufügen** drücken. Das × am Gruppen-Chip nimmt das Rezept wieder heraus.
+Eine neue Gruppe entsteht beim ersten Zuweisen, in der Liste erscheint sie als
+Filter **Alle Gruppen**.
 
 Im Tab **Daten** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
 **Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Darunter
@@ -345,6 +352,19 @@ Liest eine Sicherung wieder ein und antwortet mit `imported` und `failed`.
 Der Plan liegt im Speicher der Integration und ist über
 `sensor.rezeptbox_wochenplan` verfügbar; die Karte zeigt die nächsten sieben
 Tage und kann die ganze Woche auf die Einkaufsliste übernehmen.
+
+### `recipe_box.set_groups`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `groups` | ja | Alle Gruppen des Rezepts, z. B. `["Familie", "Backen"]`; eine leere Liste entfernt alle |
+| `entity_id` oder `url` | eins von beiden | Rezept-Sensor oder Quelladresse |
+
+Setzt die Gruppenzugehörigkeit eines Rezepts neu. Gruppen sind frei wählbare
+Namen und entstehen beim ersten Zuweisen; sie stehen am Rezept-Sensor im
+Attribut `groups`. Die Karte nutzt denselben Service für **Gruppen** in der
+Detailansicht. Gruppen werden mit exportiert und beim Einlesen einer Sicherung
+wiederhergestellt.
 
 ## Unterstützte Seiten
 

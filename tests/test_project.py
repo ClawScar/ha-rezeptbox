@@ -186,6 +186,33 @@ class FilesTest(unittest.TestCase):
         self.assertNotIn('<details class="manual">', card)
         self.assertNotIn('<details class="plan">', card)
 
+    def test_recipe_groups(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        for marker in (
+            "recipeGroups",
+            "allGroups",
+            "filter-group",
+            "group-add-button",
+            "group-remove",
+            "set_groups",
+        ):
+            self.assertIn(marker, card)
+
+        services = (COMPONENT / "services.yaml").read_text("utf-8")
+        self.assertIn("set_groups:", services)
+
+        for name in (
+            "strings.json",
+            "translations/de.json",
+            "translations/en.json",
+        ):
+            data = json.loads((COMPONENT / name).read_text("utf-8"))
+            self.assertIn("set_groups", data["services"])
+            self.assertIn("groups", data["services"]["set_groups"]["fields"])
+
+        const = (COMPONENT / "const.py").read_text("utf-8")
+        self.assertIn('SERVICE_SET_GROUPS = "set_groups"', const)
+
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")
         self.assertNotIn("CONF_URL", content)

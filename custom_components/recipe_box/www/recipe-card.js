@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.0.3";
+const CARD_VERSION = "2.1.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -648,6 +648,15 @@ const weekDays = (count = 7) => {
 };
 
 const filterBarHtml = (entries, filter) => {
+  const groups = allGroups(entries);
+  const groupOptions = groups
+    .map(
+      (group) =>
+        `<option value="${escapeHtml(group)}"${
+          filter.group === group ? " selected" : ""
+        }>${escapeHtml(group)}</option>`
+    )
+    .join("");
   const tags = [
     ...new Set(
       entries.flatMap(({ state }) =>
@@ -667,6 +676,11 @@ const filterBarHtml = (entries, filter) => {
     <input class="filter-search" type="search" placeholder="Rezepte durchsuchen" value="${escapeHtml(
       filter.query
     )}">
+    ${
+      groups.length
+        ? `<select class="filter-group"><option value="">Alle Gruppen</option>${groupOptions}</select>`
+        : ""
+    }
     ${
       tags.length
         ? `<select class="filter-tag"><option value="">Alle Tags</option>${tagOptions}</select>`
@@ -839,6 +853,42 @@ const tagsHtml = (attributes) => {
     .join("")}</div>`;
 };
 
+const recipeGroups = (state) => {
+  const groups = ((state && state.attributes) || {}).groups;
+  return Array.isArray(groups)
+    ? groups.map((group) => String(group)).filter(Boolean)
+    : [];
+};
+
+const allGroups = (entries) =>
+  [...new Set(entries.flatMap(({ state }) => recipeGroups(state)))].sort(
+    (first, second) => first.localeCompare(second, "de")
+  );
+
+const groupsEditorHtml = (attributes, meta, knownGroups) => {
+  if (meta.forPrint || !meta.entityId) return "";
+  const current = recipeGroups({ attributes });
+  const chips = current
+    .map(
+      (group) =>
+        `<span class="group-chip">${escapeHtml(group)}<button class="group-remove" type="button" data-group="${escapeHtml(group)}" title="Aus der Gruppe entfernen" aria-label="${escapeHtml(group)} entfernen">×</button></span>`
+    )
+    .join("");
+  const options = knownGroups
+    .filter((group) => !current.includes(group))
+    .map((group) => `<option value="${escapeHtml(group)}"></option>`)
+    .join("");
+  return `<div class="section groups-editor">
+    <h3>Gruppen</h3>
+    ${chips ? `<div class="group-chips">${chips}</div>` : ""}
+    <div class="group-add">
+      <input class="group-input" type="text" list="recipe-group-options" placeholder="Gruppe, z. B. Familie" maxlength="40">
+      <datalist id="recipe-group-options">${options}</datalist>
+      <button class="group-add-button" type="button">Hinzufügen</button>
+    </div>
+  </div>`;
+};
+
 const ingredientRow = (item, checked, factor) => {
   const key = String(item.text || ingredientText(item));
   const text = scaleIngredient(item, factor);
@@ -959,6 +1009,7 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       ${chipsHtml(attributes, chosenServings)}
       ${description}
       ${tagsHtml(attributes)}
+      ${groupsEditorHtml(attributes, meta, Array.isArray(meta.groups) ? meta.groups : [])}
       ${updateHintHtml(attributes)}
       ${ingredients ? `<div class="section"><h3>Zutaten</h3>${servingsControl}${ingredients}</div>` : ""}
       ${nutritionHtml(attributes)}
@@ -1185,6 +1236,64 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
     });
   }
 
+  const groupAdd = root.querySelector("button.group-add-button");
+  if (groupAdd && hass) {
+    const addGroup = async () => {
+      const input = root.querySelector("input.group-input");
+      const name = String((input && input.value) || "").trim();
+      if (!name) return;
+      const current = recipeGroups(options.state);
+      if (current.some((group) => group.toLowerCase() === name.toLowerCase())) {
+        if (input) input.value = "";
+        return;
+      }
+      groupAdd.disabled = true;
+      try {
+        await hass.callService("recipe_box", "set_groups", {
+          entity_id: entityId,
+          groups: [...current, name],
+        });
+        if (input) input.value = "";
+        notify(dispatcher, `Gruppe zugewiesen: ${name}`);
+      } catch (error) {
+        notify(dispatcher, `Gruppe: ${error.message || error.code || error}`);
+      } finally {
+        groupAdd.disabled = false;
+      }
+    };
+    groupAdd.addEventListener("click", addGroup);
+    const input = root.querySelector("input.group-input");
+    if (input) {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          addGroup();
+        }
+      });
+    }
+  }
+
+  root.querySelectorAll("button.group-remove").forEach((removeButton) => {
+    removeButton.addEventListener("click", async () => {
+      if (!hass) return;
+      const name = removeButton.getAttribute("data-group") || "";
+      const next = recipeGroups(options.state).filter(
+        (group) => group !== name
+      );
+      removeButton.disabled = true;
+      try {
+        await hass.callService("recipe_box", "set_groups", {
+          entity_id: entityId,
+          groups: next,
+        });
+        notify(dispatcher, `Gruppe entfernt: ${name}`);
+      } catch (error) {
+        notify(dispatcher, `Gruppe: ${error.message || error.code || error}`);
+        removeButton.disabled = false;
+      }
+    });
+  });
+
   const button = root.querySelector("button.shopping");
   if (!button || !hass) return;
 
@@ -1280,6 +1389,12 @@ const STYLES = `<style>
   .filter-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .filter-bar input, .filter-bar select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   .filter-bar input.filter-search { flex: 1 1 150px; min-width: 0; }
+  .group-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .group-chip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 999px; padding: 2px 4px 2px 9px; font-size: 0.8rem; }
+  button.group-remove { background: none; border: none; color: inherit; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 4px; }
+  .group-add { display: flex; gap: 6px; align-items: center; }
+  .group-add input { flex: 1 1 140px; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
+  .group-add button { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
   button.random { margin-left: auto; background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
   .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .tools button, .import-file-label { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
@@ -1300,7 +1415,7 @@ const STYLES = `<style>
   .plan-select { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   button.plan-clear { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.85rem; padding: 4px 6px; }
   @media print {
-    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .footer button, .list-bar, button.delete { display: none !important; }
+    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .footer button, .list-bar, button.delete, .groups-editor { display: none !important; }
     ha-card { box-shadow: none; }
     .content { padding: 0; gap: 8px; }
     .recipe-image { max-height: 180px; }
@@ -1370,6 +1485,7 @@ class RecipeBoxCard extends HTMLElement {
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>${detailHtml(this._state, this._config, session.checked, servings, {
         entityId,
+        groups: allGroups(recipeEntities(this._hass, null)),
       })}</ha-card>`;
     bindDetail(
       this.shadowRoot,
@@ -1406,7 +1522,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._importing = false;
     this._pendingDelete = null;
     this._deleteTimer = null;
-    this._filter = { query: "", tag: "", maxTime: "", sort: "title" };
+    this._filter = { query: "", tag: "", group: "", maxTime: "", sort: "title" };
     this._tab = "recipes";
     this._restoreFocus = false;
   }
@@ -1476,7 +1592,7 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _filtered(entries) {
-    const { query, tag, maxTime, sort } = this._filter;
+    const { query, tag, group, maxTime, sort } = this._filter;
     let list = entries;
     const needle = query.trim().toLowerCase();
     if (needle) {
@@ -1500,6 +1616,14 @@ class RecipeBoxListCard extends HTMLElement {
           (value) => String(value) === String(tag)
         )
       );
+    }
+    if (group) {
+      list = list.filter(({ state }) => recipeGroups(state).includes(group));
+      if (!list.length && !entries.some(({ state }) => recipeGroups(state).includes(group))) {
+        // The whole group is gone; show the list instead of an empty result.
+        list = entries;
+        this._filter.group = "";
+      }
     }
     if (maxTime) {
       list = list.filter(({ state }) => {
@@ -1646,6 +1770,7 @@ class RecipeBoxListCard extends HTMLElement {
         formatMinutes(attributes.total_time_minutes),
         formatServings(attributes.servings),
         formatRating(attributes.rating, attributes.rating_count),
+        recipeGroups(state).join(", "),
       ]
         .filter(Boolean)
         .join(" · ");
@@ -1775,6 +1900,13 @@ class RecipeBoxListCard extends HTMLElement {
       }
     }
 
+    const group = this.shadowRoot.querySelector("select.filter-group");
+    if (group) {
+      group.addEventListener("change", () => {
+        this._filter.group = group.value;
+        this._renderList(entries);
+      });
+    }
     const tag = this.shadowRoot.querySelector("select.filter-tag");
     if (tag) {
       tag.addEventListener("change", () => {
@@ -2096,6 +2228,7 @@ class RecipeBoxListCard extends HTMLElement {
         </div>
         ${detailHtml(entry.state, this._config, session.checked, servings, {
           entityId: entry.entityId,
+          groups: allGroups(this._recipes()),
         })}
       </ha-card>`;
 

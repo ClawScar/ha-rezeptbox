@@ -174,3 +174,25 @@ clear_meal_plan:
       example: "2026-11-25"
       selector:
         date:
+
+set_groups:
+  fields:
+    groups:
+      required: true
+      example:
+        - Familie
+        - Backen
+      selector:
+        text:
+          multiple: true
+    entity_id:
+      example: sensor.lasagne
+      selector:
+        entity:
+          integration: recipe_box
+          domain: sensor
+    url:
+      example: https://example.com/omas-apfelkuchen
+      selector:
+        text:
+          type: url

@@ -172,6 +172,24 @@
           "description": "Day to clear. Without a date the whole plan is cleared."
         }
       }
+    },
+    "set_groups": {
+      "name": "Assign groups",
+      "description": "Sets which groups a recipe belongs to. A new group is created on its first assignment.",
+      "fields": {
+        "groups": {
+          "name": "Groups",
+          "description": "All groups of the recipe. An empty list removes every assignment."
+        },
+        "entity_id": {
+          "name": "Recipe",
+          "description": "Rezeptbox sensor of the recipe."
+        },
+        "url": {
+          "name": "Recipe URL",
+          "description": "Source URL (alternative to the sensor)."
+        }
+      }
     }
   },
   "exceptions": {
