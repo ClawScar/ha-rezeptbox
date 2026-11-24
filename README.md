@@ -163,6 +163,8 @@ show_tools: true        # Tabs für Daten (Import, Sicherung, eigenes Rezept) un
 
 Die Karte ist in drei Tabs aufgeteilt: **Rezepte**, **Daten** und
 **Wochenplan**. Mit `show_tools: false` bleibt nur die Rezeptliste sichtbar.
+Die Karte merkt sich im Browser den zuletzt geöffneten Tab und startet nach
+einem Neuladen dort wieder.
 
 Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
 Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der

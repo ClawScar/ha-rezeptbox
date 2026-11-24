@@ -179,6 +179,10 @@ class FilesTest(unittest.TestCase):
         self.assertIn("Eigenes Rezept", card)
         self.assertIn("Wochenplan", card)
         self.assertIn("tabsHtml", card)
+        self.assertIn("recipe_box:tab:", card)
+        self.assertIn("readTab(", card)
+        self.assertIn("writeTab(", card)
+        self.assertIn("_rememberTab(", card)
         self.assertNotIn('<details class="manual">', card)
         self.assertNotIn('<details class="plan">', card)
 

@@ -707,6 +707,37 @@ const tabsHtml = (active) => `<div class="tabs" role="tablist">${TABS.map(
   (tab) => `<button class="tab${active === tab.id ? " active" : ""}" type="button" role="tab" aria-selected="${active === tab.id}" data-tab="${tab.id}">${escapeHtml(tab.label)}</button>`
 ).join("")}</div>`;
 
+const TAB_PREFIX = "recipe_box:tab:";
+
+const knownTab = (value) => TABS.some((tab) => tab.id === value);
+
+const tabStorageKey = (entities) => {
+  const list = (Array.isArray(entities) ? entities : [])
+    .filter(Boolean)
+    .map((entityId) => String(entityId))
+    .sort();
+  return `${TAB_PREFIX}${list.length ? list.join("|") : "all"}`;
+};
+
+/* The list remembers the last tab per card, so a reload does not jump back. */
+const readTab = (entities) => {
+  try {
+    const value = window.localStorage.getItem(tabStorageKey(entities));
+    return knownTab(value) ? value : "recipes";
+  } catch (error) {
+    return "recipes";
+  }
+};
+
+const writeTab = (entities, tab) => {
+  if (!knownTab(tab)) return;
+  try {
+    window.localStorage.setItem(tabStorageKey(entities), tab);
+  } catch (error) {
+    /* localStorage may be unavailable (private mode); the tab stays for this session */
+  }
+};
+
 const planHtml = (hass, entries) => {
   const planned = new Map(
     mealPlanEntries(hass).map((entry) => [String(entry.date), entry])
@@ -1400,6 +1431,7 @@ class RecipeBoxListCard extends HTMLElement {
       entities,
     };
     this._signature = null;
+    this._tab = readTab(entities);
     this._render();
   }
 
@@ -1436,6 +1468,11 @@ class RecipeBoxListCard extends HTMLElement {
       this._sessions.set(entityId, loadSession(entityId));
     }
     return this._sessions.get(entityId);
+  }
+
+  _rememberTab(tab) {
+    this._tab = tab;
+    writeTab(this._config ? this._config.entities : null, tab);
   }
 
   _filtered(entries) {
@@ -1686,7 +1723,7 @@ class RecipeBoxListCard extends HTMLElement {
       button.addEventListener("click", () => {
         const next = button.getAttribute("data-tab");
         if (!next || next === this._tab) return;
-        this._tab = next;
+        this._rememberTab(next);
         this._signature = null;
         this._render();
       });
@@ -1853,7 +1890,7 @@ class RecipeBoxListCard extends HTMLElement {
         true
       );
       notify(this, `Rezept gespeichert: ${data.title}`);
-      this._tab = "recipes";
+      this._rememberTab("recipes");
       this._signature = null;
       this._render();
     } catch (error) {
@@ -2093,7 +2130,7 @@ class RecipeBoxListCard extends HTMLElement {
     if (back) {
       back.addEventListener("click", () => {
         this._selected = null;
-        this._tab = "recipes";
+        this._rememberTab("recipes");
         this._signature = null;
         this._render();
       });
