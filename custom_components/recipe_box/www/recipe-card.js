@@ -20,7 +20,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "1.3.1";
+const CARD_VERSION = "1.3.2";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -145,6 +145,106 @@ const UNIT_PLURALS = {
   "Portion": "Portionen",
 };
 
+// Ingredient nouns that change between singular and plural with the amount.
+// Keys are lowercase so compounds such as "Gemüsezwiebel" and "Süßkartoffel"
+// keep working; only the head noun of an ingredient name is inflected, role
+// text after a comma and the words before it stay untouched.
+const INGREDIENT_PLURALS = {
+  "ei": "eier",
+  "zwiebel": "zwiebeln",
+  "tomate": "tomaten",
+  "kartoffel": "kartoffeln",
+  "karotte": "karotten",
+  "möhre": "möhren",
+  "gurke": "gurken",
+  "schote": "schoten",
+  "schalotte": "schalotten",
+  "zehe": "zehen",
+  "apfel": "äpfel",
+  "birne": "birnen",
+  "banane": "bananen",
+  "zitrone": "zitronen",
+  "limette": "limetten",
+  "orange": "orangen",
+  "beere": "beeren",
+  "kirsche": "kirschen",
+  "pflaume": "pflaumen",
+  "pfirsich": "pfirsiche",
+  "aprikose": "aprikosen",
+  "dattel": "datteln",
+  "feige": "feigen",
+  "aubergine": "auberginen",
+  "kürbis": "kürbisse",
+  "rübe": "rüben",
+  "pastinake": "pastinaken",
+  "pilz": "pilze",
+  "champignon": "champignons",
+  "olive": "oliven",
+  "erbse": "erbsen",
+  "bohne": "bohnen",
+  "linse": "linsen",
+  "mandel": "mandeln",
+  "nuss": "nüsse",
+  "semmel": "semmeln",
+  "filet": "filets",
+  "steak": "steaks",
+  "chili": "chilis",
+};
+
+const INGREDIENT_SINGULARS = Object.fromEntries(
+  Object.entries(INGREDIENT_PLURALS).map(([singular, plural]) => [plural, singular])
+);
+
+const matchWordCase = (source, replacement) =>
+  source[0] === source[0].toUpperCase()
+    ? replacement[0].toUpperCase() + replacement.slice(1)
+    : replacement;
+
+const replaceWordEnding = (word, ending, replacement) => {
+  const start = word.length - ending.length;
+  return `${word.slice(0, start)}${matchWordCase(word.slice(start), replacement)}`;
+};
+
+const inflectedWord = (word, plural) => {
+  const key = word.toLowerCase();
+  const forms = plural ? INGREDIENT_PLURALS : INGREDIENT_SINGULARS;
+  for (const [ending, replacement] of Object.entries(forms)) {
+    if (key === ending || (ending.length >= 4 && key.endsWith(ending))) {
+      return replaceWordEnding(word, ending, replacement);
+    }
+  }
+  return null;
+};
+
+const inflectName = (name, plural) => {
+  let headEnd = name.length;
+  for (const separator of [",", ";", "("]) {
+    const index = name.indexOf(separator);
+    if (index !== -1) headEnd = Math.min(headEnd, index);
+  }
+  const head = name.slice(0, headEnd).trimEnd();
+  const start = head.lastIndexOf(" ") + 1;
+  const word = head.slice(start);
+  if (!word) return name;
+  const inflected = inflectedWord(word, plural);
+  if (inflected === null) return name;
+  return `${name.slice(0, start)}${inflected}${name.slice(start + word.length)}`;
+};
+
+// The original line stays untouched at the recipe's own amount, so a recipe
+// that already says "2 Eier" is not rewritten. Going below two pluralizes back
+// to the singular.
+const displayName = (item, amount) => {
+  const name = String((item && item.name) || "");
+  if (!name) return name;
+  const value = Number(amount ?? (item && item.amount));
+  if (!Number.isFinite(value)) return name;
+  if (value >= 2) return inflectName(name, true);
+  const original = Number(item && item.amount);
+  if (Number.isFinite(original) && original >= 2) return inflectName(name, false);
+  return name;
+};
+
 const displayUnit = (item, amount) => {
   const unit = String((item && item.unit) || "");
   const plural = UNIT_PLURALS[unit];
@@ -221,10 +321,10 @@ const parseIngredientLine = (text, group = "") => {
   return item;
 };
 
-const ingredientText = (item, amountText, unit) => {
-  const amount = amountText ?? (item && item.amount_text) ?? "";
+const ingredientText = (item, amountText, unit, amount) => {
+  const text = amountText ?? (item && item.amount_text) ?? "";
   const display = unit === undefined ? displayUnit(item) : unit;
-  const line = [amount, display, item && item.name]
+  const line = [text, display, displayName(item, amount)]
     .filter(Boolean)
     .join(" ");
   const usage = String((item && item.usage) || "");
@@ -252,7 +352,7 @@ const scaleIngredient = (item, factor) => {
     amountText = `${amountText}–${formatAmountValue(scaledMax)}`;
     largest = Math.max(largest, scaledMax);
   }
-  return ingredientText(item, amountText, displayUnit(item, largest));
+  return ingredientText(item, amountText, displayUnit(item, largest), largest);
 };
 
 const structuredIngredients = (attributes) => {

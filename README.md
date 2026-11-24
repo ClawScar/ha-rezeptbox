@@ -159,7 +159,7 @@ Button **Zutaten auf die Liste**, der den Service aufruft.
 
 Über der Zutatenliste sitzt die Portionssteuerung **− 4 Portionen +**. Jeder
 Klick rechnet die Mengen sofort um; der Chip oben zeigt die gewählte
-Portionszahl. Einheiten werden dabei mitpluralisiert („1 Prise“ → „2 Prisen“, „1 Glas“ → „2 Gläser“); ohne Änderung bleibt der Originaltext samt Bruchschreibweise erhalten. Der Button **Zutaten auf die Liste** übernimmt genau diese
+Portionszahl. Einheiten und gängige Zutaten werden dabei mitpluralisiert („1 Prise“ → „2 Prisen“, „1 Glas“ → „2 Gläser“, „1 Zwiebel“ → „2 Zwiebeln“, „1 Kartoffel“ → „2 Kartoffeln“); Rezepttitel, Markennamen und der Rest der Zutatenzeile bleiben unberührt. Ohne Änderung bleibt der Originaltext samt Bruchschreibweise erhalten. Der Button **Zutaten auf die Liste** übernimmt genau diese
 Mengen in die Einkaufsliste. Die Umrechnung ist nur eine Anzeige – das
 importierte Rezept selbst bleibt unverändert.
 
@@ -303,11 +303,15 @@ testbar:
 
 ```bash
 python3 -m unittest discover -s tests -v
+node tests/card_scaling_test.js
 ```
 
+Der zweite Befehl prüft die Umrechnung der Lovelace-Karte direkt in Node
+(Einheiten, Zutaten im Plural und der unveränderte Originaltext).
+
 Der Einkaufslisten-Service wird zusätzlich mit einem Home-Assistant-Smoke-Test
-abgesichert (Portionen mit und ohne `servings` sowie ein altes Rezept ohne
-strukturierte Zutaten):
+abgesichert (Portionen mit und ohne `servings`, ein altes Rezept ohne
+strukturierte Zutaten sowie pluralisierte Zutatennamen):
 
 ```bash
 python3 -m venv .venv

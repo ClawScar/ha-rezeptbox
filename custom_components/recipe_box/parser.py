@@ -117,6 +117,56 @@ UNIT_PLURALS = {
     "Portion": "Portionen",
 }
 
+# Ingredient nouns that change between singular and plural with the amount.
+# Keys are lowercase so compounds such as "Gemüsezwiebel" and "Süßkartoffel"
+# keep working; only the head noun of an ingredient name is inflected, role
+# text after a comma and the words before it stay untouched.
+INGREDIENT_PLURALS = {
+    "ei": "eier",
+    "zwiebel": "zwiebeln",
+    "tomate": "tomaten",
+    "kartoffel": "kartoffeln",
+    "karotte": "karotten",
+    "möhre": "möhren",
+    "gurke": "gurken",
+    "schote": "schoten",
+    "schalotte": "schalotten",
+    "zehe": "zehen",
+    "apfel": "äpfel",
+    "birne": "birnen",
+    "banane": "bananen",
+    "zitrone": "zitronen",
+    "limette": "limetten",
+    "orange": "orangen",
+    "beere": "beeren",
+    "kirsche": "kirschen",
+    "pflaume": "pflaumen",
+    "pfirsich": "pfirsiche",
+    "aprikose": "aprikosen",
+    "dattel": "datteln",
+    "feige": "feigen",
+    "aubergine": "auberginen",
+    "kürbis": "kürbisse",
+    "rübe": "rüben",
+    "pastinake": "pastinaken",
+    "pilz": "pilze",
+    "champignon": "champignons",
+    "olive": "oliven",
+    "erbse": "erbsen",
+    "bohne": "bohnen",
+    "linse": "linsen",
+    "mandel": "mandeln",
+    "nuss": "nüsse",
+    "semmel": "semmeln",
+    "filet": "filets",
+    "steak": "steaks",
+    "chili": "chilis",
+}
+
+INGREDIENT_SINGULARS = {
+    plural: singular for singular, plural in INGREDIENT_PLURALS.items()
+}
+
 UNICODE_FRACTIONS = {
     "½": "1/2",
     "¼": "1/4",
@@ -425,20 +475,85 @@ def ingredient_unit(item: dict[str, Any], amount: float | None = None) -> str:
     return unit
 
 
+def _match_word_case(source: str, replacement: str) -> str:
+    """Return ``replacement`` with the capitalisation of ``source``."""
+    if source[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
+def _replace_word_ending(word: str, ending: str, replacement: str) -> str:
+    """Replace ``ending`` at the end of ``word`` and keep its capitalisation."""
+    start = len(word) - len(ending)
+    return f"{word[:start]}{_match_word_case(word[start:], replacement)}"
+
+
+def _inflected_word(word: str, plural: bool) -> str | None:
+    """Return ``word`` in singular or plural, or ``None`` if it is unknown."""
+    key = word.lower()
+    forms = INGREDIENT_PLURALS if plural else INGREDIENT_SINGULARS
+    for ending, replacement in forms.items():
+        if key == ending or (len(ending) >= 4 and key.endswith(ending)):
+            return _replace_word_ending(word, ending, replacement)
+    return None
+
+
+def _inflect_ingredient_name(name: str, plural: bool) -> str:
+    """Inflect the head noun of an ingredient name, leaving the rest intact."""
+    head_end = len(name)
+    for separator in (",", ";", "("):
+        index = name.find(separator)
+        if index != -1:
+            head_end = min(head_end, index)
+    head = name[:head_end].rstrip()
+    start = head.rfind(" ") + 1
+    word = head[start:]
+    if not word:
+        return name
+    inflected = _inflected_word(word, plural)
+    if inflected is None:
+        return name
+    return f"{name[:start]}{inflected}{name[start + len(word):]}"
+
+
+def ingredient_name(item: dict[str, Any], amount: float | None = None) -> str:
+    """Return the ingredient name with its head noun matched to ``amount``.
+
+    The original line stays untouched at the recipe's own amount, so a recipe
+    that already says "2 Eier" is not rewritten. Going below two pluralizes
+    back to the singular.
+    """
+    name = str(item.get("name") or "")
+    value = item.get("amount") if amount is None else amount
+    if not name or not isinstance(value, (int, float)) or isinstance(value, bool):
+        return name
+    if value >= 2:
+        return _inflect_ingredient_name(name, True)
+    original = item.get("amount")
+    if (
+        isinstance(original, (int, float))
+        and not isinstance(original, bool)
+        and original >= 2
+    ):
+        return _inflect_ingredient_name(name, False)
+    return name
+
+
 def ingredient_text(
     item: dict[str, Any],
     amount_text: str | None = None,
     unit: str | None = None,
+    amount: float | None = None,
 ) -> str:
     """Rebuild one ingredient line, optionally with a replaced amount."""
-    amount = item.get("amount_text", "") if amount_text is None else amount_text
+    text = item.get("amount_text", "") if amount_text is None else amount_text
     display_unit = ingredient_unit(item) if unit is None else unit
     line = " ".join(
         part
         for part in (
-            str(amount or ""),
+            str(text or ""),
             display_unit,
-            str(item.get("name") or ""),
+            ingredient_name(item, amount),
         )
         if part
     )
@@ -468,7 +583,7 @@ def scale_ingredient(item: dict[str, Any], factor: float) -> str:
         scaled_max = float(amount_max) * factor
         text = f"{text}–{format_amount(scaled_max)}"
         largest = max(largest, scaled_max)
-    return ingredient_text(item, text, ingredient_unit(item, largest))
+    return ingredient_text(item, text, ingredient_unit(item, largest), largest)
 
 
 def scale_ingredients(

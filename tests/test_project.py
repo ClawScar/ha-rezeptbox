@@ -98,6 +98,22 @@ class FilesTest(unittest.TestCase):
         fields = strings["services"]["add_to_shopping_list"]["fields"]
         self.assertIn("servings", fields)
 
+    def test_ingredient_plural_tables_match(self) -> None:
+        def table(source: str, marker: str) -> dict[str, str]:
+            start = source.index(marker)
+            block = source[start : source.index("}", start)]
+            return dict(re.findall(r'"([^"]+)":\s*"([^"]+)"', block))
+
+        parser_source = (COMPONENT / "parser.py").read_text("utf-8")
+        card_source = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+
+        tables = table(parser_source, "INGREDIENT_PLURALS = {")
+        self.assertIn("ei", tables)
+        self.assertIn("zwiebel", tables)
+        self.assertEqual(
+            tables, table(card_source, "const INGREDIENT_PLURALS = {")
+        )
+
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")
         self.assertNotIn("CONF_URL", content)

@@ -180,12 +180,51 @@ class IngredientStructureTest(unittest.TestCase):
         self.assertEqual(scaled("200 g Mehl", 2), "400 g Mehl")
         self.assertEqual(scaled("1 EL Öl", 3), "3 EL Öl")
 
+    def test_plural_ingredient_names(self) -> None:
+        def scaled(text: str, factor: float) -> str:
+            return recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text(text), factor
+            )
+
+        self.assertEqual(scaled("1 Ei", 1), "1 Ei")
+        self.assertEqual(scaled("1 Ei", 2), "2 Eier")
+        self.assertEqual(scaled("1 Ei", 3), "3 Eier")
+        self.assertEqual(scaled("1 Zwiebel", 2), "2 Zwiebeln")
+        self.assertEqual(scaled("1 Tomate", 2), "2 Tomaten")
+        self.assertEqual(scaled("1 Kartoffel", 2), "2 Kartoffeln")
+        self.assertEqual(scaled("1 rote Zwiebel", 2), "2 rote Zwiebeln")
+        self.assertEqual(
+            scaled("1 Zwiebel, fein gewürfelt", 2), "2 Zwiebeln, fein gewürfelt"
+        )
+        self.assertEqual(scaled("1 Gemüsezwiebel", 2), "2 Gemüsezwiebeln")
+        self.assertEqual(scaled("1 Süßkartoffel", 3), "3 Süßkartoffeln")
+        self.assertEqual(scaled("1 Apfel", 2), "2 Äpfel")
+        self.assertEqual(scaled("1 Hokkaido-Kürbis", 2), "2 Hokkaido-Kürbisse")
+        self.assertEqual(scaled("1–2 Zwiebel", 2), "2–4 Zwiebeln")
+
+    def test_ingredient_names_keep_plural_brands_and_roles(self) -> None:
+        def scaled(text: str, factor: float) -> str:
+            return recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text(text), factor
+            )
+
+        self.assertEqual(scaled("2 Zwiebeln", 2), "4 Zwiebeln")
+        self.assertEqual(scaled("1 Dose Tomaten", 2), "2 Dosen Tomaten")
+        self.assertEqual(scaled("1 Glas Milch", 2), "2 Gläser Milch")
+        self.assertEqual(
+            scaled("1 Packung Philadelphia", 2), "2 Packungen Philadelphia"
+        )
+        self.assertEqual(scaled("2 Eier", 0.25), "0,5 Ei")
+        self.assertEqual(scaled("4 Zwiebeln", 0.5), "2 Zwiebeln")
+        # The recipe's own amount stays untouched, even when it is already plural.
+        self.assertEqual(scaled("1 Dose Tomaten", 0.5), "0,5 Dose Tomaten")
+
     def test_text_fallback(self) -> None:
         self.assertEqual(
             recipe_parser.scale_ingredients(
-                None, ["500 g Kartoffeln", "Salz und Pfeffer"], 2
+                None, ["500 g Kartoffeln", "1 Ei", "Salz und Pfeffer"], 2
             ),
-            ["1000 g Kartoffeln", "Salz und Pfeffer"],
+            ["1000 g Kartoffeln", "2 Eier", "Salz und Pfeffer"],
         )
 
 

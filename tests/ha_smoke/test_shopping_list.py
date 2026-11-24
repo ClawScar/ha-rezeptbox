@@ -94,6 +94,34 @@ async def test_shopping_list_with_servings(hass: HomeAssistant) -> None:
     ]
 
 
+async def test_shopping_list_pluralizes_ingredient_names(
+    hass: HomeAssistant,
+) -> None:
+    """Ingredient nouns follow the scaled amount on the shopping list."""
+    await _setup_shopping_list(hass)
+    ingredients = ["1 Ei", "1 Zwiebel", "1 Tomate", "1 Kartoffel"]
+    recipe = Recipe(
+        title="Gemüsepfanne",
+        source_url="https://example.com/gemuesepfanne",
+        servings=2,
+        ingredients=list(ingredients),
+        ingredients_structured=[
+            parse_ingredient_text(text) for text in ingredients
+        ],
+        instructions=["Kochen."],
+    )
+    entity_id = await _setup_recipe_box(hass, recipe)
+
+    await _add_to_shopping_list(hass, entity_id, servings=4)
+
+    assert _shopping_items(hass) == [
+        "2 Eier",
+        "2 Zwiebeln",
+        "2 Tomaten",
+        "2 Kartoffeln",
+    ]
+
+
 async def test_shopping_list_without_servings(hass: HomeAssistant) -> None:
     """Without servings the original ingredient lines are used unchanged."""
     await _setup_shopping_list(hass)

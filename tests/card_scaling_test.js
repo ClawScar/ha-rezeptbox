@@ -1,0 +1,68 @@
+/* Behaviour tests for the ingredient scaling helpers of recipe-card.js.
+ *
+ * Run with: node tests/card_scaling_test.js
+ */
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+const CARD = path.join(
+  __dirname,
+  "..",
+  "custom_components",
+  "recipe_box",
+  "www",
+  "recipe-card.js"
+);
+
+const source = fs.readFileSync(CARD, "utf8");
+const start = source.indexOf("const FRACTION_TEXT = {");
+const end = source.indexOf("const structuredIngredients");
+assert.ok(start !== -1 && end > start, "scaling helpers not found in recipe-card.js");
+
+const context = vm.createContext({});
+vm.runInContext(
+  `${source.slice(start, end)}
+this.helpers = { parseIngredientLine, scaleIngredient };`,
+  context
+);
+
+const { parseIngredientLine, scaleIngredient } = context.helpers;
+const scaled = (text, factor) => scaleIngredient(parseIngredientLine(text), factor);
+
+const cases = [
+  // Plural units still work.
+  ["1 Prise Salz", 2, "2 Prisen Salz"],
+  ["1 Glas Milch", 2, "2 Gläser Milch"],
+  // Plural ingredient names.
+  ["1 Ei", 2, "2 Eier"],
+  ["1 Zwiebel", 2, "2 Zwiebeln"],
+  ["1 Tomate", 2, "2 Tomaten"],
+  ["1 Kartoffel", 2, "2 Kartoffeln"],
+  ["1 rote Zwiebel", 2, "2 rote Zwiebeln"],
+  ["1 Zwiebel, fein gewürfelt", 2, "2 Zwiebeln, fein gewürfelt"],
+  ["1 Gemüsezwiebel", 2, "2 Gemüsezwiebeln"],
+  ["1 Süßkartoffel", 3, "3 Süßkartoffeln"],
+  ["1 Apfel", 2, "2 Äpfel"],
+  ["1 Hokkaido-Kürbis", 2, "2 Hokkaido-Kürbisse"],
+  ["1–2 Zwiebel", 2, "2–4 Zwiebeln"],
+  // Unchanged amount, already plural names, brands and non-nouns stay as they are.
+  ["1 Ei", 1, "1 Ei"],
+  ["2 Zwiebeln", 2, "4 Zwiebeln"],
+  ["1 Dose Tomaten", 2, "2 Dosen Tomaten"],
+  ["1 Packung Philadelphia", 2, "2 Packungen Philadelphia"],
+  ["Salz und Pfeffer", 2, "Salz und Pfeffer"],
+  ["1/2 TL Salz", 1, "1/2 TL Salz"],
+  // Going below two back to the singular.
+  ["2 Eier", 0.25, "0,5 Ei"],
+  ["4 Zwiebeln", 0.5, "2 Zwiebeln"],
+  ["1 Dose Tomaten", 0.5, "0,5 Dose Tomaten"],
+];
+
+for (const [text, factor, expected] of cases) {
+  assert.equal(scaled(text, factor), expected, `${text} × ${factor}`);
+}
+
+console.log(`card_scaling_test: ${cases.length} checks passed`);
