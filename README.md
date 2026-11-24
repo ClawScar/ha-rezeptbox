@@ -56,6 +56,17 @@ Getestet gegen Home Assistant ab Version **2025.1**.
 
 ### Über HACS (empfohlen)
 
+1. HACS öffnen → **Integrationen** → nach **Rezeptbox** suchen
+2. **Rezeptbox** installieren und Home Assistant neu starten
+
+Taucht die Integration in der Suche noch nicht auf, hilft ein Neustart von Home
+Assistant – HACS lädt den Standardkatalog nur beim Start neu.
+
+### Über HACS als benutzerdefiniertes Repository
+
+Falls die Suche die Integration gar nicht findet (etwa bei einer älteren
+HACS-Version), lässt sie sich weiterhin manuell hinzufügen:
+
 1. HACS öffnen → **Integrationen** → Drei-Punkte-Menü → **Benutzerdefinierte
    Repositories**
 2. URL dieses Repositories eintragen, Kategorie **Integration** wählen
