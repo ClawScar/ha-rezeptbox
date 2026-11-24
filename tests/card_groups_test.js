@@ -219,8 +219,11 @@ const editor = groupsEditorHtml(
 assert.match(editor, /class="group-chip"/);
 assert.match(editor, /data-group="Familie"/);
 assert.match(editor, /class="group-add-button"/);
-assert.match(editor, /<option value="Nudeln"><\/option>/);
-assert.doesNotMatch(editor, /<option value="Familie"><\/option>/);
+assert.match(editor, /<select class="group-select"/);
+assert.match(editor, /<option value="Nudeln">Nudeln<\/option>/);
+assert.doesNotMatch(editor, /<option value="Familie">/);
+assert.doesNotMatch(editor, /<datalist/);
+assert.match(editor, /class="group-new-button"/);
 
 // 10. Printing and the bare sensor view get no group editor.
 assert.equal(groupsEditorHtml({ groups: [] }, { forPrint: true }, []), "");

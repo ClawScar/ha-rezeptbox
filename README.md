@@ -16,7 +16,7 @@ Einkaufsliste.
 - **Leere Rezeptbox starten**: Integration hinzufügen genügt, es wird kein
   Pflichtfeld abgefragt
 - **Import per Button**: eine oder mehrere URLs oben in der Rezeptliste
-  einfügen (eine pro Zeile) und **Rezept importieren** drücken – alternativ der
+  einfügen (eine pro Zeile) und **Importieren** drücken – alternativ der
   Service `recipe_box.import_recipe`
 - **Chefkoch-Adapter** über die offene `api.chefkoch.de/v2`-Schnittstelle
   (kein API-Key nötig), mit automatischem Fallback auf die Webseite
@@ -91,8 +91,8 @@ Das Aktualisierungsintervall für alle Rezepte lässt sich über
 ## Rezept importieren
 
 **Über die Karte:** In der Rezeptliste oben eine oder mehrere Rezept-URLs
-einfügen (eine pro Zeile, alternativ durch Komma getrennt) und **Rezept
-importieren** drücken. Die Rezepte erscheinen sofort in der Liste, am Ende zeigt eine
+einfügen (eine pro Zeile, alternativ durch Komma getrennt) und **Importieren**
+drücken. Die Rezepte erscheinen sofort in der Liste, am Ende zeigt eine
 Benachrichtigung die Zusammenfassung (z. B. „3 von 4 importiert, 1
 fehlgeschlagen“). Ein fehlerhafter Link blockiert die übrigen nicht. Mit
 **Strg+Enter** (bzw. Cmd+Enter) startest du den Import aus dem Feld.
@@ -185,20 +185,28 @@ verschieben. Jede Gruppe zeigt, wie viele Rezepte ihr zugewiesen sind; das ✎
 benennt sie um, ohne die Zuweisungen anzufassen, und das × löscht sie wieder
 (der erste Klick fragt mit **Löschen?** nach) und nimmt die Zuordnung von allen
 Rezepten. Zuweisen lässt sich eine Gruppe in der
-Detailansicht unter **Gruppen**: Namen eintippen (bestehende Namen schlägt das
-Feld vor) und **Hinzufügen** drücken, das × am Chip nimmt das Rezept wieder
-heraus. Eine dort neu eingegebene Gruppe wird automatisch mit angelegt.
+Detailansicht unter **Gruppen**: eine vorhandene Gruppe aus der Liste wählen
+und **Hinzufügen** drücken oder unter **Neue Gruppe** einen Namen eintippen und
+**Neue Gruppe** drücken – das × am Chip nimmt das Rezept wieder heraus. Eine
+dort neu eingegebene Gruppe wird automatisch mit angelegt.
+
+Mehrere Rezepte auf einmal bearbeiten: in der Rezeptliste ein Rezept länger
+gedrückt halten (oder lange mit der Maus drücken), danach weitere antippen.
+Über der Liste erscheint dann eine Leiste, in der sich die markierten Rezepte
+gemeinsam einer vorhandenen Gruppe zuweisen oder löschen lassen; **Abbrechen**
+beendet die Auswahl. Vor dem Löschen fragt die Karte in einem Dialog noch
+einmal nach.
 
 Der Tab **Daten** ist in vier getrennte Abschnitte gegliedert: **Rezepte
-importieren** (eine oder mehrere URLs einfügen, **Rezept importieren** drücken –
+importieren** (eine oder mehrere URLs einfügen, **Importieren** drücken –
 die Liste füllt sich sofort, ohne Neustart), **Gruppen** (anlegen, sortieren,
 umbenennen, löschen, jeweils mit der Anzahl ihrer Rezepte), **Sicherung** sowie
-**Eigenes Rezept**.
+**Eigenes Rezept**. Der Tab **Daten** steht rechts neben **Wochenplan**.
 
-Unter **Sicherung** öffnet **Exportieren** den Speichern-Dialog des Browsers
+Unter **Sicherung** öffnet **Sichern** den Speichern-Dialog des Browsers
 (Chrome/Edge); Browser ohne diesen Dialog legen die JSON-Datei im
 Download-Ordner ab, in der Home-Assistant-App erscheint stattdessen das
-Teilen-Menü. **Importieren** daneben liest eine solche Sicherung wieder ein. Unter
+Teilen-Menü. **Laden** daneben liest eine solche Sicherung wieder ein. Unter
 **Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
 und Tags.
 
@@ -345,7 +353,7 @@ aktualisieren.
 ### `recipe_box.export_recipes`
 
 Gibt `recipes`, `plan` und `groups` als JSON zurück (für Sicherungen oder
-eigene Skripte). Der Button **Exportieren** unter **Daten → Sicherung** nutzt
+eigene Skripte). Der Button **Sichern** unter **Daten → Sicherung** nutzt
 denselben Service.
 
 ### `recipe_box.import_recipes`

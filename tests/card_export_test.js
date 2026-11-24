@@ -184,7 +184,7 @@ const run = async () => {
   assert.equal(state.download, null);
   assert.match(
     state.notifications[0],
-    /^Exportieren fehlgeschlagen: .*Sicherungsdaten/
+    /^Sichern fehlgeschlagen: .*Sicherungsdaten/
   );
 
   console.log("card_export_test: 5 checks passed");

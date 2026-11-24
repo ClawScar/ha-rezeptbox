@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.2.4";
+const CARD_VERSION = "2.2.5";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -700,8 +700,8 @@ const manualFormHtml = () => `<div class="manual data-section">
 
 const TABS = [
   { id: "recipes", label: "Rezepte" },
-  { id: "data", label: "Daten" },
   { id: "plan", label: "Wochenplan" },
+  { id: "data", label: "Daten" },
 ];
 
 const tabsHtml = (active) => `<div class="tabs" role="tablist">${TABS.map(
@@ -981,17 +981,27 @@ const groupsEditorHtml = (attributes, meta, knownGroups) => {
         `<span class="group-chip">${escapeHtml(group)}<button class="group-remove" type="button" data-group="${escapeHtml(group)}" title="Aus der Gruppe entfernen" aria-label="${escapeHtml(group)} entfernen">×</button></span>`
     )
     .join("");
-  const options = knownGroups
-    .filter((group) => !current.includes(group))
-    .map((group) => `<option value="${escapeHtml(group)}"></option>`)
+  const available = knownGroups.filter((group) => !current.includes(group));
+  const options = available
+    .map(
+      (group) =>
+        `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`
+    )
     .join("");
   return `<div class="section groups-editor">
     <h3>Gruppen</h3>
     ${chips ? `<div class="group-chips">${chips}</div>` : ""}
-    <div class="group-add">
-      <input class="group-input" type="text" list="recipe-group-options" placeholder="Gruppe, z. B. Familie" maxlength="40">
-      <datalist id="recipe-group-options">${options}</datalist>
+    ${
+      available.length
+        ? `<div class="group-add">
+      <select class="group-select" aria-label="Vorhandene Gruppe wählen"><option value="">Gruppe wählen …</option>${options}</select>
       <button class="group-add-button" type="button">Hinzufügen</button>
+    </div>`
+        : ""
+    }
+    <div class="group-add">
+      <input class="group-input" type="text" placeholder="Neue Gruppe, z. B. Familie" maxlength="40">
+      <button class="group-new-button" type="button">Neue Gruppe</button>
     </div>
   </div>`;
 };
@@ -1264,6 +1274,45 @@ const openPrintWindow = (html) => {
   }
 };
 
+const selectionBarHtml = (count, groups) => `<div class="selection-bar">
+  <span class="selection-count">${count} ausgewählt</span>
+  <select class="selection-group" aria-label="Gruppe für die Auswahl"><option value="">Gruppe wählen …</option>${(
+    groups || []
+  )
+    .map(
+      (group) =>
+        `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`
+    )
+    .join("")}</select>
+  <button class="selection-assign" type="button">Zuweisen</button>
+  <button class="selection-delete" type="button">Löschen</button>
+  <button class="selection-cancel" type="button">Abbrechen</button>
+</div>`;
+
+const deleteDialogHtml = (titles) => {
+  const list = (titles || []).filter(Boolean);
+  if (!list.length) return "";
+  const count = list.length;
+  const heading = count === 1 ? "Rezept löschen?" : `${count} Rezepte löschen?`;
+  const names = list
+    .slice(0, 5)
+    .map((title) => `„${escapeHtml(title)}“`)
+    .join(", ");
+  const more = count > 5 ? ` und ${count - 5} weitere` : "";
+  return `<div class="dialog-backdrop">
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(
+      heading
+    )}">
+      <h3>${heading}</h3>
+      <p class="tab-hint">Endgültig löschen: ${names}${more}? Die Rezepte verschwinden aus der Rezeptbox und aus dem Wochenplan.</p>
+      <div class="dialog-actions">
+        <button class="dialog-cancel" type="button">Abbrechen</button>
+        <button class="dialog-confirm" type="button">Löschen</button>
+      </div>
+    </div>
+  </div>`;
+};
+
 const deleteButtonHtml = (entityId, pending) => `<button class="delete${pending ? " confirm" : ""}" type="button" data-entity="${escapeHtml(entityId)}" title="Rezept löschen" aria-label="Rezept löschen">${pending ? "Löschen?" : `<ha-icon icon="mdi:delete-outline"></ha-icon>`}</button>`;
 
 const notify = (target, message) => {
@@ -1343,41 +1392,56 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
     });
   }
 
+  const assignGroup = async (name) => {
+    const value = String(name || "").trim();
+    if (!hass || !value) return;
+    const current = recipeGroups(options.state);
+    if (current.some((group) => group.toLowerCase() === value.toLowerCase())) {
+      return;
+    }
+    try {
+      await hass.callService("recipe_box", "set_groups", {
+        entity_id: entityId,
+        groups: [...current, value],
+      });
+      notify(dispatcher, `Gruppe zugewiesen: ${value}`);
+    } catch (error) {
+      notify(dispatcher, `Gruppe: ${error.message || error.code || error}`);
+    }
+  };
+
+  const groupSelect = root.querySelector("select.group-select");
   const groupAdd = root.querySelector("button.group-add-button");
-  if (groupAdd && hass) {
-    const addGroup = async () => {
-      const input = root.querySelector("input.group-input");
-      const name = String((input && input.value) || "").trim();
-      if (!name) return;
-      const current = recipeGroups(options.state);
-      if (current.some((group) => group.toLowerCase() === name.toLowerCase())) {
-        if (input) input.value = "";
+  if (groupSelect && groupAdd && hass) {
+    groupAdd.addEventListener("click", () => {
+      const name = String(groupSelect.value || "").trim();
+      if (!name) {
+        notify(dispatcher, "Bitte eine Gruppe wählen.");
         return;
       }
-      groupAdd.disabled = true;
-      try {
-        await hass.callService("recipe_box", "set_groups", {
-          entity_id: entityId,
-          groups: [...current, name],
-        });
-        if (input) input.value = "";
-        notify(dispatcher, `Gruppe zugewiesen: ${name}`);
-      } catch (error) {
-        notify(dispatcher, `Gruppe: ${error.message || error.code || error}`);
-      } finally {
-        groupAdd.disabled = false;
+      assignGroup(name);
+    });
+  }
+
+  const groupNew = root.querySelector("button.group-new-button");
+  const groupInput = root.querySelector("input.group-input");
+  if (groupNew && groupInput && hass) {
+    const addNew = () => {
+      const name = String(groupInput.value || "").trim();
+      if (!name) {
+        notify(dispatcher, "Bitte einen Gruppennamen eingeben.");
+        return;
       }
+      groupInput.value = "";
+      assignGroup(name);
     };
-    groupAdd.addEventListener("click", addGroup);
-    const input = root.querySelector("input.group-input");
-    if (input) {
-      input.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-          event.preventDefault();
-          addGroup();
-        }
-      });
-    }
+    groupNew.addEventListener("click", addNew);
+    groupInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addNew();
+      }
+    });
   }
 
   root.querySelectorAll("button.group-remove").forEach((removeButton) => {
@@ -1532,6 +1596,20 @@ const STYLES = `<style>
   .data-panel > * { padding-top: 16px; border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
   .data-panel > :first-child { padding-top: 0; border-top: none; }
   .data-section h3 { margin-bottom: 8px; }
+  li.recipe-row.selected { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); border-radius: 8px; }
+  .selection-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border-radius: 8px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); }
+  .selection-count { font-size: 0.82rem; font-weight: 600; color: var(--primary-text-color); }
+  .selection-bar select { flex: 1 1 130px; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
+  .selection-bar button { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
+  .selection-bar button.selection-delete { color: var(--error-color, #db4437); border-color: var(--error-color, #db4437); }
+  .dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.5); }
+  .dialog { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 12px; background: var(--card-background-color, #fff); color: var(--primary-text-color); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
+  .dialog h3 { margin: 0; font-size: 0.95rem; letter-spacing: 0; text-transform: none; color: var(--primary-text-color); }
+  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .dialog-actions button { border-radius: 6px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
+  button.dialog-cancel { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); color: var(--primary-text-color); }
+  button.dialog-confirm { background: var(--error-color, #db4437); border: none; color: #fff; font-weight: 600; }
+  select.group-select { flex: 1 1 140px; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   .tab-hint { margin: 0; font-size: 0.82rem; color: var(--secondary-text-color); }
   .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; }
   .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
@@ -1541,7 +1619,7 @@ const STYLES = `<style>
   .plan-select { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   button.plan-clear { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.85rem; padding: 4px 6px; }
   @media print {
-    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, .groups-editor { display: none !important; }
+    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, .groups-editor, .selection-bar, .dialog-backdrop { display: none !important; }
     ha-card { box-shadow: none; }
     .content { padding: 0; gap: 8px; }
     .recipe-image { max-height: 180px; }
@@ -1646,8 +1724,10 @@ class RecipeBoxListCard extends HTMLElement {
     this._hass = undefined;
     this._importUrl = "";
     this._importing = false;
-    this._pendingDelete = null;
-    this._deleteTimer = null;
+    this._confirmDelete = null;
+    this._selection = new Set();
+    this._suppressClickUntil = 0;
+    this._longPressTimer = null;
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
     this._renamingGroup = null;
@@ -1862,42 +1942,141 @@ class RecipeBoxListCard extends HTMLElement {
     return `${importedCount} von ${total} importiert, ${failed.length} fehlgeschlagen (${label}: ${first.error || "Fehler"}).`;
   }
 
+  /* Deleting always goes through the confirmation dialog in the card. */
   _requestDelete(entityId) {
     if (!entityId || !this._config.show_delete || !this._hass) return;
-
-    if (this._pendingDelete === entityId) {
-      this._delete(entityId);
-      return;
-    }
-
-    this._pendingDelete = entityId;
-    clearTimeout(this._deleteTimer);
-    this._deleteTimer = setTimeout(() => {
-      this._pendingDelete = null;
-      this._signature = null;
-      this._render();
-    }, 4000);
+    this._confirmDelete = [entityId];
     this._signature = null;
     this._render();
   }
 
-  async _delete(entityId) {
-    clearTimeout(this._deleteTimer);
-    const entry = this._recipes().find((item) => item.entityId === entityId);
-    const title = entry ? recipeTitle(entry.state) : "";
-    this._pendingDelete = null;
+  _requestSelectionDelete() {
+    if (!this._selection.size) return;
+    this._confirmDelete = [...this._selection];
+    this._signature = null;
+    this._render();
+  }
+
+  _cancelDelete() {
+    this._confirmDelete = null;
+    this._signature = null;
+    this._render();
+  }
+
+  _deleteTitles(entityIds) {
+    const wanted = new Set(entityIds || []);
+    return this._recipes()
+      .filter((entry) => wanted.has(entry.entityId))
+      .map((entry) => recipeTitle(entry.state));
+  }
+
+  async _deleteConfirmed() {
+    const entityIds = this._confirmDelete || [];
+    this._confirmDelete = null;
+    if (!entityIds.length || !this._hass) {
+      this._signature = null;
+      this._render();
+      return;
+    }
+
+    let removed = 0;
     try {
-      await this._hass.callService("recipe_box", "remove_recipe", {
-        entity_id: entityId,
-      });
-      notify(this, title ? `Rezept gelöscht: ${title}` : "Rezept gelöscht.");
-      if (this._selected === entityId) this._selected = null;
+      for (const entityId of entityIds) {
+        await this._hass.callService("recipe_box", "remove_recipe", {
+          entity_id: entityId,
+        });
+        removed += 1;
+        if (this._selected === entityId) this._selected = null;
+      }
+      notify(
+        this,
+        removed === 1 ? "Rezept gelöscht." : `${removed} Rezepte gelöscht.`
+      );
     } catch (error) {
       notify(
         this,
         `Löschen fehlgeschlagen: ${(error && (error.message || error.code)) || "unbekannter Fehler"}`
       );
     } finally {
+      this._selection.clear();
+      this._signature = null;
+      this._render();
+    }
+  }
+
+  _bindDeleteDialog() {
+    const cancel = this.shadowRoot.querySelector("button.dialog-cancel");
+    if (cancel) cancel.addEventListener("click", () => this._cancelDelete());
+    const confirm = this.shadowRoot.querySelector("button.dialog-confirm");
+    if (confirm) confirm.addEventListener("click", () => this._deleteConfirmed());
+    const backdrop = this.shadowRoot.querySelector(".dialog-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", (event) => {
+        if (event.target === backdrop) this._cancelDelete();
+      });
+    }
+  }
+
+  /* A long press starts the selection mode, a tap then toggles recipes. */
+  _toggleSelection(entityId) {
+    if (!entityId) return;
+    if (this._selection.has(entityId)) this._selection.delete(entityId);
+    else this._selection.add(entityId);
+    this._signature = null;
+    this._render();
+  }
+
+  _startLongPress(entityId) {
+    if (!entityId || this._selection.size) return;
+    this._clearLongPress();
+    this._longPressTimer = setTimeout(() => {
+      this._longPressTimer = null;
+      this._suppressClickUntil = Date.now() + 600;
+      this._selection.add(entityId);
+      this._signature = null;
+      this._render();
+    }, 500);
+  }
+
+  _clearLongPress() {
+    if (this._longPressTimer) {
+      clearTimeout(this._longPressTimer);
+      this._longPressTimer = null;
+    }
+  }
+
+  async _assignGroupToSelection(group) {
+    const name = String(group || "").trim();
+    if (!name || !this._hass || !this._selection.size) return;
+    const entries = this._recipes();
+    let assigned = 0;
+    try {
+      for (const entityId of [...this._selection]) {
+        const entry = entries.find((item) => item.entityId === entityId);
+        if (!entry) continue;
+        const current = recipeGroups(entry.state);
+        if (current.some((item) => item.toLowerCase() === name.toLowerCase())) {
+          continue;
+        }
+        await this._hass.callService("recipe_box", "set_groups", {
+          entity_id: entityId,
+          groups: [...current, name],
+        });
+        assigned += 1;
+      }
+      notify(
+        this,
+        assigned
+          ? `${name}: ${assigned} ${assigned === 1 ? "Rezept" : "Rezepte"} zugewiesen.`
+          : `Alle ausgewählten Rezepte sind schon in „${name}“.`
+      );
+    } catch (error) {
+      notify(
+        this,
+        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+      );
+    } finally {
+      this._selection.clear();
       this._signature = null;
       this._render();
     }
@@ -2044,17 +2223,23 @@ class RecipeBoxListCard extends HTMLElement {
           : `<span class="thumb placeholder"><ha-icon icon="mdi:chef-hat"></ha-icon></span>`;
 
       const removeButton = this._config.show_delete
-        ? deleteButtonHtml(entityId, this._pendingDelete === entityId)
+        ? deleteButtonHtml(entityId, false)
         : "";
+      const isSelected = this._selection.has(entityId);
+      const chevron = this._selection.size
+        ? isSelected
+          ? "mdi:check-circle"
+          : "mdi:checkbox-blank-circle-outline"
+        : "mdi:chevron-right";
 
-      return `<li class="recipe-row">
-        <button class="recipe-item" type="button" data-entity="${escapeHtml(entityId)}">
+      return `<li class="recipe-row${isSelected ? " selected" : ""}">
+        <button class="recipe-item" type="button" data-entity="${escapeHtml(entityId)}" aria-pressed="${isSelected}">
           ${thumb}
           <span class="item-text">
             <span class="item-title">${escapeHtml(recipeTitle(state))}</span>
             <span class="item-meta">${escapeHtml(meta)}</span>
           </span>
-          <ha-icon class="chevron" icon="mdi:chevron-right"></ha-icon>
+          <ha-icon class="chevron" icon="${chevron}"></ha-icon>
         </button>
         ${removeButton}
       </li>`;
@@ -2065,7 +2250,7 @@ class RecipeBoxListCard extends HTMLElement {
           <h3>Rezepte importieren</h3>
           <div class="import-bar">
             <textarea class="import-input" rows="2" placeholder="Rezept-URLs – eine pro Zeile"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
-            <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Rezept importieren"}</button>
+            <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Importieren"}</button>
           </div>
         </div>`
       : "";
@@ -2075,8 +2260,8 @@ class RecipeBoxListCard extends HTMLElement {
         <h3>Sicherung</h3>
         <p class="tab-hint">Alle Rezepte, der Wochenplan und die Gruppen als JSON-Datei.</p>
         <div class="tools">
-          <button class="export" type="button">Exportieren</button>
-          <label class="import-file-label">Importieren<input class="import-file" type="file" accept="application/json"></label>
+          <button class="export" type="button">Sichern</button>
+          <label class="import-file-label">Laden<input class="import-file" type="file" accept="application/json"></label>
         </div>
       </div>`
       : "";
@@ -2098,8 +2283,15 @@ class RecipeBoxListCard extends HTMLElement {
 
     const showTabs = Boolean(this._config.show_tools);
     const tab = showTabs ? this._tab : "recipes";
+    const selection =
+      this._selection.size
+        ? selectionBarHtml(this._selection.size, groups)
+        : "";
+    const dialog = deleteDialogHtml(
+      this._confirmDelete ? this._deleteTitles(this._confirmDelete) : []
+    );
     const panels = {
-      recipes: `${groupTabsHtml(groups, this._filter.group)}${filterBar}${body}`,
+      recipes: `${selection}${groupTabsHtml(groups, this._filter.group)}${filterBar}${body}`,
       data: `<div class="data-panel">${importBar}${groupsManagerHtml(
         groups,
         groupCounts(entries),
@@ -2121,7 +2313,7 @@ class RecipeBoxListCard extends HTMLElement {
           ${showTabs ? tabsHtml(tab) : ""}
           <div class="tab-panel" role="tabpanel">${panels[tab] || panels.recipes}</div>
         </div>
-      </ha-card>`;
+      </ha-card>${dialog}`;
 
     this.shadowRoot.querySelectorAll("button.tab").forEach((button) => {
       button.addEventListener("click", () => {
@@ -2134,10 +2326,27 @@ class RecipeBoxListCard extends HTMLElement {
     });
 
     this.shadowRoot.querySelectorAll("button.recipe-item").forEach((button) => {
+      const entityId = button.getAttribute("data-entity");
       button.addEventListener("click", () => {
-        this._selected = button.getAttribute("data-entity");
+        if (Date.now() < this._suppressClickUntil) return;
+        if (this._selection.size) {
+          this._toggleSelection(entityId);
+          return;
+        }
+        this._selected = entityId;
         this._signature = null;
         this._render();
+      });
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button && event.button !== 0) return;
+        this._startLongPress(entityId);
+      });
+      ["pointerup", "pointerleave", "pointercancel"].forEach((type) =>
+        button.addEventListener(type, () => this._clearLongPress())
+      );
+      button.addEventListener("contextmenu", (event) => {
+        this._clearLongPress();
+        if (this._selection.size) event.preventDefault();
       });
     });
 
@@ -2147,6 +2356,41 @@ class RecipeBoxListCard extends HTMLElement {
         this._requestDelete(button.getAttribute("data-entity"));
       });
     });
+
+    const selectionAssign = this.shadowRoot.querySelector(
+      "button.selection-assign"
+    );
+    if (selectionAssign) {
+      selectionAssign.addEventListener("click", () => {
+        const select = this.shadowRoot.querySelector("select.selection-group");
+        const group = String((select && select.value) || "").trim();
+        if (!group) {
+          notify(this, "Bitte eine Gruppe wählen.");
+          return;
+        }
+        this._assignGroupToSelection(group);
+      });
+    }
+    const selectionDelete = this.shadowRoot.querySelector(
+      "button.selection-delete"
+    );
+    if (selectionDelete) {
+      selectionDelete.addEventListener("click", () =>
+        this._requestSelectionDelete()
+      );
+    }
+    const selectionCancel = this.shadowRoot.querySelector(
+      "button.selection-cancel"
+    );
+    if (selectionCancel) {
+      selectionCancel.addEventListener("click", () => {
+        this._selection.clear();
+        this._signature = null;
+        this._render();
+      });
+    }
+
+    this._bindDeleteDialog();
 
     const input = this.shadowRoot.querySelector("textarea.import-input");
     if (input) {
@@ -2452,7 +2696,7 @@ class RecipeBoxListCard extends HTMLElement {
     } catch (error) {
       notify(
         this,
-        `Exportieren fehlgeschlagen: ${
+        `Sichern fehlgeschlagen: ${
           (error && (error.message || error.code)) || "unbekannter Fehler"
         }`
       );
@@ -2488,7 +2732,7 @@ class RecipeBoxListCard extends HTMLElement {
     } catch (error) {
       notify(
         this,
-        `Importieren fehlgeschlagen: ${
+        `Laden fehlgeschlagen: ${
           (error && (error.message || error)) || "unbekannter Fehler"
         }`
       );
@@ -2565,13 +2809,15 @@ class RecipeBoxListCard extends HTMLElement {
         <div class="list-bar">
           <button class="back" type="button">← ${escapeHtml(this._config.title || "Rezepte")}</button>
           <span class="list-bar-title">${escapeHtml(recipeTitle(entry.state))}</span>
-          ${this._config.show_delete ? deleteButtonHtml(entry.entityId, this._pendingDelete === entry.entityId) : ""}
+          ${this._config.show_delete ? deleteButtonHtml(entry.entityId, false) : ""}
         </div>
         ${detailHtml(entry.state, this._config, session.checked, servings, {
           entityId: entry.entityId,
           groups: knownGroups(this._hass, this._recipes()),
         })}
-      </ha-card>`;
+      </ha-card>${deleteDialogHtml(
+        this._confirmDelete ? this._deleteTitles(this._confirmDelete) : []
+      )}`;
 
     bindDetail(
       this.shadowRoot,
@@ -2599,6 +2845,7 @@ class RecipeBoxListCard extends HTMLElement {
         this._requestDelete(button.getAttribute("data-entity"));
       });
     });
+    this._bindDeleteDialog();
 
     const back = this.shadowRoot.querySelector("button.back");
     if (back) {
