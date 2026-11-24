@@ -45,7 +45,7 @@ Einkaufsliste.
 - **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
 - **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
-- **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service
+- **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte
 - **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
 - **Sicherung**: alle Rezepte und den Wochenplan als JSON herunterladen und wieder einlesen
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
@@ -210,7 +210,10 @@ Unter **Sicherung** öffnet **Sichern** den Speichern-Dialog des Browsers
 Download-Ordner ab, in der Home-Assistant-App erscheint stattdessen das
 Teilen-Menü. **Laden** daneben liest eine solche Sicherung wieder ein. Unter
 **Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
-und Tags.
+und Tags. Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
+oder direkt mit der Handy-Kamera aufnehmen; es wird vor dem Hochladen auf
+handliche Größe verkleinert und erscheint danach als Rezeptbild in Liste und
+Detailansicht. **Foto entfernen** verwirft die Auswahl wieder.
 
 Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
 **Woche auf die Einkaufsliste**).

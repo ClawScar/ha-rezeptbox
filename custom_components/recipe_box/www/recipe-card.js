@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.2.6";
+const CARD_VERSION = "2.3.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -694,6 +694,11 @@ const manualFormHtml = () => `<div class="manual data-section">
     <textarea class="manual-ingredients" rows="3" placeholder="Zutaten – eine pro Zeile"></textarea>
     <textarea class="manual-instructions" rows="3" placeholder="Zubereitung – ein Schritt pro Zeile"></textarea>
     <input class="manual-tags" type="text" placeholder="Tags, mit Komma getrennt">
+    <label class="manual-photo-label">Foto hinzufügen (optional)<input class="manual-photo" type="file" accept="image/*"></label>
+    <div class="manual-photo-preview" hidden>
+      <img alt="Gewähltes Rezeptfoto">
+      <button class="manual-photo-remove" type="button">Foto entfernen</button>
+    </div>
     <button class="manual-save" type="button">Rezept speichern</button>
   </div>
 </div>`;
@@ -1615,6 +1620,12 @@ const STYLES = `<style>
   .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; }
   .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
   .manual-body button, button.week-shopping { align-self: flex-start; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.88rem; cursor: pointer; }
+  .manual-photo-label { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 6px; border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); font-size: 0.85rem; color: var(--primary-text-color); cursor: pointer; }
+  .manual-photo-label input { display: none; }
+  .manual-photo-preview { display: flex; align-items: center; gap: 10px; }
+  .manual-photo-preview[hidden] { display: none; }
+  .manual-photo-preview img { max-width: 120px; max-height: 90px; border-radius: 6px; object-fit: cover; }
+  button.manual-photo-remove { align-self: center; background: none; color: var(--secondary-text-color); border: none; padding: 4px 6px; font-size: 0.82rem; text-decoration: underline; }
   .plan-row { display: flex; align-items: center; gap: 8px; }
   .plan-day { min-width: 74px; font-size: 0.82rem; color: var(--secondary-text-color); }
   .plan-select { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
@@ -1729,6 +1740,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._selection = new Set();
     this._suppressClickUntil = 0;
     this._pressStart = null;
+    this._photoUrl = null;
     this._longPressTimer = null;
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
@@ -2526,6 +2538,20 @@ class RecipeBoxListCard extends HTMLElement {
       manualSave.addEventListener("click", () => this._saveManual());
     }
 
+    const manualPhoto = this.shadowRoot.querySelector("input.manual-photo");
+    if (manualPhoto) {
+      manualPhoto.addEventListener("change", () => {
+        const chosen = manualPhoto.files && manualPhoto.files[0];
+        this._previewPhoto(chosen || null);
+      });
+    }
+    const manualPhotoRemove = this.shadowRoot.querySelector(
+      "button.manual-photo-remove"
+    );
+    if (manualPhotoRemove) {
+      manualPhotoRemove.addEventListener("click", () => this._clearPhoto());
+    }
+
     const createGroup = this.shadowRoot.querySelector("button.group-create-button");
     if (createGroup) {
       const create = () => this._createGroup();
@@ -2622,6 +2648,8 @@ class RecipeBoxListCard extends HTMLElement {
     ).value || "";
     const tags = (root.querySelector("input.manual-tags") || {}).value || "";
     const servings = Number((root.querySelector("input.manual-servings") || {}).value);
+    const photoInput = root.querySelector("input.manual-photo");
+    const photo = photoInput && photoInput.files && photoInput.files[0];
 
     const data = {
       title: title.trim(),
@@ -2644,6 +2672,24 @@ class RecipeBoxListCard extends HTMLElement {
     }
     if (Number.isFinite(servings) && servings > 0) data.servings = servings;
 
+    if (photo) {
+      const saveButton = root.querySelector("button.manual-save");
+      if (saveButton) saveButton.disabled = true;
+      try {
+        data.image_url = await this._uploadPhoto(photo);
+      } catch (error) {
+        notify(
+          this,
+          `Foto: ${
+            (error && (error.message || error.code)) || "Upload fehlgeschlagen"
+          }`
+        );
+        return;
+      } finally {
+        if (saveButton) saveButton.disabled = false;
+      }
+    }
+
     try {
       await this._hass.callService(
         "recipe_box",
@@ -2665,6 +2711,92 @@ class RecipeBoxListCard extends HTMLElement {
         }`
       );
     }
+  }
+
+  /* Photos are stored through Home Assistant's image upload, so they work
+   * for every logged-in user and survive a restart. */
+  async _uploadPhoto(file) {
+    const blob = await this._shrinkPhoto(file);
+    const base = String((file && file.name) || "rezept")
+      .replace(/\.[^.]+$/, "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .slice(0, 40) || "rezept";
+    const form = new FormData();
+    form.append("file", blob, `${base}.jpg`);
+    const result = await this._hass.callApi("POST", "image/upload", form);
+    if (!result || !result.id) {
+      throw new Error("Der Upload hat keine Bild-ID geliefert.");
+    }
+    return `/api/image/serve/${result.id}/original`;
+  }
+
+  /* Downscale in the browser: keeps uploads small and turns phone photos
+   * into a format every browser and Home Assistant can read. */
+  async _shrinkPhoto(file) {
+    const max = 1600;
+    let source = null;
+    let objectUrl = null;
+    try {
+      if (typeof createImageBitmap === "function") {
+        source = await createImageBitmap(file);
+      } else if (
+        typeof Image === "function" &&
+        typeof URL !== "undefined" &&
+        URL.createObjectURL
+      ) {
+        objectUrl = URL.createObjectURL(file);
+        source = new Image();
+        source.src = objectUrl;
+        await source.decode();
+      }
+      if (!source || typeof document === "undefined" || !document.createElement) {
+        return file;
+      }
+      const width = source.width || max;
+      const height = source.height || max;
+      const scale = Math.min(1, max / Math.max(width, height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const context = canvas.getContext && canvas.getContext("2d");
+      if (!context || typeof canvas.toBlob !== "function") return file;
+      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.85)
+      );
+      return blob || file;
+    } catch (error) {
+      return file;
+    } finally {
+      if (source && typeof source.close === "function") source.close();
+      if (objectUrl && typeof URL !== "undefined") URL.revokeObjectURL(objectUrl);
+    }
+  }
+
+  _previewPhoto(file) {
+    const root = this.shadowRoot;
+    const preview = root && root.querySelector(".manual-photo-preview");
+    const image = preview && preview.querySelector("img");
+    if (!image) return;
+    if (this._photoUrl && typeof URL !== "undefined" && URL.revokeObjectURL) {
+      URL.revokeObjectURL(this._photoUrl);
+    }
+    this._photoUrl = null;
+    if (!file || typeof URL === "undefined" || !URL.createObjectURL) {
+      image.removeAttribute("src");
+      if (preview) preview.hidden = true;
+      return;
+    }
+    this._photoUrl = URL.createObjectURL(file);
+    image.src = this._photoUrl;
+    if (preview) preview.hidden = false;
+  }
+
+  _clearPhoto() {
+    const input =
+      this.shadowRoot && this.shadowRoot.querySelector("input.manual-photo");
+    if (input) input.value = "";
+    this._previewPhoto(null);
   }
 
   async _export() {

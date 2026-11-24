@@ -177,6 +177,8 @@ class FilesTest(unittest.TestCase):
             self.assertIn(f'{{ id: "{tab}"', card)
         self.assertIn("Daten", card)
         self.assertIn("Eigenes Rezept", card)
+        self.assertIn("manual-photo", card)
+        self.assertIn("image/upload", card)
         self.assertIn("Wochenplan", card)
         self.assertIn("tabsHtml", card)
         self.assertIn("recipe_box:tab:", card)
