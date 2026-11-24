@@ -26,6 +26,7 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     ATTR_DATE,
     ATTR_EXCLUDE,
+    ATTR_GROUP,
     ATTR_GROUPS,
     ATTR_IMAGE_URL,
     ATTR_INGREDIENTS,
@@ -44,8 +45,10 @@ from .const import (
     DOMAIN,
     KNOWN_IMPORT_ERRORS,
     MANUAL_URL_PREFIX,
+    MAX_RECIPE_GROUPS,
     NAME,
     PLATFORMS,
+    SERVICE_ADD_GROUP,
     SERVICE_ADD_RECIPE,
     SERVICE_ADD_TO_SHOPPING_LIST,
     SERVICE_CLEAR_MEAL_PLAN,
@@ -54,10 +57,11 @@ from .const import (
     SERVICE_IMPORT_RECIPES,
     SERVICE_PLAN_RECIPE,
     SERVICE_REFRESH_RECIPE,
+    SERVICE_REMOVE_GROUP,
     SERVICE_REMOVE_RECIPE,
     SERVICE_SET_GROUPS,
 )
-from .coordinator import RecipeHub
+from .coordinator import RecipeHub, normalize_group_names
 from .frontend import (
     async_register_frontend,
     async_register_panel,
@@ -141,10 +145,15 @@ SET_GROUPS_SCHEMA = vol.All(
     cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
 )
 
+GROUP_SCHEMA = vol.Schema({vol.Required(ATTR_GROUP): cv.string})
+
 IMPORT_RECIPES_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_RECIPES): vol.All(cv.ensure_list, [dict]),
         vol.Optional(ATTR_PLAN, default=dict): dict,
+        vol.Optional(ATTR_GROUPS, default=list): vol.All(
+            cv.ensure_list, [cv.string]
+        ),
     }
 )
 
@@ -262,6 +271,24 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_SET_GROUPS,
             partial(_async_set_groups, hass),
             schema=SET_GROUPS_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_ADD_GROUP):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_ADD_GROUP,
+            partial(_async_add_group, hass),
+            schema=GROUP_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_REMOVE_GROUP):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REMOVE_GROUP,
+            partial(_async_remove_group, hass),
+            schema=GROUP_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -674,6 +701,7 @@ async def _async_export_recipes(
     return {
         "recipes": [recipe.as_dict() for recipe in hub.recipes.values()],
         "plan": hub.plan,
+        "groups": hub.groups,
     }
 
 
@@ -706,6 +734,10 @@ async def _async_import_recipes(
     if isinstance(plan, dict) and plan:
         await hub.async_import_plan(plan)
 
+    groups = [str(item) for item in (call.data.get(ATTR_GROUPS) or [])]
+    if groups:
+        await hub.async_import_groups(groups)
+
     _LOGGER.debug("Imported %s recipes, %s failed", imported, failed)
     return {"imported": imported, "failed": failed}
 
@@ -737,20 +769,14 @@ async def _async_clear_meal_plan(
     return {"cleared": str(date) if date else "all"}
 
 
-def _normalize_groups(groups: list[str]) -> list[str]:
-    """Trim, shorten and de-duplicate group names."""
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in groups:
-        name = clean_text(value)[:40].strip()
-        if not name:
-            continue
-        key = name.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(name)
-    return result[:20]
+def _group_name(value: Any) -> str:
+    """Return a cleaned group name or raise a translated service error."""
+    name = clean_text(str(value or ""))[:40].strip()
+    if not name:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="invalid_group"
+        )
+    return name
 
 
 async def _async_set_groups(
@@ -762,8 +788,35 @@ async def _async_set_groups(
         raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
 
     source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
-    groups = _normalize_groups(
-        [str(item) for item in call.data.get(ATTR_GROUPS) or []]
+    groups = normalize_group_names(
+        [str(item) for item in call.data.get(ATTR_GROUPS) or []],
+        MAX_RECIPE_GROUPS,
     )
     await hub.async_set_groups(source_url, groups)
     return {"title": recipe.title, "url": source_url, "groups": groups}
+
+
+async def _async_add_group(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Create a group without assigning a recipe."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    name = _group_name(call.data.get(ATTR_GROUP))
+    groups = await hub.async_add_group(name)
+    return {"group": name, "groups": groups}
+
+
+async def _async_remove_group(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Delete a group and its assignments."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    name = _group_name(call.data.get(ATTR_GROUP))
+    groups = await hub.async_remove_group(name)
+    return {"group": name, "groups": groups}

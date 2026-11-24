@@ -175,7 +175,7 @@
     },
     "set_groups": {
       "name": "Assign groups",
-      "description": "Sets which groups a recipe belongs to. A new group is created on its first assignment.",
+      "description": "Sets which groups a recipe belongs to. Groups are created in the Data tab of the card or with the add_group service.",
       "fields": {
         "groups": {
           "name": "Groups",
@@ -188,6 +188,26 @@
         "url": {
           "name": "Recipe URL",
           "description": "Source URL (alternative to the sensor)."
+        }
+      }
+    },
+    "add_group": {
+      "name": "Create a group",
+      "description": "Creates a group in the recipe box, even before a recipe is assigned to it.",
+      "fields": {
+        "group": {
+          "name": "Group",
+          "description": "Name of the new group."
+        }
+      }
+    },
+    "remove_group": {
+      "name": "Delete a group",
+      "description": "Deletes a group and removes it from all recipes.",
+      "fields": {
+        "group": {
+          "name": "Group",
+          "description": "Name of the group."
         }
       }
     }
@@ -216,6 +236,9 @@
     },
     "manual_recipe": {
       "message": "Own recipes without a source page cannot be refreshed."
+    },
+    "invalid_group": {
+      "message": "A group needs a name."
     }
   },
   "entity": {

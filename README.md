@@ -43,7 +43,7 @@ Einkaufsliste.
 - **Einkaufsliste ohne Dubletten**: gleiche Zutaten werden zusammengerechnet („2 Zwiebeln“ + „3 Zwiebeln“ → „5 Zwiebeln“, 500 g + 500 g → 1 kg), auch über mehrere Rezepte hinweg
 - **Nur fehlende Zutaten**: abgehakte Zutaten bleiben auf Wunsch von der Einkaufsliste
 - **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
-- **Gruppen**: Rezepte eigenen Gruppen wie „Familie“ oder „Backen“ zuweisen, die Liste nach Gruppe filtern und Zuweisungen im Rezept wieder entfernen
+- **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service
 - **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
@@ -167,21 +167,29 @@ Die Karte ist in drei Tabs aufgeteilt: **Rezepte**, **Daten** und
 Die Karte merkt sich im Browser den zuletzt geöffneten Tab und startet nach
 einem Neuladen dort wieder.
 
-Der Tab **Rezepte** zeigt die Liste: Suchfeld, Gruppen- und Tag-Auswahl,
-Zeitfilter und Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges
-Rezept aus der aktuellen Auswahl. Rechts neben jedem Eintrag entfernt der
-Papierkorb das Rezept – der erste Klick fragt mit **Löschen?** nach, der zweite
-löscht endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
+Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
+Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der
+aktuellen Auswahl. Rechts neben jedem Eintrag entfernt der Papierkorb das
+Rezept – der erste Klick fragt mit **Löschen?** nach, der zweite löscht
+endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
 
-Gruppen legt man direkt am Rezept an: In der Detailansicht unter **Gruppen**
-einen Namen eintippen (bestehende Namen schlägt das Feld vor) und
-**Hinzufügen** drücken. Das × am Gruppen-Chip nimmt das Rezept wieder heraus.
-Eine neue Gruppe entsteht beim ersten Zuweisen, in der Liste erscheint sie als
-Filter **Alle Gruppen**.
+Sobald Gruppen angelegt sind, sitzt über der Liste eine Tab-Leiste: **Alle**
+zeigt jedes Rezept, ein Tipp auf einen Gruppennamen nur die Rezepte dieser
+Gruppe. Der aktive Tab ist farbig hinterlegt.
+
+Gruppen legt man im Tab **Daten** unter **Gruppen** an: Namen in das Feld
+eintippen und **Anlegen** drücken. Jede Gruppe zeigt, wie viele Rezepte ihr
+zugewiesen sind; das × löscht sie wieder (der erste Klick fragt mit
+**Löschen?** nach) und nimmt die Zuordnung von allen Rezepten. Zuweisen lässt
+sich eine Gruppe in der Detailansicht unter **Gruppen**: Namen eintippen
+(bestehende Namen schlägt das Feld vor) und **Hinzufügen** drücken, das × am
+Chip nimmt das Rezept wieder heraus. Eine dort neu eingegebene Gruppe wird
+automatisch mit angelegt.
 
 Im Tab **Daten** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
 **Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Darunter
-stehen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
+legt **Gruppen** die Gruppen der Rezeptbox an und zeigt sie mit der Anzahl
+deren Rezepte. Es folgen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
 Speichern-Dialog des Browsers (Chrome/Edge); Browser ohne diesen Dialog legen
 die JSON-Datei im Download-Ordner ab, in der Home-Assistant-App erscheint
 stattdessen das Teilen-Menü. Darunter legt **Eigenes Rezept** ein Rezept mit
@@ -226,7 +234,7 @@ importierte Rezept selbst bleibt unverändert.
 | --- | --- |
 | `sensor.<rezept>` | Gesamtzeit in Minuten (Device-Class `duration`) |
 | `sensor.<rezept>_portionen` | Anzahl der Portionen |
-| `sensor.rezeptbox_wochenplan` | Anzahl der geplanten Tage; Attribut `plan` mit Datum, Titel, Quelle und Portionen |
+| `sensor.rezeptbox_wochenplan` | Anzahl der geplanten Tage; Attribut `plan` mit Datum, Titel, Quelle und Portionen, Attribut `groups` mit allen angelegten Gruppen |
 | `button.<rezept>_zutaten_auf_die_liste` | Fügt die Zutaten des Rezepts der Einkaufsliste hinzu |
 
 Der Haupt-Sensor trägt alle Rezeptdaten als Attribute:
@@ -329,8 +337,8 @@ aktualisieren.
 
 ### `recipe_box.export_recipes`
 
-Gibt `recipes` und `plan` als JSON zurück (für Sicherungen oder eigene
-Skripte). Der Button **Sichern** in der Liste nutzt denselben Service.
+Gibt `recipes`, `plan` und `groups` als JSON zurück (für Sicherungen oder
+eigene Skripte). Der Button **Sichern** in der Liste nutzt denselben Service.
 
 ### `recipe_box.import_recipes`
 
@@ -338,6 +346,7 @@ Skripte). Der Button **Sichern** in der Liste nutzt denselben Service.
 | --- | --- | --- |
 | `recipes` | ja | Rezeptdaten aus einem Export |
 | `plan` | nein | Wochenplan aus einem Export |
+| `groups` | nein | Gruppen aus einem Export |
 
 Liest eine Sicherung wieder ein und antwortet mit `imported` und `failed`.
 
@@ -361,9 +370,21 @@ Tage und kann die ganze Woche auf die Einkaufsliste übernehmen.
 | `entity_id` oder `url` | eins von beiden | Rezept-Sensor oder Quelladresse |
 
 Setzt die Gruppenzugehörigkeit eines Rezepts neu. Gruppen sind frei wählbare
-Namen und entstehen beim ersten Zuweisen; sie stehen am Rezept-Sensor im
-Attribut `groups`. Die Karte nutzt denselben Service für **Gruppen** in der
-Detailansicht. Gruppen werden mit exportiert und beim Einlesen einer Sicherung
+Namen; sie stehen am Rezept-Sensor im Attribut `groups`, die angelegten Gruppen
+auch am Wochenplan-Sensor. Die Karte nutzt denselben Service für **Gruppen** in
+der Detailansicht.
+
+### `recipe_box.add_group` / `recipe_box.remove_group`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `group` | ja | Name der Gruppe |
+
+`add_group` legt eine Gruppe an, auch ohne zugewiesene Rezepte – so lässt sie
+sich vorbereiten und erscheint sofort als Tab in der Rezeptliste. `remove_group`
+löscht die Gruppe und entfernt sie von allen Rezepten. Beide antworten mit der
+aktualisierten Liste unter `groups`. Die Karte nutzt sie im Tab **Daten**.
+Gruppen werden mit exportiert und beim Einlesen einer Sicherung
 wiederhergestellt.
 
 ## Unterstützte Seiten

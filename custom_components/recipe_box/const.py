@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
@@ -29,6 +29,10 @@ DATA_PANEL = f"{DOMAIN}_panel"
 # Local cache of the imported recipes
 STORAGE_VERSION = 1
 
+# Groups belong to the user, not to the scraped page
+MAX_GROUPS = 50
+MAX_RECIPE_GROUPS = 20
+
 SERVICE_IMPORT_RECIPE = "import_recipe"
 SERVICE_REMOVE_RECIPE = "remove_recipe"
 SERVICE_ADD_TO_SHOPPING_LIST = "add_to_shopping_list"
@@ -39,6 +43,8 @@ SERVICE_IMPORT_RECIPES = "import_recipes"
 SERVICE_PLAN_RECIPE = "plan_recipe"
 SERVICE_CLEAR_MEAL_PLAN = "clear_meal_plan"
 SERVICE_SET_GROUPS = "set_groups"
+SERVICE_ADD_GROUP = "add_group"
+SERVICE_REMOVE_GROUP = "remove_group"
 ATTR_URL = "url"
 ATTR_URLS = "urls"
 ATTR_ENTITY_ID = "entity_id"
@@ -49,6 +55,7 @@ ATTR_SERVINGS = "servings"
 ATTR_TITLE = "title"
 ATTR_TAGS = "tags"
 ATTR_GROUPS = "groups"
+ATTR_GROUP = "group"
 ATTR_IMAGE_URL = "image_url"
 ATTR_EXCLUDE = "exclude"
 ATTR_MERGE = "merge"

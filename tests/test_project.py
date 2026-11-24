@@ -191,15 +191,24 @@ class FilesTest(unittest.TestCase):
         for marker in (
             "recipeGroups",
             "allGroups",
-            "filter-group",
+            "knownGroups",
+            "groupRegistry",
+            "group-tabs",
+            "group-tab",
+            "groups-manager",
+            "group-create-button",
+            "group-delete",
             "group-add-button",
             "group-remove",
             "set_groups",
+            "add_group",
+            "remove_group",
         ):
             self.assertIn(marker, card)
 
         services = (COMPONENT / "services.yaml").read_text("utf-8")
-        self.assertIn("set_groups:", services)
+        for name in ("set_groups", "add_group", "remove_group"):
+            self.assertIn(f"{name}:", services)
 
         for name in (
             "strings.json",
@@ -209,9 +218,27 @@ class FilesTest(unittest.TestCase):
             data = json.loads((COMPONENT / name).read_text("utf-8"))
             self.assertIn("set_groups", data["services"])
             self.assertIn("groups", data["services"]["set_groups"]["fields"])
+            for service in ("add_group", "remove_group"):
+                self.assertIn(service, data["services"])
+                self.assertIn("group", data["services"][service]["fields"])
+            self.assertIn("invalid_group", data["exceptions"])
 
         const = (COMPONENT / "const.py").read_text("utf-8")
         self.assertIn('SERVICE_SET_GROUPS = "set_groups"', const)
+        self.assertIn('SERVICE_ADD_GROUP = "add_group"', const)
+        self.assertIn('SERVICE_REMOVE_GROUP = "remove_group"', const)
+
+        coordinator = (COMPONENT / "coordinator.py").read_text("utf-8")
+        for marker in (
+            "async_add_group",
+            "async_remove_group",
+            "async_import_groups",
+            'self.groups: list[str] = []',
+        ):
+            self.assertIn(marker, coordinator)
+
+        sensor = (COMPONENT / "sensor.py").read_text("utf-8")
+        self.assertIn('"groups": self.coordinator.groups', sensor)
 
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")

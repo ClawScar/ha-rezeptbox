@@ -175,7 +175,7 @@
     },
     "set_groups": {
       "name": "Gruppen zuweisen",
-      "description": "Legt fest, zu welchen Gruppen ein Rezept gehört. Eine neue Gruppe entsteht beim ersten Zuweisen.",
+      "description": "Legt fest, zu welchen Gruppen ein Rezept gehört. Gruppen legst du im Tab Daten der Karte oder mit dem Service add_group an.",
       "fields": {
         "groups": {
           "name": "Gruppen",
@@ -188,6 +188,26 @@
         "url": {
           "name": "Rezept-URL",
           "description": "Quelladresse (Alternative zum Sensor)."
+        }
+      }
+    },
+    "add_group": {
+      "name": "Gruppe anlegen",
+      "description": "Legt eine Gruppe in der Rezeptbox an, auch ohne zugewiesene Rezepte.",
+      "fields": {
+        "group": {
+          "name": "Gruppe",
+          "description": "Name der neuen Gruppe."
+        }
+      }
+    },
+    "remove_group": {
+      "name": "Gruppe löschen",
+      "description": "Löscht eine Gruppe und entfernt sie von allen Rezepten.",
+      "fields": {
+        "group": {
+          "name": "Gruppe",
+          "description": "Name der Gruppe."
         }
       }
     }
@@ -216,6 +236,9 @@
     },
     "manual_recipe": {
       "message": "Eigene Rezepte ohne Quellseite lassen sich nicht aktualisieren."
+    },
+    "invalid_group": {
+      "message": "Eine Gruppe braucht einen Namen."
     }
   },
   "entity": {

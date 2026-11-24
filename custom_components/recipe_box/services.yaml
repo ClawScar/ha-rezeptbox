@@ -196,3 +196,19 @@ set_groups:
       selector:
         text:
           type: url
+
+add_group:
+  fields:
+    group:
+      required: true
+      example: Familie
+      selector:
+        text:
+
+remove_group:
+  fields:
+    group:
+      required: true
+      example: Familie
+      selector:
+        text:

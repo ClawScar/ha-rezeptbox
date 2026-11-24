@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import timedelta
 from typing import Any
 
@@ -18,14 +18,36 @@ from .const import (
     CONF_UPDATE_INTERVAL_HOURS,
     DEFAULT_UPDATE_INTERVAL_HOURS,
     DOMAIN,
+    MAX_GROUPS,
+    MAX_RECIPE_GROUPS,
     STORAGE_VERSION,
 )
-from .parser import Recipe, RecipeError
+from .parser import Recipe, RecipeError, clean_text
 from .scraper import async_scrape_recipe
 
 _LOGGER = logging.getLogger(__name__)
 
 EntityAdder = Callable[[Recipe], None]
+
+
+def normalize_group_names(
+    values: Iterable[Any], limit: int = MAX_RECIPE_GROUPS
+) -> list[str]:
+    """Trim, shorten and de-duplicate group names, keeping their order."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value is None:
+            continue
+        name = clean_text(str(value))[:40].strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(name)
+    return result[:limit]
 
 
 class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
@@ -62,6 +84,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         self._entities: dict[str, list[Any]] = {}
         self.plan: dict[str, dict[str, Any]] = {}
         self.status: dict[str, dict[str, Any]] = {}
+        self.groups: list[str] = []
 
     @property
     def recipes(self) -> dict[str, Recipe]:
@@ -127,6 +150,15 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
                 if isinstance(entry, dict)
             }
 
+        saved_groups = stored.get("groups") if isinstance(stored, dict) else None
+        names: list[Any] = (
+            list(saved_groups) if isinstance(saved_groups, list) else []
+        )
+        for recipe in recipes.values():
+            # Assignments from 2.1 have no registry entry yet.
+            names.extend(recipe.groups)
+        self.groups = normalize_group_names(names, MAX_GROUPS)
+
     async def async_add_recipe(self, recipe: Recipe) -> bool:
         """Store an imported recipe and create its entities.
 
@@ -134,6 +166,10 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         """
         added = recipe.source_url not in self.recipes
         self.data = {**self.recipes, recipe.source_url: recipe}
+        if recipe.groups:
+            self.groups = normalize_group_names(
+                [*self.groups, *recipe.groups], MAX_GROUPS
+            )
         await self._async_save()
         self.async_update_listeners()
         if added:
@@ -176,9 +212,49 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         if recipe is None:
             return None
         recipe.groups = list(groups)
+        self.groups = normalize_group_names(
+            [*self.groups, *groups], MAX_GROUPS
+        )
         await self._async_save()
         self.async_update_listeners()
         return recipe
+
+    async def async_add_group(self, name: str) -> list[str]:
+        """Create a group even before a recipe is assigned to it."""
+        groups = normalize_group_names([*self.groups, name], MAX_GROUPS)
+        if groups == self.groups:
+            return list(self.groups)
+        self.groups = groups
+        await self._async_save()
+        self.async_update_listeners()
+        return list(self.groups)
+
+    async def async_remove_group(self, name: str) -> list[str]:
+        """Delete a group and every assignment to it."""
+        key = str(name or "").strip().casefold()
+        if not key:
+            return list(self.groups)
+        self.groups = [
+            group for group in self.groups if group.casefold() != key
+        ]
+        for recipe in self.recipes.values():
+            remaining = [
+                group for group in recipe.groups if group.casefold() != key
+            ]
+            if remaining != recipe.groups:
+                recipe.groups = remaining
+        await self._async_save()
+        self.async_update_listeners()
+        return list(self.groups)
+
+    async def async_import_groups(self, groups: list[Any]) -> None:
+        """Merge the groups of an export into the recipe box."""
+        merged = normalize_group_names([*self.groups, *groups], MAX_GROUPS)
+        if merged == self.groups:
+            return
+        self.groups = merged
+        await self._async_save()
+        self.async_update_listeners()
 
     async def async_refresh_recipe(self, source_url: str) -> Recipe:
         """Reload a single recipe from its source page."""
@@ -276,6 +352,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
                 "recipes": [recipe.as_dict() for recipe in data.values()],
                 "plan": self.plan,
                 "status": self.status,
+                "groups": self.groups,
             }
         )
 

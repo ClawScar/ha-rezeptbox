@@ -141,7 +141,10 @@ class RecipePlanSensor(CoordinatorEntity[RecipeHub], SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the planned recipes with date and servings."""
-        return {"plan": self.coordinator.plan_entries()}
+        return {
+            "plan": self.coordinator.plan_entries(),
+            "groups": self.coordinator.groups,
+        }
 
 
 class RecipeServingsSensor(RecipeSensorBase):

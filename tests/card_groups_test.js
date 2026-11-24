@@ -43,12 +43,31 @@ const context = {
 };
 
 vm.runInContext(
-  `${source}\nthis.RecipeBoxListCard = RecipeBoxListCard;\nthis.GROUP_HELPERS = { recipeGroups, allGroups, filterBarHtml, groupsEditorHtml };`,
+  `${source}\nthis.RecipeBoxListCard = RecipeBoxListCard;\nthis.GROUP_HELPERS = {
+  recipeGroups,
+  allGroups,
+  knownGroups,
+  groupRegistry,
+  groupCounts,
+  groupTabsHtml,
+  groupsManagerHtml,
+  filterBarHtml,
+  groupsEditorHtml,
+};`,
   vm.createContext(context)
 );
 
-const { recipeGroups, allGroups, filterBarHtml, groupsEditorHtml } =
-  context.GROUP_HELPERS;
+const {
+  recipeGroups,
+  allGroups,
+  knownGroups,
+  groupRegistry,
+  groupCounts,
+  groupTabsHtml,
+  groupsManagerHtml,
+  filterBarHtml,
+  groupsEditorHtml,
+} = context.GROUP_HELPERS;
 const { RecipeBoxListCard } = context;
 
 const entry = (title, groups) => ({
@@ -112,15 +131,56 @@ assert.deepEqual(
   ["Curry"]
 );
 
-// 5. The filter bar offers the groups only when there are some.
+// 5. Group tabs switch the list; the filter bar keeps search and tags only.
 const withGroups = filterBarHtml(entries, cardFor({})._filter);
-assert.match(withGroups, /<select class="filter-group">/);
-assert.match(withGroups, /Alle Gruppen/);
-assert.match(withGroups, /<option value="Familie">Familie<\/option>/);
-const withoutGroups = filterBarHtml([entry("Brot", [])], cardFor({})._filter);
-assert.doesNotMatch(withoutGroups, /filter-group/);
+assert.doesNotMatch(withGroups, /filter-group/);
+assert.match(withGroups, /filter-search/);
+const tabs = groupTabsHtml(["Familie", "Nudeln"], "Familie");
+assert.match(tabs, /class="group-tabs"/);
+assert.match(
+  tabs,
+  /class="group-tab active" type="button" role="tab" aria-selected="true" data-group="Familie">Familie<\/button>/
+);
+assert.match(tabs, /data-group="">Alle<\/button>/);
+assert.match(tabs, /data-group="Nudeln">Nudeln<\/button>/);
+assert.equal(groupTabsHtml([], ""), "");
 
-// 6. The detail view lists the groups as removable chips and offers a new one.
+// 6. Groups created in the data tab exist before any assignment.
+const hass = {
+  states: {
+    "sensor.rezeptbox_wochenplan": {
+      attributes: { plan: [], groups: ["Familie", "Backen"] },
+    },
+    "sensor.lasagne": {
+      attributes: { source_url: "https://example.com", groups: ["Nudeln"] },
+    },
+  },
+};
+assert.deepEqual([...groupRegistry(hass)], ["Familie", "Backen"]);
+assert.deepEqual([...knownGroups(hass, entries)], [
+  "Backen",
+  "Familie",
+  "Nudeln",
+]);
+assert.deepEqual([...knownGroups(hass, [])], ["Backen", "Familie"]);
+assert.deepEqual([...groupRegistry({ states: {} })], []);
+
+// 7. The data tab manager counts recipes and creates and deletes groups.
+assert.equal(groupCounts(entries).get("Familie"), 2);
+const manager = groupsManagerHtml(
+  ["Familie", "Backen"],
+  new Map([["Familie", 2]]),
+  "Backen"
+);
+assert.match(manager, /class="group-create-button"/);
+assert.match(manager, /class="group-new-input"/);
+assert.match(manager, /<span class="group-count">2 Rezepte<\/span>/);
+assert.match(manager, /<span class="group-count">0 Rezepte<\/span>/);
+assert.match(manager, /data-group="Familie"/);
+assert.match(manager, /class="group-delete confirm"/);
+assert.doesNotMatch(groupsManagerHtml([], new Map(), null), /group-chip/);
+
+// 8. The detail view lists the groups as removable chips and offers a new one.
 const editor = groupsEditorHtml(
   { groups: ["Familie", "Backen"] },
   { entityId: "sensor.lasagne", groups: ["Familie", "Backen", "Nudeln"] },
@@ -132,8 +192,8 @@ assert.match(editor, /class="group-add-button"/);
 assert.match(editor, /<option value="Nudeln"><\/option>/);
 assert.doesNotMatch(editor, /<option value="Familie"><\/option>/);
 
-// 7. Printing and the bare sensor view get no group editor.
+// 9. Printing and the bare sensor view get no group editor.
 assert.equal(groupsEditorHtml({ groups: [] }, { forPrint: true }, []), "");
 assert.equal(groupsEditorHtml({ groups: [] }, {}, []), "");
 
-console.log("card_groups_test: 7 checks passed");
+console.log("card_groups_test: 10 checks passed");

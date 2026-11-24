@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.1.0";
+const CARD_VERSION = "2.2.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -648,15 +648,6 @@ const weekDays = (count = 7) => {
 };
 
 const filterBarHtml = (entries, filter) => {
-  const groups = allGroups(entries);
-  const groupOptions = groups
-    .map(
-      (group) =>
-        `<option value="${escapeHtml(group)}"${
-          filter.group === group ? " selected" : ""
-        }>${escapeHtml(group)}</option>`
-    )
-    .join("");
   const tags = [
     ...new Set(
       entries.flatMap(({ state }) =>
@@ -676,11 +667,6 @@ const filterBarHtml = (entries, filter) => {
     <input class="filter-search" type="search" placeholder="Rezepte durchsuchen" value="${escapeHtml(
       filter.query
     )}">
-    ${
-      groups.length
-        ? `<select class="filter-group"><option value="">Alle Gruppen</option>${groupOptions}</select>`
-        : ""
-    }
     ${
       tags.length
         ? `<select class="filter-tag"><option value="">Alle Tags</option>${tagOptions}</select>`
@@ -864,6 +850,82 @@ const allGroups = (entries) =>
   [...new Set(entries.flatMap(({ state }) => recipeGroups(state)))].sort(
     (first, second) => first.localeCompare(second, "de")
   );
+
+/* Groups created in the data tab live on the meal plan sensor, so they exist
+ * before the first recipe is assigned to them. */
+const groupRegistry = (hass) => {
+  for (const state of Object.values((hass && hass.states) || {})) {
+    const attributes = state.attributes || {};
+    if (attributes.source_url) continue;
+    if (Array.isArray(attributes.plan) && Array.isArray(attributes.groups)) {
+      return attributes.groups.map((group) => String(group)).filter(Boolean);
+    }
+  }
+  return [];
+};
+
+const knownGroups = (hass, entries) =>
+  [...new Set([...groupRegistry(hass), ...allGroups(entries)])].sort(
+    (first, second) => first.localeCompare(second, "de")
+  );
+
+const groupCounts = (entries) => {
+  const counts = new Map();
+  for (const { state } of entries) {
+    for (const group of recipeGroups(state)) {
+      counts.set(group, (counts.get(group) || 0) + 1);
+    }
+  }
+  return counts;
+};
+
+const groupTabsHtml = (groups, active) => {
+  if (!groups.length) return "";
+  const items = [
+    { id: "", label: "Alle" },
+    ...groups.map((group) => ({ id: group, label: group })),
+  ];
+  return `<div class="group-tabs" role="tablist" aria-label="Rezeptgruppen">${items
+    .map(
+      (item) =>
+        `<button class="group-tab${
+          active === item.id ? " active" : ""
+        }" type="button" role="tab" aria-selected="${active === item.id}" data-group="${escapeHtml(
+          item.id
+        )}">${escapeHtml(item.label)}</button>`
+    )
+    .join("")}</div>`;
+};
+
+const groupsManagerHtml = (groups, counts, pending) => `<div class="section groups-manager">
+    <h3>Gruppen</h3>
+    <p class="tab-hint">Gruppen hier anlegen. Zuweisen kannst du sie im Rezept unter „Gruppen“; in der Rezeptliste erscheint je Gruppe ein Tab.</p>
+    ${
+      groups.length
+        ? `<div class="group-chips">${groups
+            .map((group) => {
+              const count = counts.get(group) || 0;
+              const confirming = pending === group;
+              return `<span class="group-chip">${escapeHtml(
+                group
+              )}<span class="group-count">${
+                count === 1 ? "1 Rezept" : `${count} Rezepte`
+              }</span><button class="group-delete${
+                confirming ? " confirm" : ""
+              }" type="button" data-group="${escapeHtml(
+                group
+              )}" title="Gruppe löschen" aria-label="${escapeHtml(
+                group
+              )} löschen">${confirming ? "Löschen?" : "×"}</button></span>`;
+            })
+            .join("")}</div>`
+        : `<p class="tab-hint">Noch keine Gruppen angelegt.</p>`
+    }
+    <div class="group-add">
+      <input class="group-new-input" type="text" placeholder="Neue Gruppe, z. B. Familie" maxlength="40">
+      <button class="group-create-button" type="button">Anlegen</button>
+    </div>
+  </div>`;
 
 const groupsEditorHtml = (attributes, meta, knownGroups) => {
   if (meta.forPrint || !meta.entityId) return "";
@@ -1395,6 +1457,14 @@ const STYLES = `<style>
   .group-add { display: flex; gap: 6px; align-items: center; }
   .group-add input { flex: 1 1 140px; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   .group-add button { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
+  .groups-manager { display: flex; flex-direction: column; gap: 6px; }
+  .group-count { margin-left: 6px; font-size: 0.72rem; color: var(--secondary-text-color); }
+  button.group-delete { background: none; border: none; color: inherit; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 4px; }
+  button.group-delete.confirm { color: var(--error-color, #db4437); font-size: 0.72rem; font-weight: 600; }
+  .group-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+  button.group-tab { flex: 0 0 auto; background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); border: 1px solid transparent; border-radius: 999px; padding: 4px 12px; font-size: 0.8rem; color: var(--secondary-text-color); cursor: pointer; white-space: nowrap; }
+  button.group-tab:hover { color: var(--primary-text-color); }
+  button.group-tab.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
   button.random { margin-left: auto; background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
   .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .tools button, .import-file-label { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
@@ -1415,7 +1485,7 @@ const STYLES = `<style>
   .plan-select { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   button.plan-clear { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.85rem; padding: 4px 6px; }
   @media print {
-    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .footer button, .list-bar, button.delete, .groups-editor { display: none !important; }
+    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, .groups-editor { display: none !important; }
     ha-card { box-shadow: none; }
     .content { padding: 0; gap: 8px; }
     .recipe-image { max-height: 180px; }
@@ -1485,7 +1555,7 @@ class RecipeBoxCard extends HTMLElement {
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>${detailHtml(this._state, this._config, session.checked, servings, {
         entityId,
-        groups: allGroups(recipeEntities(this._hass, null)),
+        groups: knownGroups(this._hass, recipeEntities(this._hass, null)),
       })}</ha-card>`;
     bindDetail(
       this.shadowRoot,
@@ -1522,6 +1592,8 @@ class RecipeBoxListCard extends HTMLElement {
     this._importing = false;
     this._pendingDelete = null;
     this._deleteTimer = null;
+    this._pendingGroupDelete = null;
+    this._groupDeleteTimer = null;
     this._filter = { query: "", tag: "", group: "", maxTime: "", sort: "title" };
     this._tab = "recipes";
     this._restoreFocus = false;
@@ -1565,7 +1637,7 @@ class RecipeBoxListCard extends HTMLElement {
         .join("|") +
       `#${this._selected || ""}#${JSON.stringify(this._filter)}#${JSON.stringify(
         mealPlanEntries(hass)
-      )}`;
+      )}#${groupRegistry(hass).join("|")}`;
     if (signature === this._signature) return;
     this._signature = signature;
     this._render(recipes);
@@ -1589,6 +1661,12 @@ class RecipeBoxListCard extends HTMLElement {
   _rememberTab(tab) {
     this._tab = tab;
     writeTab(this._config ? this._config.entities : null, tab);
+  }
+
+  _groupExists(group, entries) {
+    if (!group) return false;
+    if (groupRegistry(this._hass).includes(group)) return true;
+    return entries.some(({ state }) => recipeGroups(state).includes(group));
   }
 
   _filtered(entries) {
@@ -1619,7 +1697,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
     if (group) {
       list = list.filter(({ state }) => recipeGroups(state).includes(group));
-      if (!list.length && !entries.some(({ state }) => recipeGroups(state).includes(group))) {
+      if (!list.length && !this._groupExists(group, entries)) {
         // The whole group is gone; show the list instead of an empty result.
         list = entries;
         this._filter.group = "";
@@ -1762,6 +1840,66 @@ class RecipeBoxListCard extends HTMLElement {
     }
   }
 
+  async _createGroup() {
+    if (!this._hass) return;
+    const input = this.shadowRoot.querySelector("input.group-new-input");
+    const name = String((input && input.value) || "").trim();
+    if (!name) {
+      notify(this, "Bitte einen Gruppennamen eingeben.");
+      return;
+    }
+    try {
+      await this._hass.callService("recipe_box", "add_group", { group: name });
+      notify(this, `Gruppe angelegt: ${name}`);
+    } catch (error) {
+      notify(
+        this,
+        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+      );
+    } finally {
+      this._signature = null;
+      this._render();
+    }
+  }
+
+  _requestGroupDelete(name) {
+    if (!name || !this._hass) return;
+    if (this._pendingGroupDelete === name) {
+      this._deleteGroup(name);
+      return;
+    }
+    this._pendingGroupDelete = name;
+    clearTimeout(this._groupDeleteTimer);
+    this._groupDeleteTimer = setTimeout(() => {
+      this._pendingGroupDelete = null;
+      this._signature = null;
+      this._render();
+    }, 4000);
+    this._signature = null;
+    this._render();
+  }
+
+  async _deleteGroup(name) {
+    if (!this._hass) return;
+    clearTimeout(this._groupDeleteTimer);
+    this._pendingGroupDelete = null;
+    try {
+      await this._hass.callService("recipe_box", "remove_group", {
+        group: name,
+      });
+      if (this._filter.group === name) this._filter.group = "";
+      notify(this, `Gruppe gelöscht: ${name}`);
+    } catch (error) {
+      notify(
+        this,
+        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+      );
+    } finally {
+      this._signature = null;
+      this._render();
+    }
+  }
+
   _renderList(entries) {
     const filtered = this._filtered(entries);
     const items = filtered.map(({ entityId, state }) => {
@@ -1811,9 +1949,12 @@ class RecipeBoxListCard extends HTMLElement {
       : "";
 
     const filterBar = entries.length > 1 ? filterBarHtml(entries, this._filter) : "";
-    const emptyText = entries.length
-      ? "Keine Rezepte passen zu Suche oder Filter."
-      : "Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch.";
+    const groups = knownGroups(this._hass, entries);
+    const emptyText = !entries.length
+      ? "Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch."
+      : this._filter.group
+        ? `Keine Rezepte in der Gruppe „${this._filter.group}“.`
+        : "Keine Rezepte passen zu Suche oder Filter.";
     const body = filtered.length
       ? `<ul class="recipe-list">${items.join("")}</ul>`
       : `<p class="empty">${emptyText}</p>`;
@@ -1825,8 +1966,12 @@ class RecipeBoxListCard extends HTMLElement {
     const showTabs = Boolean(this._config.show_tools);
     const tab = showTabs ? this._tab : "recipes";
     const panels = {
-      recipes: `${filterBar}${body}`,
-      data: `${importBar}${tools}${manualFormHtml()}`,
+      recipes: `${groupTabsHtml(groups, this._filter.group)}${filterBar}${body}`,
+      data: `${importBar}${groupsManagerHtml(
+        groups,
+        groupCounts(entries),
+        this._pendingGroupDelete
+      )}${tools}${manualFormHtml()}`,
       plan: entries.length
         ? planHtml(this._hass, entries)
         : `<p class="empty">Noch keine Rezepte für den Wochenplan.</p>`,
@@ -1900,13 +2045,14 @@ class RecipeBoxListCard extends HTMLElement {
       }
     }
 
-    const group = this.shadowRoot.querySelector("select.filter-group");
-    if (group) {
-      group.addEventListener("change", () => {
-        this._filter.group = group.value;
+    this.shadowRoot.querySelectorAll("button.group-tab").forEach((button) => {
+      button.addEventListener("click", () => {
+        const next = button.getAttribute("data-group") || "";
+        if (next === this._filter.group) return;
+        this._filter.group = next;
         this._renderList(entries);
       });
-    }
+    });
     const tag = this.shadowRoot.querySelector("select.filter-tag");
     if (tag) {
       tag.addEventListener("change", () => {
@@ -1950,6 +2096,26 @@ class RecipeBoxListCard extends HTMLElement {
     if (manualSave) {
       manualSave.addEventListener("click", () => this._saveManual());
     }
+
+    const createGroup = this.shadowRoot.querySelector("button.group-create-button");
+    if (createGroup) {
+      const create = () => this._createGroup();
+      createGroup.addEventListener("click", create);
+      const groupInput = this.shadowRoot.querySelector("input.group-new-input");
+      if (groupInput) {
+        groupInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            create();
+          }
+        });
+      }
+    }
+    this.shadowRoot.querySelectorAll("button.group-delete").forEach((button) => {
+      button.addEventListener("click", () =>
+        this._requestGroupDelete(button.getAttribute("data-group"))
+      );
+    });
 
     this.shadowRoot.querySelectorAll("select.plan-select").forEach((select) => {
       select.addEventListener("change", () =>
@@ -2133,7 +2299,11 @@ class RecipeBoxListCard extends HTMLElement {
       const response = await this._hass.callService(
         "recipe_box",
         "import_recipes",
-        { recipes, plan: (data && data.plan) || {} },
+        {
+          recipes,
+          plan: (data && data.plan) || {},
+          groups: (data && data.groups) || [],
+        },
         undefined,
         false,
         true
@@ -2228,7 +2398,7 @@ class RecipeBoxListCard extends HTMLElement {
         </div>
         ${detailHtml(entry.state, this._config, session.checked, servings, {
           entityId: entry.entityId,
-          groups: allGroups(this._recipes()),
+          groups: knownGroups(this._hass, this._recipes()),
         })}
       </ha-card>`;
 
