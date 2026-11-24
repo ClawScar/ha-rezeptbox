@@ -498,22 +498,47 @@ def _inflected_word(word: str, plural: bool) -> str | None:
     return None
 
 
+# Strong adjective endings that become a plain ``-e`` in the plural.
+STRONG_ADJECTIVE_ENDINGS = ("er", "es", "en", "em")
+
+_WORD_RE = re.compile(r"\S+")
+
+
+def _pluralize_modifier(text: str, modifier: re.Match[str]) -> str:
+    """Give a lowercase adjective in front of the noun its plural ``-e``."""
+    word = modifier.group()
+    if (
+        len(word) < 4
+        or not word[:1].islower()
+        or not word.endswith(STRONG_ADJECTIVE_ENDINGS)
+        or not word[:-2].isalpha()
+    ):
+        return text
+    return f"{text[:modifier.start()]}{word[:-2]}e{text[modifier.end():]}"
+
+
 def _inflect_ingredient_name(name: str, plural: bool) -> str:
-    """Inflect the head noun of an ingredient name, leaving the rest intact."""
+    """Inflect the ingredient noun inside the name, leaving the rest intact.
+
+    The noun may stand alone ("Zwiebel"), at the end of a phrase with an
+    adjective ("ganzer Apfel") or in front of a qualifier ("Zwiebel rot").
+    """
     head_end = len(name)
     for separator in (",", ";", "("):
         index = name.find(separator)
         if index != -1:
             head_end = min(head_end, index)
     head = name[:head_end].rstrip()
-    start = head.rfind(" ") + 1
-    word = head[start:]
-    if not word:
-        return name
-    inflected = _inflected_word(word, plural)
-    if inflected is None:
-        return name
-    return f"{name[:start]}{inflected}{name[start + len(word):]}"
+    words = list(_WORD_RE.finditer(head))
+    for index, word in enumerate(words):
+        inflected = _inflected_word(word.group(), plural)
+        if inflected is None:
+            continue
+        text = f"{name[:word.start()]}{inflected}{name[word.end():]}"
+        if plural and index:
+            text = _pluralize_modifier(text, words[index - 1])
+        return text
+    return name
 
 
 def ingredient_name(item: dict[str, Any], amount: float | None = None) -> str:

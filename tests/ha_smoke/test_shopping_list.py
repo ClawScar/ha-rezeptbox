@@ -99,7 +99,14 @@ async def test_shopping_list_pluralizes_ingredient_names(
 ) -> None:
     """Ingredient nouns follow the scaled amount on the shopping list."""
     await _setup_shopping_list(hass)
-    ingredients = ["1 Ei", "1 Zwiebel", "1 Tomate", "1 Kartoffel"]
+    ingredients = [
+        "1 Ei",
+        "1 Zwiebel",
+        "1 Tomate",
+        "1 Kartoffel",
+        "1 ganzer Apfel",
+        "1 Zwiebel rot",
+    ]
     recipe = Recipe(
         title="Gemüsepfanne",
         source_url="https://example.com/gemuesepfanne",
@@ -119,6 +126,8 @@ async def test_shopping_list_pluralizes_ingredient_names(
         "2 Zwiebeln",
         "2 Tomaten",
         "2 Kartoffeln",
+        "2 ganze Äpfel",
+        "2 Zwiebeln rot",
     ]
 
 

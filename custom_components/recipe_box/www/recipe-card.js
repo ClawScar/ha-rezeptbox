@@ -20,7 +20,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "1.3.2";
+const CARD_VERSION = "1.3.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -216,6 +216,25 @@ const inflectedWord = (word, plural) => {
   return null;
 };
 
+// Strong adjective endings that become a plain "-e" in the plural.
+const STRONG_ADJECTIVE_ENDINGS = ["er", "es", "en", "em"];
+
+const pluralizeModifier = (text, modifier) => {
+  const word = modifier[0];
+  if (
+    word.length < 4 ||
+    word[0] !== word[0].toLowerCase() ||
+    !STRONG_ADJECTIVE_ENDINGS.some((ending) => word.endsWith(ending)) ||
+    !/^\p{L}+$/u.test(word.slice(0, -2))
+  ) {
+    return text;
+  }
+  const rest = text.slice(modifier.index + word.length);
+  return `${text.slice(0, modifier.index)}${word.slice(0, -2)}e${rest}`;
+};
+
+// The noun may stand alone ("Zwiebel"), at the end of a phrase with an
+// adjective ("ganzer Apfel") or in front of a qualifier ("Zwiebel rot").
 const inflectName = (name, plural) => {
   let headEnd = name.length;
   for (const separator of [",", ";", "("]) {
@@ -223,12 +242,17 @@ const inflectName = (name, plural) => {
     if (index !== -1) headEnd = Math.min(headEnd, index);
   }
   const head = name.slice(0, headEnd).trimEnd();
-  const start = head.lastIndexOf(" ") + 1;
-  const word = head.slice(start);
-  if (!word) return name;
-  const inflected = inflectedWord(word, plural);
-  if (inflected === null) return name;
-  return `${name.slice(0, start)}${inflected}${name.slice(start + word.length)}`;
+  const words = [...head.matchAll(/\S+/g)];
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const inflected = inflectedWord(word[0], plural);
+    if (inflected === null) continue;
+    const text = `${name.slice(0, word.index)}${inflected}${name.slice(
+      word.index + word[0].length
+    )}`;
+    return plural && index ? pluralizeModifier(text, words[index - 1]) : text;
+  }
+  return name;
 };
 
 // The original line stays untouched at the recipe's own amount, so a recipe

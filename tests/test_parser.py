@@ -202,6 +202,38 @@ class IngredientStructureTest(unittest.TestCase):
         self.assertEqual(scaled("1 Hokkaido-Kürbis", 2), "2 Hokkaido-Kürbisse")
         self.assertEqual(scaled("1–2 Zwiebel", 2), "2–4 Zwiebeln")
 
+    def test_plural_ingredient_names_in_phrases(self) -> None:
+        def scaled(text: str, factor: float) -> str:
+            return recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text(text), factor
+            )
+
+        self.assertEqual(scaled("1 ganzer Apfel", 1), "1 ganzer Apfel")
+        self.assertEqual(scaled("1 ganzer Apfel", 2), "2 ganze Äpfel")
+        self.assertEqual(scaled("1 großer Apfel", 2), "2 große Äpfel")
+        self.assertEqual(scaled("1 kleines Ei", 2), "2 kleine Eier")
+        self.assertEqual(scaled("1 frisch geriebener Apfel", 2), "2 frisch geriebene Äpfel")
+        self.assertEqual(scaled("1 mittelgroße Zwiebel", 2), "2 mittelgroße Zwiebeln")
+        self.assertEqual(scaled("1 Zwiebel rot", 2), "2 Zwiebeln rot")
+        self.assertEqual(
+            scaled("1 Zwiebel rot, geputzt", 2), "2 Zwiebeln rot, geputzt"
+        )
+        self.assertEqual(scaled("1 Tomate am Stiel", 2), "2 Tomaten am Stiel")
+
+    def test_phrases_without_ingredient_noun_stay_unchanged(self) -> None:
+        def scaled(text: str, factor: float) -> str:
+            return recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text(text), factor
+            )
+
+        self.assertEqual(scaled("1 Apfelmus", 2), "2 Apfelmus")
+        self.assertEqual(scaled("1 Tomatensuppe", 3), "3 Tomatensuppe")
+        self.assertEqual(scaled("2 ganze Äpfel", 2), "4 ganze Äpfel")
+        self.assertEqual(scaled("1 kl. Zwiebel", 2), "2 kl. Zwiebeln")
+        self.assertEqual(
+            scaled("1 Packung Philadelphia", 2), "2 Packungen Philadelphia"
+        )
+
     def test_ingredient_names_keep_plural_brands_and_roles(self) -> None:
         def scaled(text: str, factor: float) -> str:
             return recipe_parser.scale_ingredient(
