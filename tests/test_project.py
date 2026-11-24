@@ -173,8 +173,9 @@ class FilesTest(unittest.TestCase):
         self.assertIn('role="tablist"', card)
         self.assertIn('data-tab="${tab.id}"', card)
         self.assertIn("const TABS = [", card)
-        for tab in ("recipes", "manual", "plan"):
+        for tab in ("recipes", "data", "plan"):
             self.assertIn(f'{{ id: "{tab}"', card)
+        self.assertIn("Daten", card)
         self.assertIn("Eigenes Rezept", card)
         self.assertIn("Wochenplan", card)
         self.assertIn("tabsHtml", card)

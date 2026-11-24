@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.0.2";
+const CARD_VERSION = "2.0.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -699,7 +699,7 @@ const manualFormHtml = () => `<div class="manual">
 
 const TABS = [
   { id: "recipes", label: "Rezepte" },
-  { id: "manual", label: "Eigenes Rezept" },
+  { id: "data", label: "Daten" },
   { id: "plan", label: "Wochenplan" },
 ];
 
@@ -1663,8 +1663,8 @@ class RecipeBoxListCard extends HTMLElement {
     const showTabs = Boolean(this._config.show_tools);
     const tab = showTabs ? this._tab : "recipes";
     const panels = {
-      recipes: `${importBar}${tools}${filterBar}${body}`,
-      manual: manualFormHtml(),
+      recipes: `${filterBar}${body}`,
+      data: `${importBar}${tools}${manualFormHtml()}`,
       plan: entries.length
         ? planHtml(this._hass, entries)
         : `<p class="empty">Noch keine Rezepte für den Wochenplan.</p>`,

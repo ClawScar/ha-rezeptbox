@@ -158,28 +158,28 @@ show_image: true        # Vorschaubilder in der Liste
 show_steps: true        # Zubereitung in der Detailansicht
 show_import: true       # Importfeld für neue Rezepte
 show_delete: true       # Löschen-Button je Rezept
-show_tools: true        # Tabs für Sicherung, eigenes Rezept und Wochenplan einblenden
+show_tools: true        # Tabs für Daten (Import, Sicherung, eigenes Rezept) und Wochenplan einblenden
 ```
 
-Die Karte ist in drei Tabs aufgeteilt: **Rezepte**, **Eigenes Rezept** und
+Die Karte ist in drei Tabs aufgeteilt: **Rezepte**, **Daten** und
 **Wochenplan**. Mit `show_tools: false` bleibt nur die Rezeptliste sichtbar.
 
-Im Tab **Rezepte** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
-**Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Rechts neben jedem Eintrag entfernt
-der Papierkorb das Rezept – der erste Klick fragt mit **Löschen?** nach, der
-zweite löscht endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
+Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
+Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der
+aktuellen Auswahl. Rechts neben jedem Eintrag entfernt der Papierkorb das
+Rezept – der erste Klick fragt mit **Löschen?** nach, der zweite löscht
+endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
 
-Ebenfalls im Tab **Rezepte** stehen **Sichern** und **Laden** (Sicherung
-einlesen). **Sichern** öffnet den Speichern-Dialog des Browsers (Chrome/Edge);
-Browser ohne diesen Dialog legen die JSON-Datei im Download-Ordner ab, in der
-Home-Assistant-App erscheint stattdessen das Teilen-Menü. Suchfeld, Tag-Auswahl,
-Zeitfilter und Sortierung filtern
-die Liste; **Was kochen?** öffnet ein zufälliges Rezept aus der aktuellen
-Auswahl.
+Im Tab **Daten** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
+**Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Darunter
+stehen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
+Speichern-Dialog des Browsers (Chrome/Edge); Browser ohne diesen Dialog legen
+die JSON-Datei im Download-Ordner ab, in der Home-Assistant-App erscheint
+stattdessen das Teilen-Menü. Darunter legt **Eigenes Rezept** ein Rezept mit
+Titel, Portionen, Zutaten, Schritten und Tags an.
 
-Der Tab **Eigenes Rezept** legt ein Rezept mit Titel, Portionen, Zutaten,
-Schritten und Tags an. Im Tab **Wochenplan** lassen sich die nächsten sieben
-Tage füllen (inklusive **Woche auf die Einkaufsliste**).
+Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
+**Woche auf die Einkaufsliste**).
 
 ### Einzelnes Rezept
 
