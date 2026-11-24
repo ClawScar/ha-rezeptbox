@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.2.1";
+const CARD_VERSION = "2.2.2";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -885,10 +885,10 @@ const groupRegistry = (hass) => {
   return [];
 };
 
-const knownGroups = (hass, entries) =>
-  [...new Set([...groupRegistry(hass), ...allGroups(entries)])].sort(
-    (first, second) => first.localeCompare(second, "de")
-  );
+/* Registry order is the order of the tabs; it is sorted by hand in the data tab. */
+const knownGroups = (hass, entries) => [
+  ...new Set([...groupRegistry(hass), ...allGroups(entries)]),
+];
 
 const groupCounts = (entries) => {
   const counts = new Map();
@@ -920,11 +920,11 @@ const groupTabsHtml = (groups, active) => {
 
 const groupsManagerHtml = (groups, counts, pending, renaming) => `<div class="section groups-manager">
     <h3>Gruppen</h3>
-    <p class="tab-hint">Gruppen hier anlegen und umbenennen. Zuweisen kannst du sie im Rezept unter „Gruppen“; in der Rezeptliste erscheint je Gruppe ein Tab.</p>
+    <p class="tab-hint">Gruppen hier anlegen, sortieren und umbenennen. Die Reihenfolge gilt für die Tabs in der Rezeptliste; neue Gruppen hängen hinten an. Zuweisen kannst du sie im Rezept unter „Gruppen“.</p>
     ${
       groups.length
         ? `<div class="group-chips">${groups
-            .map((group) => {
+            .map((group, index) => {
               const count = counts.get(group) || 0;
               if (renaming === group) {
                 return `<span class="group-chip editing"><input class="group-rename-input" type="text" maxlength="40" value="${escapeHtml(
@@ -938,7 +938,19 @@ const groupsManagerHtml = (groups, counts, pending, renaming) => `<div class="se
                 group
               )}<span class="group-count">${
                 count === 1 ? "1 Rezept" : `${count} Rezepte`
-              }</span><button class="group-rename" type="button" data-group="${escapeHtml(
+              }</span><button class="group-move" type="button" data-group="${escapeHtml(
+                group
+              )}" data-direction="up" title="Nach oben" aria-label="${escapeHtml(
+                group
+              )} nach oben"${
+                index === 0 ? " disabled" : ""
+              }>▲</button><button class="group-move" type="button" data-group="${escapeHtml(
+                group
+              )}" data-direction="down" title="Nach unten" aria-label="${escapeHtml(
+                group
+              )} nach unten"${
+                index === groups.length - 1 ? " disabled" : ""
+              }>▼</button><button class="group-rename" type="button" data-group="${escapeHtml(
                 group
               )}" title="Gruppe umbenennen" aria-label="${escapeHtml(
                 group
@@ -1499,7 +1511,9 @@ const STYLES = `<style>
   button.group-tab.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
   .group-chip.editing { padding-right: 4px; }
   input.group-rename-input { width: 9em; max-width: 40vw; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--primary-color); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.8rem; font-family: inherit; }
-  button.group-rename, button.group-rename-save, button.group-rename-cancel { background: none; border: none; color: inherit; cursor: pointer; line-height: 1; padding: 0 4px; }
+  button.group-rename, button.group-rename-save, button.group-rename-cancel, button.group-move { background: none; border: none; color: inherit; cursor: pointer; line-height: 1; padding: 0 4px; }
+  button.group-move { font-size: 0.7rem; padding: 0 2px; }
+  button.group-move:disabled { opacity: 0.25; cursor: default; }
   button.group-rename, button.group-rename-cancel { font-size: 0.85rem; }
   button.group-rename-save { font-size: 0.75rem; font-weight: 600; }
   button.random { margin-left: auto; background: var(--secondary-background-color, rgba(127, 127, 127, 0.1)); border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
@@ -1960,6 +1974,24 @@ class RecipeBoxListCard extends HTMLElement {
     this._render();
   }
 
+  async _moveGroup(name, direction) {
+    if (!this._hass || !name || !direction) return;
+    try {
+      await this._hass.callService("recipe_box", "move_group", {
+        group: name,
+        direction,
+      });
+    } catch (error) {
+      notify(
+        this,
+        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+      );
+    } finally {
+      this._signature = null;
+      this._render();
+    }
+  }
+
   async _saveGroupRename() {
     if (!this._hass) return;
     const input = this.shadowRoot.querySelector("input.group-rename-input");
@@ -2201,6 +2233,14 @@ class RecipeBoxListCard extends HTMLElement {
         });
       }
     }
+    this.shadowRoot.querySelectorAll("button.group-move").forEach((button) => {
+      button.addEventListener("click", () =>
+        this._moveGroup(
+          button.getAttribute("data-group"),
+          button.getAttribute("data-direction")
+        )
+      );
+    });
     this.shadowRoot.querySelectorAll("button.group-delete").forEach((button) => {
       button.addEventListener("click", () =>
         this._requestGroupDelete(button.getAttribute("data-group"))

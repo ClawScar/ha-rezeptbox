@@ -25,6 +25,7 @@ from homeassistant.helpers import config_validation as cv
 
 from .const import (
     ATTR_DATE,
+    ATTR_DIRECTION,
     ATTR_EXCLUDE,
     ATTR_GROUP,
     ATTR_GROUPS,
@@ -58,6 +59,7 @@ from .const import (
     SERVICE_IMPORT_RECIPES,
     SERVICE_PLAN_RECIPE,
     SERVICE_REFRESH_RECIPE,
+    SERVICE_MOVE_GROUP,
     SERVICE_REMOVE_GROUP,
     SERVICE_REMOVE_RECIPE,
     SERVICE_RENAME_GROUP,
@@ -153,6 +155,13 @@ RENAME_GROUP_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_GROUP): cv.string,
         vol.Required(ATTR_NAME): cv.string,
+    }
+)
+
+MOVE_GROUP_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_GROUP): cv.string,
+        vol.Required(ATTR_DIRECTION): vol.In(["up", "down"]),
     }
 )
 
@@ -307,6 +316,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_RENAME_GROUP,
             partial(_async_rename_group, hass),
             schema=RENAME_GROUP_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_MOVE_GROUP):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_MOVE_GROUP,
+            partial(_async_move_group, hass),
+            schema=MOVE_GROUP_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -852,3 +870,17 @@ async def _async_rename_group(
     new_name = _group_name(call.data.get(ATTR_NAME))
     groups = await hub.async_rename_group(old_name, new_name)
     return {"group": new_name, "old_group": old_name, "groups": groups}
+
+
+async def _async_move_group(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Move a group one step up or down in the tab order."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    name = _group_name(call.data.get(ATTR_GROUP))
+    direction = call.data.get(ATTR_DIRECTION)
+    groups = await hub.async_move_group(name, direction)
+    return {"group": name, "direction": direction, "groups": groups}

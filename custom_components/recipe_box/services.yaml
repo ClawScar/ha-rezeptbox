@@ -225,3 +225,19 @@ rename_group:
       example: Familie & Gäste
       selector:
         text:
+
+move_group:
+  fields:
+    group:
+      required: true
+      example: Familie
+      selector:
+        text:
+    direction:
+      required: true
+      example: up
+      selector:
+        select:
+          options:
+            - up
+            - down

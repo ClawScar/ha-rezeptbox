@@ -224,6 +224,20 @@
           "description": "Name the group should get."
         }
       }
+    },
+    "move_group": {
+      "name": "Sort a group",
+      "description": "Moves a group one step up or down in the tab order of the recipe list.",
+      "fields": {
+        "group": {
+          "name": "Group",
+          "description": "Name of the group."
+        },
+        "direction": {
+          "name": "Direction",
+          "description": "up or down."
+        }
+      }
     }
   },
   "exceptions": {

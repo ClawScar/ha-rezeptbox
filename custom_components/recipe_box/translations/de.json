@@ -224,6 +224,20 @@
           "description": "Name, den die Gruppe bekommen soll."
         }
       }
+    },
+    "move_group": {
+      "name": "Gruppe sortieren",
+      "description": "Verschiebt eine Gruppe in der Tab-Leiste der Rezeptliste einen Platz nach oben oder unten.",
+      "fields": {
+        "group": {
+          "name": "Gruppe",
+          "description": "Name der Gruppe."
+        },
+        "direction": {
+          "name": "Richtung",
+          "description": "up oder down."
+        }
+      }
     }
   },
   "exceptions": {

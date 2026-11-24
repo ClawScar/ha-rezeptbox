@@ -247,6 +247,30 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         self.async_update_listeners()
         return list(self.groups)
 
+    async def async_move_group(self, name: str, direction: str) -> list[str]:
+        """Move a group one step up or down in the tab order."""
+        key = str(name or "").strip().casefold()
+        step = {"up": -1, "down": 1}.get(str(direction or "").strip().lower())
+        if not key or step is None:
+            return list(self.groups)
+
+        groups = list(self.groups)
+        index = next(
+            (i for i, group in enumerate(groups) if group.casefold() == key),
+            None,
+        )
+        if index is None:
+            return groups
+        target = index + step
+        if target < 0 or target >= len(groups):
+            return groups
+
+        groups[index], groups[target] = groups[target], groups[index]
+        self.groups = groups
+        await self._async_save()
+        self.async_update_listeners()
+        return list(self.groups)
+
     async def async_import_groups(self, groups: list[Any]) -> None:
         """Merge the groups of an export into the recipe box."""
         merged = normalize_group_names([*self.groups, *groups], MAX_GROUPS)

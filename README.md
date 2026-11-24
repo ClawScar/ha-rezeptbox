@@ -43,7 +43,7 @@ Einkaufsliste.
 - **Einkaufsliste ohne Dubletten**: gleiche Zutaten werden zusammengerechnet („2 Zwiebeln“ + „3 Zwiebeln“ → „5 Zwiebeln“, 500 g + 500 g → 1 kg), auch über mehrere Rezepte hinweg
 - **Nur fehlende Zutaten**: abgehakte Zutaten bleiben auf Wunsch von der Einkaufsliste
 - **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
-- **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
+- **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service
 - **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
@@ -179,18 +179,20 @@ Gruppe. Der aktive Tab ist farbig hinterlegt und wird – wie der Haupttab – i
 Browser gemerkt.
 
 Gruppen legt man im Tab **Daten** unter **Gruppen** an: Namen in das Feld
-eintippen und **Anlegen** drücken. Jede Gruppe zeigt, wie viele Rezepte ihr
-zugewiesen sind; das ✎ benennt sie um, ohne die Zuweisungen anzufassen, und
-das × löscht sie wieder (der erste Klick fragt mit **Löschen?** nach) und nimmt
-die Zuordnung von allen Rezepten. Zuweisen lässt sich eine Gruppe in der
+eintippen und **Anlegen** drücken; neue Gruppen hängen hinten an. Die
+Reihenfolge der Chips ist die Reihenfolge der Tabs und lässt sich mit ▲ und ▼
+verschieben. Jede Gruppe zeigt, wie viele Rezepte ihr zugewiesen sind; das ✎
+benennt sie um, ohne die Zuweisungen anzufassen, und das × löscht sie wieder
+(der erste Klick fragt mit **Löschen?** nach) und nimmt die Zuordnung von allen
+Rezepten. Zuweisen lässt sich eine Gruppe in der
 Detailansicht unter **Gruppen**: Namen eintippen (bestehende Namen schlägt das
 Feld vor) und **Hinzufügen** drücken, das × am Chip nimmt das Rezept wieder
 heraus. Eine dort neu eingegebene Gruppe wird automatisch mit angelegt.
 
 Im Tab **Daten** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
 **Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Darunter
-legt **Gruppen** die Gruppen der Rezeptbox an, benennt sie um und löscht sie;
-jede zeigt die Anzahl ihrer Rezepte. Es folgen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
+legt **Gruppen** die Gruppen der Rezeptbox an, sortiert sie, benennt sie um und
+löscht sie; jede zeigt die Anzahl ihrer Rezepte. Es folgen **Sichern** und **Laden** (Sicherung einlesen). **Sichern** öffnet den
 Speichern-Dialog des Browsers (Chrome/Edge); Browser ohne diesen Dialog legen
 die JSON-Datei im Download-Ordner ab, in der Home-Assistant-App erscheint
 stattdessen das Teilen-Menü. Darunter legt **Eigenes Rezept** ein Rezept mit
@@ -399,6 +401,17 @@ Benennt eine Gruppe um und lässt alle Zuweisungen bestehen – die Rezepte
 müssen nicht einzeln angefasst werden. Gibt es den neuen Namen schon, werden
 die Rezepte der alten Gruppe dorthin zusammengeführt. Die Karte nutzt den
 Service über das ✎ im Tab **Daten**.
+
+### `recipe_box.move_group`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `group` | ja | Name der Gruppe |
+| `direction` | ja | `up` oder `down` |
+
+Verschiebt eine Gruppe einen Platz nach oben oder unten. Die gespeicherte
+Reihenfolge bestimmt die Tab-Leiste der Rezeptliste und bleibt über Neustarts
+hinweg erhalten; die Karte nutzt den Service über die Pfeile im Tab **Daten**.
 
 ## Unterstützte Seiten
 

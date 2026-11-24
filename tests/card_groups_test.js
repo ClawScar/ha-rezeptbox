@@ -158,11 +158,15 @@ const hass = {
 };
 assert.deepEqual([...groupRegistry(hass)], ["Familie", "Backen"]);
 assert.deepEqual([...knownGroups(hass, entries)], [
+  "Familie",
   "Backen",
+  "Nudeln",
+]);
+assert.deepEqual([...knownGroups(hass, [])], ["Familie", "Backen"]);
+assert.deepEqual([...knownGroups({ states: {} }, entries)], [
   "Familie",
   "Nudeln",
 ]);
-assert.deepEqual([...knownGroups(hass, [])], ["Backen", "Familie"]);
 assert.deepEqual([...groupRegistry({ states: {} })], []);
 
 // 7. The data tab manager counts recipes and creates and deletes groups.
@@ -179,6 +183,15 @@ assert.match(manager, /<span class="group-count">0 Rezepte<\/span>/);
 assert.match(manager, /data-group="Familie"/);
 assert.match(manager, /class="group-delete confirm"/);
 assert.match(manager, /class="group-rename" type="button" data-group="Familie"/);
+assert.match(manager, /aria-label="Familie nach oben" disabled>▲<\/button>/);
+assert.match(manager, /aria-label="Familie nach unten">▼<\/button>/);
+assert.match(manager, /aria-label="Backen nach oben">▲<\/button>/);
+assert.match(manager, /aria-label="Backen nach unten" disabled>▼<\/button>/);
+assert.ok(
+  manager.indexOf('data-group="Familie"') <
+    manager.indexOf('data-group="Backen"'),
+  "the chips keep the registry order"
+);
 assert.doesNotMatch(groupsManagerHtml([], new Map(), null), /group-chip/);
 
 // 8. A group is renamed in place, without touching every recipe.
