@@ -159,7 +159,7 @@ Button **Zutaten auf die Liste**, der den Service aufruft.
 
 Über der Zutatenliste sitzt die Portionssteuerung **− 4 Portionen +**. Jeder
 Klick rechnet die Mengen sofort um; der Chip oben zeigt die gewählte
-Portionszahl. Der Button **Zutaten auf die Liste** übernimmt genau diese
+Portionszahl. Einheiten werden dabei mitpluralisiert („1 Prise“ → „2 Prisen“, „1 Glas“ → „2 Gläser“); ohne Änderung bleibt der Originaltext samt Bruchschreibweise erhalten. Der Button **Zutaten auf die Liste** übernimmt genau diese
 Mengen in die Einkaufsliste. Die Umrechnung ist nur eine Anzeige – das
 importierte Rezept selbst bleibt unverändert.
 
@@ -303,6 +303,16 @@ testbar:
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+Der Einkaufslisten-Service wird zusätzlich mit einem Home-Assistant-Smoke-Test
+abgesichert (Portionen mit und ohne `servings` sowie ein altes Rezept ohne
+strukturierte Zutaten):
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install "homeassistant==2025.1.4" "pytest-homeassistant-custom-component==0.13.205"
+.venv/bin/python -m pytest tests/ha_smoke -q -o asyncio_mode=auto -p no:cacheprovider
 ```
 
 ## Lizenz

@@ -20,7 +20,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "1.3.0";
+const CARD_VERSION = "1.3.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -129,6 +129,30 @@ const UNITS = [
 const escapeRegExp = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const UNIT_PLURALS = {
+  "Prise": "Prisen",
+  "Messerspitze": "Messerspitzen",
+  "Dose": "Dosen",
+  "Packung": "Packungen",
+  "Scheibe": "Scheiben",
+  "Zehe": "Zehen",
+  "Glas": "Gläser",
+  "Tasse": "Tassen",
+  "Blatt": "Blätter",
+  "Zweig": "Zweige",
+  "Stange": "Stangen",
+  "Stiel": "Stiele",
+  "Portion": "Portionen",
+};
+
+const displayUnit = (item, amount) => {
+  const unit = String((item && item.unit) || "");
+  const plural = UNIT_PLURALS[unit];
+  if (!plural) return unit;
+  const value = Number(amount ?? (item && item.amount));
+  return Number.isFinite(value) && value >= 2 ? plural : unit;
+};
+
 const UNIT_PATTERN = [...UNITS]
   .sort((first, second) => second.length - first.length)
   .map(escapeRegExp)
@@ -197,9 +221,10 @@ const parseIngredientLine = (text, group = "") => {
   return item;
 };
 
-const ingredientText = (item, amountText) => {
+const ingredientText = (item, amountText, unit) => {
   const amount = amountText ?? (item && item.amount_text) ?? "";
-  const line = [amount, item && item.unit, item && item.name]
+  const display = unit === undefined ? displayUnit(item) : unit;
+  const line = [amount, display, item && item.name]
     .filter(Boolean)
     .join(" ");
   const usage = String((item && item.usage) || "");
@@ -215,12 +240,19 @@ const scaleIngredient = (item, factor) => {
   if (!Number.isFinite(amount) || amount <= 0 || !Number.isFinite(scale) || scale <= 0) {
     return ingredientText(item);
   }
-  let amountText = formatAmountValue(amount * scale);
+  if (Math.abs(scale - 1) < 1e-9) {
+    return String((item && item.text) || ingredientText(item));
+  }
+  const scaled = amount * scale;
+  let amountText = formatAmountValue(scaled);
+  let largest = scaled;
   const amountMax = Number(item.amount_max);
   if (Number.isFinite(amountMax) && amountMax > amount) {
-    amountText = `${amountText}–${formatAmountValue(amountMax * scale)}`;
+    const scaledMax = amountMax * scale;
+    amountText = `${amountText}–${formatAmountValue(scaledMax)}`;
+    largest = Math.max(largest, scaledMax);
   }
-  return ingredientText(item, amountText);
+  return ingredientText(item, amountText, displayUnit(item, largest));
 };
 
 const structuredIngredients = (attributes) => {

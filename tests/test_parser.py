@@ -151,6 +151,35 @@ class IngredientStructureTest(unittest.TestCase):
             "Salz",
         )
 
+    def test_plural_units(self) -> None:
+        def scaled(text: str, factor: float) -> str:
+            return recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text(text), factor
+            )
+
+        self.assertEqual(scaled("1 Prise Salz", 1), "1 Prise Salz")
+        self.assertEqual(scaled("1 Prise Salz", 2), "2 Prisen Salz")
+        self.assertEqual(scaled("1 Messerspitze Zucker", 2), "2 Messerspitzen Zucker")
+        self.assertEqual(scaled("1 Dose Tomaten", 2), "2 Dosen Tomaten")
+        self.assertEqual(scaled("1 Packung Sahne", 2), "2 Packungen Sahne")
+        self.assertEqual(scaled("1 Glas Milch", 2), "2 Gläser Milch")
+        self.assertEqual(scaled("1 Zehe Knoblauch", 2), "2 Zehen Knoblauch")
+        self.assertEqual(scaled("3 Zehen Knoblauch", 1), "3 Zehen Knoblauch")
+        self.assertEqual(scaled("2 Prisen Salz", 1), "2 Prisen Salz")
+        self.assertEqual(scaled("1–2 Prisen Salz", 2), "2–4 Prisen Salz")
+
+    def test_units_without_plural_stay_unchanged(self) -> None:
+        def scaled(text: str, factor: float) -> str:
+            return recipe_parser.scale_ingredient(
+                recipe_parser.parse_ingredient_text(text), factor
+            )
+
+        self.assertEqual(scaled("1 Bund Petersilie", 2), "2 Bund Petersilie")
+        self.assertEqual(scaled("1 Stück Butter", 2), "2 Stück Butter")
+        self.assertEqual(scaled("1 Päckchen Vanillezucker", 2), "2 Päckchen Vanillezucker")
+        self.assertEqual(scaled("200 g Mehl", 2), "400 g Mehl")
+        self.assertEqual(scaled("1 EL Öl", 3), "3 EL Öl")
+
     def test_text_fallback(self) -> None:
         self.assertEqual(
             recipe_parser.scale_ingredients(

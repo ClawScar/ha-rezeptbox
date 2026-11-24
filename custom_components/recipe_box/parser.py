@@ -100,6 +100,23 @@ INGREDIENT_UNITS = (
     "pinch",
 )
 
+# Units that change between singular and plural when an amount is scaled.
+UNIT_PLURALS = {
+    "Prise": "Prisen",
+    "Messerspitze": "Messerspitzen",
+    "Dose": "Dosen",
+    "Packung": "Packungen",
+    "Scheibe": "Scheiben",
+    "Zehe": "Zehen",
+    "Glas": "Gläser",
+    "Tasse": "Tassen",
+    "Blatt": "Blätter",
+    "Zweig": "Zweige",
+    "Stange": "Stangen",
+    "Stiel": "Stiele",
+    "Portion": "Portionen",
+}
+
 UNICODE_FRACTIONS = {
     "½": "1/2",
     "¼": "1/4",
@@ -396,16 +413,31 @@ def parse_ingredient_text(text: Any, group: str = "") -> dict[str, Any]:
     return item
 
 
+def ingredient_unit(item: dict[str, Any], amount: float | None = None) -> str:
+    """Return the unit in singular or plural for the given amount."""
+    unit = str(item.get("unit") or "")
+    plural = UNIT_PLURALS.get(unit)
+    if not plural:
+        return unit
+    value = item.get("amount") if amount is None else amount
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 2:
+        return plural
+    return unit
+
+
 def ingredient_text(
-    item: dict[str, Any], amount_text: str | None = None
+    item: dict[str, Any],
+    amount_text: str | None = None,
+    unit: str | None = None,
 ) -> str:
     """Rebuild one ingredient line, optionally with a replaced amount."""
     amount = item.get("amount_text", "") if amount_text is None else amount_text
+    display_unit = ingredient_unit(item) if unit is None else unit
     line = " ".join(
         part
         for part in (
             str(amount or ""),
-            str(item.get("unit") or ""),
+            display_unit,
             str(item.get("name") or ""),
         )
         if part
@@ -421,16 +453,22 @@ def scale_ingredient(item: dict[str, Any], factor: float) -> str:
     amount = item.get("amount")
     if not isinstance(amount, (int, float)) or isinstance(amount, bool) or factor <= 0:
         return ingredient_text(item)
+    if abs(float(factor) - 1) < 1e-9:
+        return str(item.get("text") or ingredient_text(item))
 
-    text = format_amount(float(amount) * factor)
+    scaled = float(amount) * factor
+    text = format_amount(scaled)
+    largest = scaled
     amount_max = item.get("amount_max")
     if (
         isinstance(amount_max, (int, float))
         and not isinstance(amount_max, bool)
         and amount_max > amount
     ):
-        text = f"{text}–{format_amount(float(amount_max) * factor)}"
-    return ingredient_text(item, text)
+        scaled_max = float(amount_max) * factor
+        text = f"{text}–{format_amount(scaled_max)}"
+        largest = max(largest, scaled_max)
+    return ingredient_text(item, text, ingredient_unit(item, largest))
 
 
 def scale_ingredients(
