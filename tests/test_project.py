@@ -159,8 +159,27 @@ class FilesTest(unittest.TestCase):
             "week-shopping",
             "export_recipes",
             "only-missing-input",
+            "showSaveFilePicker",
+            "createWritable",
+            "Sicherung gespeichert",
+            "printDocumentHtml",
+            "openPrintWindow",
+            "forPrint",
         ):
             self.assertIn(marker, card)
+
+    def test_card_has_tabs(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        self.assertIn('role="tablist"', card)
+        self.assertIn('data-tab="${tab.id}"', card)
+        self.assertIn("const TABS = [", card)
+        for tab in ("recipes", "manual", "plan"):
+            self.assertIn(f'{{ id: "{tab}"', card)
+        self.assertIn("Eigenes Rezept", card)
+        self.assertIn("Wochenplan", card)
+        self.assertIn("tabsHtml", card)
+        self.assertNotIn('<details class="manual">', card)
+        self.assertNotIn('<details class="plan">', card)
 
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")

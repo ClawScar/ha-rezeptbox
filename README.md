@@ -147,20 +147,28 @@ show_image: true        # Vorschaubilder in der Liste
 show_steps: true        # Zubereitung in der Detailansicht
 show_import: true       # Importfeld für neue Rezepte
 show_delete: true       # Löschen-Button je Rezept
-show_tools: true        # Wochenplan, Sicherung und eigenes Rezept einblenden
+show_tools: true        # Tabs für Sicherung, eigenes Rezept und Wochenplan einblenden
 ```
 
-Oben in der Liste sitzt das Importfeld: eine oder mehrere URLs einfügen,
+Die Karte ist in drei Tabs aufgeteilt: **Rezepte**, **Eigenes Rezept** und
+**Wochenplan**. Mit `show_tools: false` bleibt nur die Rezeptliste sichtbar.
+
+Im Tab **Rezepte** sitzt oben das Importfeld: eine oder mehrere URLs einfügen,
 **Importieren** drücken. Die Liste füllt sich sofort, ohne Neustart. Rechts neben jedem Eintrag entfernt
 der Papierkorb das Rezept – der erste Klick fragt mit **Löschen?** nach, der
 zweite löscht endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
 
-Über der Liste stehen **Sichern** (JSON-Download) und **Laden** (Sicherung
-einlesen). Darunter filtern Suchfeld, Tag-Auswahl, Zeitfilter und Sortierung die
-Liste; **Was kochen?** öffnet ein zufälliges Rezept aus der aktuellen Auswahl.
-Unter der Liste lassen sich ein **Wochenplan** für die nächsten sieben Tage
-füllen (inklusive **Woche auf die Einkaufsliste**) und ein **eigenes Rezept**
-mit Titel, Portionen, Zutaten, Schritten und Tags anlegen.
+Ebenfalls im Tab **Rezepte** stehen **Sichern** und **Laden** (Sicherung
+einlesen). **Sichern** öffnet den Speichern-Dialog des Browsers (Chrome/Edge);
+Browser ohne diesen Dialog legen die JSON-Datei im Download-Ordner ab, in der
+Home-Assistant-App erscheint stattdessen das Teilen-Menü. Suchfeld, Tag-Auswahl,
+Zeitfilter und Sortierung filtern
+die Liste; **Was kochen?** öffnet ein zufälliges Rezept aus der aktuellen
+Auswahl.
+
+Der Tab **Eigenes Rezept** legt ein Rezept mit Titel, Portionen, Zutaten,
+Schritten und Tags an. Im Tab **Wochenplan** lassen sich die nächsten sieben
+Tage füllen (inklusive **Woche auf die Einkaufsliste**).
 
 ### Einzelnes Rezept
 
@@ -178,7 +186,9 @@ Neuladen wieder da. Mit **nur fehlende** landen abgehakte Zutaten nicht auf der
 Liste.
 
 In der Detailansicht stehen außerdem Nährwerte (falls die Quelle sie liefert),
-ein **Drucken**-Button mit aufgeräumter Druckansicht, ein **Aktualisieren**-
+ein **Drucken**-Button, der das Rezept in einer eigenen Druckansicht öffnet und
+den Standard-Druckdialog des Geräts aufruft (Drucker wählen oder als PDF
+speichern), ein **Aktualisieren**-
 Button für genau dieses Rezept (mit Hinweis, wenn der letzte Abruf scheiterte)
 und Timer-Knöpfe an Schritten mit Zeitangabe („25 Minuten köcheln“ →
 `⏱ 25 Min.`, mit Signalton am Ende). Zeitangaben über einer Stunde werden

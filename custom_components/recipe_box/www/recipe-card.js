@@ -12,15 +12,18 @@
  *     - sensor.curry
  *   show_image: true             # optional
  *   show_steps: true             # optional
-  *   show_import: true             # optional, shows the import field (accepts multiple URLs)
+ *   show_import: true            # optional, shows the import field (accepts multiple URLs)
  *   show_delete: true            # optional, shows the delete buttons
+ *
+ * The list card splits into three tabs: recipes (import, backup, search and
+ * list), the form for an own recipe and the week plan.
  *
  * The detail view shows a -/+ control for the servings and rescales the
  * ingredient amounts live. The shopping list button passes the chosen
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.0.1";
+const CARD_VERSION = "2.0.2";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -682,8 +685,8 @@ const filterBarHtml = (entries, filter) => {
   </div>`;
 };
 
-const manualFormHtml = () => `<details class="manual">
-  <summary>Eigenes Rezept</summary>
+const manualFormHtml = () => `<div class="manual">
+  <p class="tab-hint">Eigenes Rezept anlegen – Zutaten und Zubereitung je eine Zeile.</p>
   <div class="manual-body">
     <input class="manual-title" type="text" placeholder="Titel">
     <input class="manual-servings" type="number" min="1" max="100" placeholder="Portionen">
@@ -692,7 +695,17 @@ const manualFormHtml = () => `<details class="manual">
     <input class="manual-tags" type="text" placeholder="Tags, mit Komma getrennt">
     <button class="manual-save" type="button">Rezept speichern</button>
   </div>
-</details>`;
+</div>`;
+
+const TABS = [
+  { id: "recipes", label: "Rezepte" },
+  { id: "manual", label: "Eigenes Rezept" },
+  { id: "plan", label: "Wochenplan" },
+];
+
+const tabsHtml = (active) => `<div class="tabs" role="tablist">${TABS.map(
+  (tab) => `<button class="tab${active === tab.id ? " active" : ""}" type="button" role="tab" aria-selected="${active === tab.id}" data-tab="${tab.id}">${escapeHtml(tab.label)}</button>`
+).join("")}</div>`;
 
 const planHtml = (hass, entries) => {
   const planned = new Map(
@@ -722,13 +735,13 @@ const planHtml = (hass, entries) => {
       </div>`;
     })
     .join("");
-  return `<details class="plan">
-    <summary>Wochenplan</summary>
+  return `<div class="plan">
+    <p class="tab-hint">Wochenplan für die nächsten sieben Tage.</p>
     <div class="plan-body">
       ${rows}
       <button class="week-shopping" type="button">Woche auf die Einkaufsliste</button>
     </div>
-  </details>`;
+  </div>`;
 };
 
 const isRecipeState = (state) => {
@@ -868,6 +881,7 @@ const stepsHtml = (attributes) => {
 
 const detailHtml = (state, options, checked, servings, meta = {}) => {
   const attributes = state.attributes || {};
+  const forPrint = Boolean(options.forPrint);
   const baseServings = Number(attributes.servings);
   const chosenServings = Number(servings);
   const factor =
@@ -893,7 +907,7 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
     meta.entityId && isWebUrl(attributes.source_url)
       ? `<button class="refresh" type="button">Aktualisieren</button>`
       : "";
-  const print = `<button class="print" type="button">Drucken</button>`;
+  const printButton = `<button class="print" type="button">Drucken</button>`;
   const shopping =
     Array.isArray(attributes.ingredients) && attributes.ingredients.length
       ? `<div class="shopping-row">
@@ -901,6 +915,12 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
           <button class="shopping" type="button">Zutaten auf die Liste</button>
         </div>`
       : "";
+  const servingsControl = forPrint
+    ? ""
+    : servingsControlHtml(attributes, chosenServings);
+  const footer = forPrint
+    ? ""
+    : `<div class="footer">${source}${refresh}${printButton}${shopping}</div>`;
 
   return `${image}
     <div class="content">
@@ -909,11 +929,150 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       ${description}
       ${tagsHtml(attributes)}
       ${updateHintHtml(attributes)}
-      ${ingredients ? `<div class="section"><h3>Zutaten</h3>${servingsControlHtml(attributes, chosenServings)}${ingredients}</div>` : ""}
+      ${ingredients ? `<div class="section"><h3>Zutaten</h3>${servingsControl}${ingredients}</div>` : ""}
       ${nutritionHtml(attributes)}
       ${steps}
-      <div class="footer">${source}${refresh}${print}${shopping}</div>
+      ${footer}
     </div>`;
+};
+
+// The print view is a standalone document: Home Assistant's dashboard would
+// otherwise print its sidebar and only the visible part of the card.
+const PRINT_STYLES = `
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: #fff; color: #111; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  .content { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+  .recipe-image { display: block; width: 100%; max-height: 300px; object-fit: cover; border-radius: 6px; }
+  h2 { margin: 0; font-size: 24px; }
+  h3 { margin: 14px 0 6px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #555; }
+  h4 { margin: 10px 0 4px; font-size: 14px; }
+  .chips, .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip, .tag { border: 1px solid #999; border-radius: 999px; padding: 2px 9px; font-size: 12px; }
+  .description { margin: 0; font-size: 14px; color: #444; }
+  .section { display: flex; flex-direction: column; }
+  ul.ingredients { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  ul.ingredients label { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+  ol.steps { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+  .nutrition { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #444; }
+  .nutrition b { color: #111; }
+  .step-timer { display: none; }
+  .error { color: #b00020; font-size: 12px; }
+  @page { margin: 14mm; }
+  @media print { body { padding: 0; } .content { max-width: none; } }
+`;
+
+const printDocumentHtml = (state, options, checked, servings) => `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(recipeTitle(state))}</title>
+<style>${PRINT_STYLES}</style>
+</head>
+<body>${detailHtml(state, { ...options, forPrint: true }, checked, servings, {})}</body>
+</html>`;
+
+// Wait briefly for the recipe image before opening the dialog; a stalled
+// image must not block printing forever.
+const printWhenReady = (win, trigger) => {
+  let attempts = 0;
+  const check = () => {
+    attempts += 1;
+    let pending = 0;
+    try {
+      pending = [...win.document.images].filter((image) => !image.complete)
+        .length;
+    } catch (error) {
+      pending = 0;
+    }
+    if (!pending || attempts >= 20) trigger();
+    else setTimeout(check, 150);
+  };
+  setTimeout(check, 200);
+};
+
+const printViaFrame = (html) => {
+  try {
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText =
+      "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+    document.body.appendChild(frame);
+    const frameDocument = frame.contentWindow.document;
+    frameDocument.open();
+    frameDocument.write(html);
+    frameDocument.close();
+    let printed = false;
+    const trigger = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+      } catch (error) {
+        try {
+          window.print();
+        } catch (printError) {
+          /* the device has no print dialog */
+        }
+      }
+      setTimeout(() => {
+        if (frame.parentNode) frame.parentNode.removeChild(frame);
+      }, 60000);
+    };
+    printWhenReady(frame.contentWindow, trigger);
+    return true;
+  } catch (error) {
+    try {
+      window.print();
+    } catch (printError) {
+      return false;
+    }
+    return true;
+  }
+};
+
+const openPrintWindow = (html) => {
+  let popup = null;
+  try {
+    popup = window.open("", "_blank");
+  } catch (error) {
+    popup = null;
+  }
+  if (!popup) return printViaFrame(html);
+
+  try {
+    popup.document.open();
+    popup.document.write(html);
+    popup.document.close();
+    let printed = false;
+    const trigger = () => {
+      if (printed) return;
+      printed = true;
+      try {
+        popup.focus();
+        popup.print();
+      } catch (error) {
+        printViaFrame(html);
+      }
+    };
+    popup.onafterprint = () => {
+      try {
+        popup.close();
+      } catch (error) {
+        /* the window is already gone */
+      }
+    };
+    printWhenReady(popup, trigger);
+    return true;
+  } catch (error) {
+    try {
+      popup.close();
+    } catch (closeError) {
+      /* ignore */
+    }
+    return printViaFrame(html);
+  }
 };
 
 const deleteButtonHtml = (entityId, pending) => `<button class="delete${pending ? " confirm" : ""}" type="button" data-entity="${escapeHtml(entityId)}" title="Rezept löschen" aria-label="Rezept löschen">${pending ? "Löschen?" : `<ha-icon icon="mdi:delete-outline"></ha-icon>`}</button>`;
@@ -977,7 +1136,23 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
   }
 
   const print = root.querySelector("button.print");
-  if (print) print.addEventListener("click", () => window.print());
+  if (print) {
+    print.addEventListener("click", () => {
+      if (!options.state) {
+        window.print();
+        return;
+      }
+      const html = printDocumentHtml(
+        options.state,
+        options,
+        checked,
+        options.servings
+      );
+      if (!openPrintWindow(html)) {
+        notify(dispatcher, "Drucken wird von diesem Gerät nicht unterstützt.");
+      }
+    });
+  }
 
   const button = root.querySelector("button.shopping");
   if (!button || !hass) return;
@@ -1079,9 +1254,14 @@ const STYLES = `<style>
   .tools button, .import-file-label { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
   .import-file-label { display: inline-flex; }
   .import-file { display: none; }
-  details.manual, details.plan { border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); padding-top: 8px; }
-  details summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: var(--secondary-text-color); }
-  .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .manual, .plan { display: flex; flex-direction: column; gap: 6px; }
+  .tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
+  button.tab { flex: 0 0 auto; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 8px 12px; font-size: 0.85rem; color: var(--secondary-text-color); cursor: pointer; white-space: nowrap; }
+  button.tab:hover { color: var(--primary-text-color); }
+  button.tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }
+  .tab-panel { display: flex; flex-direction: column; gap: 10px; }
+  .tab-hint { margin: 0; font-size: 0.82rem; color: var(--secondary-text-color); }
+  .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; }
   .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
   .manual-body button, button.week-shopping { align-self: flex-start; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.88rem; cursor: pointer; }
   .plan-row { display: flex; align-items: center; gap: 8px; }
@@ -1089,7 +1269,7 @@ const STYLES = `<style>
   .plan-select { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   button.plan-clear { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.85rem; padding: 4px 6px; }
   @media print {
-    .servings, .shopping-row, .filter-bar, .tools, .import-bar, details, .footer button, .list-bar, button.delete { display: none !important; }
+    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .footer button, .list-bar, button.delete { display: none !important; }
     ha-card { box-shadow: none; }
     .content { padding: 0; gap: 8px; }
     .recipe-image { max-height: 180px; }
@@ -1169,6 +1349,9 @@ class RecipeBoxCard extends HTMLElement {
       {
         servings,
         entityId,
+        state: this._state,
+        show_image: this._config.show_image,
+        show_steps: this._config.show_steps,
         onServings: (next) => {
           session.servings = next;
           writeSession(entityId, session);
@@ -1193,6 +1376,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._pendingDelete = null;
     this._deleteTimer = null;
     this._filter = { query: "", tag: "", maxTime: "", sort: "title" };
+    this._tab = "recipes";
     this._restoreFocus = false;
   }
 
@@ -1476,21 +1660,37 @@ class RecipeBoxListCard extends HTMLElement {
         ? entries.length
         : `${filtered.length}/${entries.length}`;
 
+    const showTabs = Boolean(this._config.show_tools);
+    const tab = showTabs ? this._tab : "recipes";
+    const panels = {
+      recipes: `${importBar}${tools}${filterBar}${body}`,
+      manual: manualFormHtml(),
+      plan: entries.length
+        ? planHtml(this._hass, entries)
+        : `<p class="empty">Noch keine Rezepte für den Wochenplan.</p>`,
+    };
+
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
         <div class="content">
-          ${importBar}
-          ${tools}
           <div class="list-header">
             <h2>${escapeHtml(this._config.title)}</h2>
             <span class="count">${count}</span>
           </div>
-          ${filterBar}
-          ${body}
-          ${this._config.show_tools && entries.length ? planHtml(this._hass, entries) : ""}
-          ${this._config.show_tools ? manualFormHtml() : ""}
+          ${showTabs ? tabsHtml(tab) : ""}
+          <div class="tab-panel" role="tabpanel">${panels[tab] || panels.recipes}</div>
         </div>
       </ha-card>`;
+
+    this.shadowRoot.querySelectorAll("button.tab").forEach((button) => {
+      button.addEventListener("click", () => {
+        const next = button.getAttribute("data-tab");
+        if (!next || next === this._tab) return;
+        this._tab = next;
+        this._signature = null;
+        this._render();
+      });
+    });
 
     this.shadowRoot.querySelectorAll("button.recipe-item").forEach((button) => {
       button.addEventListener("click", () => {
@@ -1653,6 +1853,7 @@ class RecipeBoxListCard extends HTMLElement {
         true
       );
       notify(this, `Rezept gespeichert: ${data.title}`);
+      this._tab = "recipes";
       this._signature = null;
       this._render();
     } catch (error) {
@@ -1676,18 +1877,72 @@ class RecipeBoxListCard extends HTMLElement {
         false,
         true
       );
-      const blob = new Blob([JSON.stringify(data, null, 2)], {
-        type: "application/json",
-      });
+      if (!data || typeof data !== "object" || !Array.isArray(data.recipes)) {
+        throw new Error("Der Export-Service hat keine Sicherungsdaten geliefert.");
+      }
+
+      const text = JSON.stringify(data, null, 2);
+      const filename = `rezeptbox-${isoDate(new Date())}.json`;
+      const type = "application/json";
+
+      // Chromium opens the real save dialog through the File System Access API.
+      if (typeof window.showSaveFilePicker === "function") {
+        let handle = null;
+        try {
+          handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [
+              {
+                description: "Rezeptbox-Sicherung",
+                accept: { "application/json": [".json"] },
+              },
+            ],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(new Blob([text], { type }));
+          await writable.close();
+          notify(this, `Sicherung gespeichert: ${handle.name || filename}`);
+          return;
+        } catch (error) {
+          if (error && error.name === "AbortError") return;
+          /* the picker is unavailable here, the download below takes over */
+        }
+      }
+
+      const blob = new Blob([text], { type });
+
+      // Mobile Home Assistant apps have no download dialog; the share sheet
+      // lets the user store the backup in the file manager instead.
+      if (
+        typeof File === "function" &&
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.maxTouchPoints > 0
+      ) {
+        const file = new File([blob], filename, { type });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: "Rezeptbox-Sicherung" });
+            notify(this, "Sicherung gespeichert.");
+            return;
+          } catch (error) {
+            if (error && error.name === "AbortError") return;
+          }
+        }
+      }
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `rezeptbox-${isoDate(new Date())}.json`;
+      link.download = filename;
+      link.rel = "noopener";
+      link.style.display = "none";
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
-      notify(this, "Sicherung heruntergeladen.");
+      // Revoking right after the click cancels the download in some browsers.
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      notify(this, `Sicherung heruntergeladen: ${filename}`);
     } catch (error) {
       notify(
         this,
@@ -1816,6 +2071,9 @@ class RecipeBoxListCard extends HTMLElement {
       {
         servings,
         entityId: entry.entityId,
+        state: entry.state,
+        show_image: this._config.show_image,
+        show_steps: this._config.show_steps,
         onServings: (next) => {
           session.servings = next;
           writeSession(entry.entityId, session);
@@ -1835,6 +2093,7 @@ class RecipeBoxListCard extends HTMLElement {
     if (back) {
       back.addEventListener("click", () => {
         this._selected = null;
+        this._tab = "recipes";
         this._signature = null;
         this._render();
       });
