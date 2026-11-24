@@ -1,5 +1,11 @@
 {
   "config": {
+    "step": {
+      "user": {
+        "title": "Set up Rezeptbox",
+        "description": "No further details are needed. Import your recipes from the recipe list afterwards."
+      }
+    },
     "abort": {
       "already_configured": "The recipe box is already set up. Add recipes with the import in the recipe list."
     }

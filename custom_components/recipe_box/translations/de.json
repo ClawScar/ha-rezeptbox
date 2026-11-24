@@ -1,5 +1,11 @@
 {
   "config": {
+    "step": {
+      "user": {
+        "title": "Rezeptbox einrichten",
+        "description": "Weitere Angaben sind nicht nötig. Rezepte importierst du danach in der Rezeptliste."
+      }
+    },
     "abort": {
       "already_configured": "Die Rezeptbox ist bereits eingerichtet. Rezepte fügst du über den Import in der Rezeptliste hinzu."
     }

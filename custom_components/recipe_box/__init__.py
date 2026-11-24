@@ -156,6 +156,9 @@ REMOVE_RECIPE_SCHEMA = vol.All(
 )
 
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Register services and the bundled Lovelace card."""
     hass.data.setdefault(DOMAIN, {})
