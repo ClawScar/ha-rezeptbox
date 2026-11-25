@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.7.0-beta.3";
+const CARD_VERSION = "2.7.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1103,7 +1103,65 @@ const writeGroup = (entities, group) => {
   }
 };
 
-const planHtml = (hass, entries) => {
+/* The chips under a recipe use the weekday plus the day of the month, so
+ * seven of them fit next to each other on a phone. */
+const dayChipLabel = (iso) => {
+  const date = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return String(iso || "");
+  return date
+    .toLocaleDateString(uiLocale(), { weekday: "short", day: "2-digit" })
+    .replace(/[.,]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const shortDayLabel = (iso) => {
+  const date = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return String(iso || "");
+  return date.toLocaleDateString(uiLocale(), {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
+};
+
+/* The strip under a recipe in the list: one tap plans it for that day. Days
+ * that already have a recipe say so, so replacing is a visible choice. */
+const planDayStripHtml = (entityId, plannedByDate, titleBySource) =>
+  `<div class="day-strip" role="group" aria-label="${tr(
+    "Tag wählen",
+    "Choose a day"
+  )}">${weekDays()
+    .map((day) => {
+      const entry = plannedByDate.get(day.iso);
+      const plannedTitle = entry
+        ? titleBySource.get(String(entry.source_url || "")) || ""
+        : "";
+      const label = dayChipLabel(day.iso);
+      const action = plannedTitle
+        ? tr(
+            `Für ${label} einplanen – ersetzt ${plannedTitle}`,
+            `Plan for ${label} – replaces ${plannedTitle}`
+          )
+        : tr(`Für ${label} einplanen`, `Plan for ${label}`);
+      return `<button class="day-chip${
+        entry ? " day-chip-planned" : ""
+      }" type="button" data-entity="${escapeHtml(
+        entityId
+      )}" data-date="${day.iso}" data-replaces="${escapeHtml(
+        plannedTitle
+      )}" title="${escapeHtml(action)}" aria-label="${escapeHtml(
+        action
+      )}">${escapeHtml(label)}${
+        entry
+          ? '<span class="day-chip-dot" aria-hidden="true"></span>'
+          : ""
+      }</button>`;
+    })
+    .join("")}</div>`;
+
+const planHtml = (hass, entries, settings = {}) => {
+  const showImage = settings.show_image !== false;
   const planned = new Map(
     mealPlanEntries(hass).map((entry) => [String(entry.date), entry])
   );
@@ -1121,6 +1179,21 @@ const planHtml = (hass, entries) => {
           )
         : null;
       if (plannedEntry) plannedCount += 1;
+      const picture =
+        showImage && plannedEntry
+          ? String((plannedEntry.state.attributes || {}).image_url || "")
+          : "";
+      const thumb = !showImage
+        ? ""
+        : picture
+          ? `<img class="plan-thumb" src="${escapeHtml(
+              picture
+            )}" alt="" loading="lazy">`
+          : `<span class="plan-thumb plan-thumb-placeholder${
+              current ? "" : " plan-thumb-empty"
+            }" aria-hidden="true"><ha-icon icon="${
+              current ? "mdi:chef-hat" : "mdi:calendar-blank-outline"
+            }"></ha-icon></span>`;
       const options = entries
         .map(({ entityId, state }) => {
           const sourceUrl = String((state.attributes || {}).source_url || "");
@@ -1132,7 +1205,10 @@ const planHtml = (hass, entries) => {
         .join("");
       return `<div class="plan-row${day.isToday ? " plan-row-today" : ""}${
         plannedEntry ? " plan-row-planned" : " plan-row-empty"
-      }${current ? " plan-row-clearable" : ""}">
+      }${showImage ? " plan-row-picture" : ""}${
+        current ? " plan-row-clearable" : ""
+      }">
+        ${thumb}
         <span class="plan-day">
           <span class="plan-day-label">${escapeHtml(day.label)}</span>
           ${
@@ -2058,12 +2134,19 @@ const STYLES = `<style>
   button.import-button:disabled { opacity: 0.6; cursor: default; }
   ul.recipe-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
   ul.recipe-list li + li { border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.2)); }
-  li.recipe-row { display: flex; align-items: center; gap: 2px; }
+  li.recipe-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
   button.recipe-item { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: 12px; padding: 10px 0; background: none; border: none; text-align: left; color: var(--primary-text-color); cursor: pointer; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
   button.delete { flex: 0 0 auto; display: inline-flex; align-items: center; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; padding: 8px 6px; border-radius: 6px; font-size: 0.78rem; --mdc-icon-size: 20px; }
   button.delete:hover { color: var(--error-color, #db4437); background: rgba(219, 68, 55, 0.08); }
   button.delete.confirm { color: var(--error-color, #db4437); font-weight: 600; }
   .list-bar button.delete { margin-left: auto; }
+  button.plan-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; padding: 8px 6px; border-radius: 6px; --mdc-icon-size: 20px; }
+  button.plan-add:hover, button.plan-add[aria-expanded="true"] { color: var(--primary-color); background: rgba(127, 127, 127, 0.08); }
+  .day-strip { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 10px; }
+  button.day-chip { position: relative; flex: 1 1 44px; min-width: 44px; min-height: 40px; padding: 4px 2px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; background: none; color: var(--primary-text-color); font-family: inherit; font-size: 0.78rem; cursor: pointer; }
+  button.day-chip:hover { border-color: var(--primary-color); }
+  button.day-chip.day-chip-planned { border-color: var(--primary-color); color: var(--primary-color); font-weight: 600; }
+  .day-chip-dot { display: inline-block; width: 5px; height: 5px; margin-left: 4px; border-radius: 50%; background: currentColor; vertical-align: middle; }
   button.recipe-item:hover { background: var(--secondary-background-color, rgba(127, 127, 127, 0.08)); }
   .thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
   .thumb.placeholder { display: flex; align-items: center; justify-content: center; background: var(--secondary-background-color, rgba(127, 127, 127, 0.15)); color: var(--secondary-text-color); }
@@ -2157,21 +2240,29 @@ const STYLES = `<style>
   .photo-edit-input { display: none; }
   button.photo-remove { background: none; border: none; padding: 0; font-size: 0.82rem; color: var(--secondary-text-color); text-decoration: underline; cursor: pointer; }
   .plan-summary { font-weight: 600; color: var(--primary-text-color); }
-  .plan-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; }
+  .plan-row { display: grid; align-items: center; gap: 4px 10px; padding: 6px 8px; border-radius: 10px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "day clear" "select select"; }
+  .plan-row-picture { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "thumb day clear" "thumb select select"; }
+  .plan-thumb { grid-area: thumb; display: block; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
+  .plan-thumb-placeholder { display: flex; align-items: center; justify-content: center; background: var(--secondary-background-color, rgba(127, 127, 127, 0.15)); color: var(--secondary-text-color); --mdc-icon-size: 22px; }
+  .plan-thumb-empty { background: transparent; border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); opacity: 0.7; }
   .plan-row-today { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); box-shadow: inset 3px 0 0 var(--primary-color); padding-left: 10px; }
-  .plan-day { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 80px; font-size: 0.82rem; color: var(--secondary-text-color); }
+  .plan-day { grid-area: day; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; font-size: 0.82rem; color: var(--secondary-text-color); }
   .plan-today { padding: 1px 7px; border-radius: 999px; background: var(--primary-color); color: var(--text-primary-color, #fff); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; }
-  .plan-select { flex: 1 1 auto; min-width: 0; min-height: 40px; padding: 8px 32px 8px 12px; border: 1px solid transparent; border-radius: 10px; background-color: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); font-family: inherit; font-size: 0.9rem; text-overflow: ellipsis; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23727a80' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 18px; }
+  .plan-select { grid-area: select; min-width: 0; min-height: 40px; padding: 8px 32px 8px 12px; border: 1px solid transparent; border-radius: 10px; background-color: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); font-family: inherit; font-size: 0.9rem; text-overflow: ellipsis; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23727a80' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 18px; }
   .plan-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   .plan-select-planned { font-weight: 600; }
   .plan-select-empty { border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); background-color: transparent; color: var(--secondary-text-color); }
   .plan-select-empty:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
-  button.plan-clear { min-width: 36px; min-height: 36px; border-radius: 8px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.9rem; padding: 4px 6px; }
+  button.plan-clear { grid-area: clear; min-width: 36px; min-height: 36px; border-radius: 8px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.9rem; padding: 4px 6px; }
   button.plan-clear:hover { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); }
   @media (min-width: 700px) {
     .plan-body { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
-    .plan-row { position: relative; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
+    .plan-row { position: relative; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); grid-template-columns: minmax(0, 1fr); grid-template-areas: "day" "select"; }
+    .plan-row-picture { grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "thumb day" "thumb select"; align-items: center; }
+    .plan-thumb { width: 56px; height: 56px; }
     .plan-row-today { border-color: var(--primary-color); box-shadow: none; }
+    .day-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+    button.day-chip { min-width: 0; }
     .plan-day { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; }
     .plan-row-clearable .plan-day { padding-right: 34px; }
     button.plan-clear { position: absolute; top: 8px; right: 8px; }
@@ -2179,7 +2270,7 @@ const STYLES = `<style>
     button.week-shopping { width: auto; min-width: 260px; justify-self: start; }
   }
   @media print {
-    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, .groups-editor, .selection-bar, .dialog-backdrop { display: none !important; }
+    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, button.plan-add, .day-strip, .groups-editor, .selection-bar, .dialog-backdrop { display: none !important; }
     ha-card { box-shadow: none; }
     .content { padding: 0; gap: 8px; }
     .recipe-image { max-height: 180px; }
@@ -2304,6 +2395,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._filter = { query: "", tag: "", group: "", maxTime: "", sort: "title" };
     this._tab = "recipes";
     this._restoreFocus = false;
+    this._planPicker = null;
   }
 
   static getStubConfig() {
@@ -2895,6 +2987,15 @@ class RecipeBoxListCard extends HTMLElement {
 
   _renderList(entries) {
     const filtered = this._filtered(entries);
+    const plannedByDate = new Map(
+      mealPlanEntries(this._hass).map((entry) => [String(entry.date), entry])
+    );
+    const titleBySource = new Map(
+      entries.map(({ state }) => [
+        String((state.attributes || {}).source_url || ""),
+        recipeTitle(state),
+      ])
+    );
     const items = filtered.map(({ entityId, state }) => {
       const attributes = state.attributes || {};
       const meta = [
@@ -2914,6 +3015,7 @@ class RecipeBoxListCard extends HTMLElement {
         ? deleteButtonHtml(entityId, false)
         : "";
       const isSelected = this._selection.has(entityId);
+      const planOpen = this._planPicker === entityId;
       const chevron = this._selection.size
         ? isSelected
           ? "mdi:check-circle"
@@ -2929,7 +3031,21 @@ class RecipeBoxListCard extends HTMLElement {
           </span>
           <ha-icon class="chevron" icon="${chevron}"></ha-icon>
         </button>
+        <button class="plan-add" type="button" data-entity="${escapeHtml(
+          entityId
+        )}" aria-expanded="${planOpen}" title="${tr(
+        "Einem Tag zuordnen",
+        "Assign to a day"
+      )}" aria-label="${tr(
+        "Einem Tag zuordnen",
+        "Assign to a day"
+      )}"><ha-icon icon="mdi:calendar-plus"></ha-icon></button>
         ${removeButton}
+        ${
+          planOpen
+            ? planDayStripHtml(entityId, plannedByDate, titleBySource)
+            : ""
+        }
       </li>`;
     });
 
@@ -3000,7 +3116,7 @@ class RecipeBoxListCard extends HTMLElement {
         this._renamingGroup
       )}${tools}${manualFormHtml()}</div>`,
       plan: entries.length
-        ? planHtml(this._hass, entries)
+        ? planHtml(this._hass, entries, this._config)
         : `<p class="empty">${tr(
             "Noch keine Rezepte für den Wochenplan.",
             "No recipes for the meal plan yet."
@@ -3024,6 +3140,7 @@ class RecipeBoxListCard extends HTMLElement {
         const next = button.getAttribute("data-tab");
         if (!next || next === this._tab) return;
         this._rememberTab(next);
+        this._planPicker = null;
         this._signature = null;
         this._render();
         this._viewChanged({ tab: next, selected: null });
@@ -3061,6 +3178,27 @@ class RecipeBoxListCard extends HTMLElement {
       button.addEventListener("click", (event) => {
         event.stopPropagation();
         this._requestDelete(button.getAttribute("data-entity"));
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("button.plan-add").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const entityId = button.getAttribute("data-entity");
+        this._planPicker = this._planPicker === entityId ? null : entityId;
+        this._signature = null;
+        this._renderList(entries);
+      });
+    });
+    this.shadowRoot.querySelectorAll("button.day-chip").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const entityId = button.getAttribute("data-entity");
+        const date = button.getAttribute("data-date");
+        const replaces = button.getAttribute("data-replaces") || "";
+        this._planPicker = null;
+        this._signature = null;
+        this._plan(date, entityId, { replaces });
       });
     });
 
@@ -3609,7 +3747,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
   }
 
-  async _plan(date, entityId) {
+  async _plan(date, entityId, context = {}) {
     if (!this._hass || !date) return;
     try {
       if (entityId) {
@@ -3617,7 +3755,17 @@ class RecipeBoxListCard extends HTMLElement {
           date,
           entity_id: entityId,
         });
-        notify(this, tr("Rezept eingeplant.", "Recipe planned."));
+        const label = shortDayLabel(date);
+        const replaces = String(context.replaces || "");
+        notify(
+          this,
+          replaces
+            ? tr(
+                `${label}: ${replaces} ersetzt.`,
+                `${label}: replaced ${replaces}.`
+              )
+            : tr(`Für ${label} eingeplant.`, `Planned for ${label}.`)
+        );
       } else {
         await this._hass.callService("recipe_box", "clear_meal_plan", { date });
         notify(this, tr("Tag geleert.", "Day cleared."));

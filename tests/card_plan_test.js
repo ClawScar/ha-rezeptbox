@@ -2,7 +2,8 @@
  *
  * Covers the "today" marker, empty days rendered as "+ Rezept", the
  * "X von 7 Tagen geplant" summary, the planned/empty select classes, the
- * wide-screen day grid and the full-width week shopping button.
+ * wide-screen day grid, the full-width week shopping button, the recipe
+ * thumbnails and the day picker in the recipe list.
  *
  * Run with: node tests/card_plan_test.js
  */
@@ -89,20 +90,25 @@ const todayIso = isoDate(today);
 const inDays = (offset) =>
   isoDate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset));
 
-const recipeState = (id, title) => ({
+const recipeState = (id, title, image) => ({
   entity_id: id,
   attributes: {
     integration: "recipe_box",
     title,
     source_url: `https://example.org/${id}`,
     ingredients: ["2 Zwiebeln"],
+    ...(image ? { image_url: image } : {}),
   },
 });
 
 const hassFor = (language, plan) => ({
   language,
   states: {
-    "sensor.lasagne": recipeState("sensor.lasagne", "Lasagne"),
+    "sensor.lasagne": recipeState(
+      "sensor.lasagne",
+      "Lasagne",
+      "https://example.org/lasagne.jpg"
+    ),
     "sensor.curry": recipeState("sensor.curry", "Curry"),
     "sensor.recipe_box": { entity_id: "sensor.recipe_box", attributes: { plan } },
   },
@@ -121,6 +127,11 @@ const lasagne = {
   title: "Lasagne",
   source_url: "https://example.org/sensor.lasagne",
   servings: 4,
+};
+const curry = {
+  date: inDays(3),
+  title: "Curry",
+  source_url: "https://example.org/sensor.curry",
 };
 
 // 1. weekDays() returns seven consecutive days and only the first is today.
@@ -151,7 +162,7 @@ assert.equal(count(german, 'class="plan-row'), 7);
 assert.equal(count(german, 'class="plan-row plan-row-today'), 1);
 assert.equal(count(german, "plan-row-planned"), 1);
 assert.equal(count(german, "plan-row-empty"), 6);
-has(german, 'selected>Lasagne</option>');
+has(german, "selected>Lasagne</option>");
 assert.equal(count(german, "+ Rezept"), 7, "every select offers + Rezept");
 hasNot(german, ">—</option>", "the old dash placeholder is gone");
 
@@ -187,14 +198,7 @@ has(english, "+ Recipe");
 hasNot(english, "von 7 Tagen geplant");
 
 // 8. Two planned days count twice and keep their own selection.
-const two = planMarkup("de", [
-  lasagne,
-  {
-    date: inDays(3),
-    title: "Curry",
-    source_url: "https://example.org/sensor.curry",
-  },
-]);
+const two = planMarkup("de", [lasagne, curry]);
 has(two, "2 von 7 Tagen geplant");
 assert.equal(count(two, 'class="plan-select plan-select-planned"'), 2);
 assert.equal(count(two, 'class="plan-select plan-select-empty"'), 5);
@@ -211,8 +215,8 @@ has(
 );
 has(
   german,
-  "flex-direction: column; align-items: stretch;",
-  "day cards stack label and select"
+  'grid-template-areas: "thumb day" "thumb select";',
+  "wide cards put the photo beside the day"
 );
 has(german, ".plan-row-clearable .plan-day { padding-right: 34px; }");
 
@@ -238,4 +242,63 @@ has(
   "English offers the week button as well"
 );
 
-console.log("card_plan_test: 11 checks passed");
+// 12. Planned days show the recipe photo, a chef hat or an empty tile.
+has(german, 'class="plan-thumb" src="https://example.org/lasagne.jpg"');
+assert.equal(count(german, 'class="plan-thumb'), 7, "every day keeps a tile");
+assert.equal(
+  count(german, 'class="plan-thumb plan-thumb-placeholder plan-thumb-empty"'),
+  6,
+  "six days are still empty"
+);
+assert.equal(count(german, "mdi:calendar-blank-outline"), 6);
+has(two, "mdi:chef-hat", "a planned recipe without a photo gets the chef hat");
+assert.equal(
+  count(two, 'class="plan-thumb plan-thumb-placeholder plan-thumb-empty"'),
+  5
+);
+assert.equal(count(two, 'class="plan-thumb'), 7);
+
+const withoutImages = new RecipeBoxListCard();
+withoutImages.setConfig({ show_image: false });
+withoutImages._tab = "plan";
+withoutImages.hass = hassFor("de", [lasagne]);
+hasNot(withoutImages.shadowRoot.innerHTML, 'class="plan-thumb');
+hasNot(withoutImages.shadowRoot.innerHTML, 'plan-row-picture"');
+
+// 13. Each recipe row offers a day picker with the next seven days.
+const listCard = new RecipeBoxListCard();
+listCard.setConfig({});
+listCard.hass = hassFor("de", [lasagne]);
+const listEntries = listCard._recipes();
+let list = listCard.shadowRoot.innerHTML;
+assert.equal(count(list, 'class="plan-add"'), 2, "one calendar button per recipe");
+has(list, 'aria-expanded="false"');
+has(list, 'title="Einem Tag zuordnen"');
+hasNot(list, 'class="day-strip"', "the strip stays closed until tapped");
+
+listCard._planPicker = "sensor.lasagne";
+listCard._renderList(listEntries);
+list = listCard.shadowRoot.innerHTML;
+has(list, 'class="day-strip"');
+has(list, 'role="group" aria-label="Tag wählen"');
+has(list, 'aria-expanded="true"');
+assert.equal(
+  count(list, '<button class="day-chip'),
+  7,
+  "the strip lists seven days"
+);
+has(list, "day-chip day-chip-planned");
+has(list, 'data-replaces="Lasagne"', "a planned day names what it replaces");
+has(list, 'title="Für ');
+
+const englishList = new RecipeBoxListCard();
+englishList.setConfig({});
+englishList.hass = hassFor("en", []);
+englishList._planPicker = "sensor.lasagne";
+englishList._renderList(englishList._recipes());
+const englishPicker = englishList.shadowRoot.innerHTML;
+has(englishPicker, 'title="Assign to a day"');
+has(englishPicker, 'aria-label="Choose a day"');
+has(englishPicker, 'title="Plan for ');
+
+console.log("card_plan_test: 13 checks passed");

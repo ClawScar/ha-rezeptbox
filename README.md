@@ -46,7 +46,7 @@ Einkaufsliste.
 - **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt; nicht mehr benötigte Fotos löscht die Rezeptbox dabei automatisch
-- **Wochenplan** für die nächsten sieben Tage inklusive Einkauf für die ganze Woche
+- **Wochenplan** für die nächsten sieben Tage – direkt aus der Rezeptliste über das Kalender-Symbol einem Tag zuordnen, mit Rezeptbild, Heute-Markierung, Raster auf breiten Bildschirmen und Einkauf für die ganze Woche
 - **Sicherung**: alle Rezepte und den Wochenplan als JSON herunterladen und wieder einlesen
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
 - **Button-Entität** „Zutaten auf die Liste“ je Rezept für Dashboard und Automationen
@@ -178,7 +178,7 @@ title: Unsere Rezepte   # optional
 # entities:             # optional, sonst alle Rezepte
 #   - sensor.lasagne
 #   - sensor.curry
-show_image: true        # Vorschaubilder in der Liste
+show_image: true        # Vorschaubilder in Liste, Detailansicht und Wochenplan
 show_steps: true        # Zubereitung in der Detailansicht
 show_import: true       # Importfeld für neue Rezepte
 show_delete: true       # Löschen-Button je Rezept
@@ -263,7 +263,14 @@ mehr vorhandenes Foto, warnt die Karte beim Sichern mit „Achtung: fehlende
 Fotos bei …“.
 
 Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
-**Woche auf die Einkaufsliste**).
+**Woche auf die Einkaufsliste**). Jede Zeile zeigt das Foto des geplanten
+Rezepts; ohne Foto steht dort ein Platzhalter, leere Tage bleiben gestrichelt.
+Auf breiten Bildschirmen werden die sieben Tage zu einem Raster.
+
+Schneller geht es aus der Rezeptliste: Das Kalender-Symbol in einer Zeile
+klappt die nächsten sieben Tage auf. Ein Tipp plant das Rezept für diesen Tag;
+Tage, an denen schon ein Rezept steht, sind markiert und nennen beim Antippen,
+was ersetzt wird.
 
 ### Einzelnes Rezept
 
