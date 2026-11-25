@@ -88,6 +88,21 @@ class FilesTest(unittest.TestCase):
         self.assertIn("_canGoBack", card)
         self.assertIn("from:", card)
 
+    def test_card_follows_home_assistant_language(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        for marker in (
+            'startsWith("en")',
+            "setUiLanguage",
+            "const tr = (de, en)",
+            'tr("Rezepte", "Recipes")',
+            'tr("Zutaten", "Ingredients")',
+            'tr("Menü", "Menu")',
+        ):
+            self.assertIn(marker, card)
+        self.assertIn(
+            "Sprache der Oberfläche", (BASE / "README.md").read_text("utf-8")
+        )
+
     def test_services_yaml(self) -> None:
         content = (COMPONENT / "services.yaml").read_text("utf-8")
         self.assertIn("import_recipe", content)
@@ -219,8 +234,8 @@ class FilesTest(unittest.TestCase):
             "group-move",
             "data-panel",
             "data-section",
-            ">Sichern<",
-            ">Laden<",
+            'tr("Sichern", "Save")',
+            'tr("Laden", "Load")',
             "\"Importieren\"",
             "selection-bar",
             "dialog-confirm",

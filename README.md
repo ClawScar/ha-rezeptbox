@@ -51,6 +51,16 @@ Einkaufsliste.
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
 - **Button-Entität** „Zutaten auf die Liste“ je Rezept für Dashboard und Automationen
 
+## Sprache der Oberfläche
+
+Karten und Sidebar-Seite richten sich nach der Sprache von Home Assistant:
+Läuft Home Assistant auf Englisch (`language` beginnt mit „en“, also auch
+`en-GB` oder `en_US`), zeigen sie englische Beschriftungen – Tabs, Buttons,
+Platzhalter, Meldungen und Dialoge. Für jede andere Sprache bleiben die
+deutschen Texte. Einrichtung, Optionen und Services sind unabhängig davon über
+`translations/en.json` und `translations/de.json` übersetzt. Rezeptinhalte
+selbst bleiben in der Sprache der Quellseite.
+
 Getestet gegen Home Assistant ab Version **2025.1**.
 
 ## Installation

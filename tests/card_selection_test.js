@@ -77,7 +77,7 @@ assert.deepEqual(
   [...TABS].map((tab) => tab.id),
   ["recipes", "plan", "data"]
 );
-assert.equal(TABS[TABS.length - 1].label, "Daten");
+assert.equal(TABS[TABS.length - 1].label(), "Daten", "labels follow the UI language");
 
 // 2. The selection bar counts, offers groups and all three actions.
 const bar = selectionBarHtml(3, ["Familie", "Backen"]);

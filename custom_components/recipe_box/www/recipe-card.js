@@ -23,11 +23,28 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.5.0";
+const CARD_VERSION = "2.6.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
 const INTEGRATION = "recipe_box";
+
+/* The cards and the sidebar page follow Home Assistant's language: English
+ * when it runs in English, German for everything else. tr() keeps both texts
+ * next to each other at every call site, so none can be forgotten. */
+let UI_LANG = "de";
+let localizeCustomCards = null;
+const tr = (de, en) => (UI_LANG === "en" ? en : de);
+const uiLocale = () => (UI_LANG === "en" ? "en-GB" : "de-DE");
+const uiCollator = () => (UI_LANG === "en" ? "en" : "de");
+const setUiLanguage = (hass) => {
+  const language = String((hass && hass.language) || "de").toLowerCase();
+  const next = language.startsWith("en") ? "en" : "de";
+  if (next === UI_LANG) return next;
+  UI_LANG = next;
+  if (localizeCustomCards) localizeCustomCards();
+  return next;
+};
 
 const HTML_ESCAPES = {
   "&": "&amp;",
@@ -45,8 +62,12 @@ const formatMinutes = (value) => {
   if (!Number.isFinite(minutes) || minutes <= 0) return "";
   const hours = Math.floor(minutes / 60);
   const rest = Math.round(minutes % 60);
-  if (!hours) return `${rest} Min.`;
-  return rest ? `${hours} Std. ${rest} Min.` : `${hours} Std.`;
+  const shortMin = tr("Min.", "min");
+  if (!hours) return `${rest} ${shortMin}`;
+  const shortHour = tr("Std.", "h");
+  return rest
+    ? `${hours} ${shortHour} ${rest} ${shortMin}`
+    : `${hours} ${shortHour}`;
 };
 
 const formatRating = (value, count) => {
@@ -61,7 +82,9 @@ const formatRating = (value, count) => {
 const formatServings = (value) => {
   const servings = Number(value);
   if (!Number.isFinite(servings) || servings <= 0) return "";
-  return `${servings} ${servings === 1 ? "Portion" : "Portionen"}`;
+  return `${servings} ${
+    servings === 1 ? tr("Portion", "serving") : tr("Portionen", "servings")
+  }`;
 };
 
 const FRACTION_TEXT = {
@@ -556,7 +579,7 @@ const startStepTimer = (entityId, index, minutes, button) => {
   if (running) {
     clearInterval(running.interval);
     TIMERS.delete(key);
-    if (button) button.textContent = `⏱ ${minutes} Min.`;
+    if (button) button.textContent = `⏱ ${minutes} ${tr("Min.", "min")}`;
     return;
   }
 
@@ -566,7 +589,7 @@ const startStepTimer = (entityId, index, minutes, button) => {
     if (left <= 0) {
       clearInterval(interval);
       TIMERS.delete(key);
-      if (button) button.textContent = "Fertig ✓";
+      if (button) button.textContent = tr("Fertig ✓", "Done ✓");
       beep();
       return;
     }
@@ -595,7 +618,7 @@ const nutritionHtml = (attributes) => {
     .filter(([, value]) => value)
     .slice(0, 8);
   if (!rows.length) return "";
-  return `<div class="section"><h3>Nährwerte</h3><div class="nutrition">${rows
+  return `<div class="section"><h3>${tr("Nährwerte", "Nutrition")}</h3><div class="nutrition">${rows
     .map(
       ([label, value]) =>
         `<span><b>${escapeHtml(label)}</b> ${escapeHtml(value)}</span>`
@@ -606,9 +629,13 @@ const nutritionHtml = (attributes) => {
 const updateHintHtml = (attributes) => {
   const error = String((attributes && attributes.update_error) || "");
   if (!error) return "";
-  return `<p class="error">Letzter Abruf fehlgeschlagen (${escapeHtml(
-    error
-  )}). Angezeigt wird die gespeicherte Version.</p>`;
+  return `<p class="error">${tr(
+    "Letzter Abruf fehlgeschlagen",
+    "Last refresh failed"
+  )} (${escapeHtml(error)}). ${tr(
+    "Angezeigt wird die gespeicherte Version.",
+    "Showing the saved version."
+  )}</p>`;
 };
 
 const mealPlanEntries = (hass) => {
@@ -637,7 +664,7 @@ const weekDays = (count = 7) => {
     );
     days.push({
       iso: isoDate(date),
-      label: date.toLocaleDateString("de-DE", {
+      label: date.toLocaleDateString(uiLocale(), {
         weekday: "short",
         day: "2-digit",
         month: "2-digit",
@@ -654,7 +681,7 @@ const filterBarHtml = (entries, filter) => {
         ((state.attributes || {}).tags || []).filter(Boolean)
       )
     ),
-  ].sort((first, second) => first.localeCompare(second, "de"));
+  ].sort((first, second) => first.localeCompare(second, uiCollator()));
   const tagOptions = tags
     .map(
       (tag) =>
@@ -664,24 +691,24 @@ const filterBarHtml = (entries, filter) => {
     )
     .join("");
   return `<div class="filter-bar">
-    <input class="filter-search" type="search" placeholder="Rezepte durchsuchen" value="${escapeHtml(
+    <input class="filter-search" type="search" placeholder="${tr("Rezepte durchsuchen", "Search recipes")}" value="${escapeHtml(
       filter.query
     )}">
     ${
       tags.length
-        ? `<select class="filter-tag"><option value="">Alle Tags</option>${tagOptions}</select>`
+        ? `<select class="filter-tag"><option value="">${tr("Alle Tags", "All tags")}</option>${tagOptions}</select>`
         : ""
     }
     <select class="filter-time">
-      <option value="">Beliebige Zeit</option>
-      <option value="30"${filter.maxTime === "30" ? " selected" : ""}>bis 30 Min.</option>
-      <option value="60"${filter.maxTime === "60" ? " selected" : ""}>bis 60 Min.</option>
+      <option value="">${tr("Beliebige Zeit", "Any time")}</option>
+      <option value="30"${filter.maxTime === "30" ? " selected" : ""}>${tr("bis 30 Min.", "up to 30 min")}</option>
+      <option value="60"${filter.maxTime === "60" ? " selected" : ""}>${tr("bis 60 Min.", "up to 60 min")}</option>
     </select>
     <select class="filter-sort">
       <option value="title"${filter.sort === "title" ? " selected" : ""}>A–Z</option>
-      <option value="time"${filter.sort === "time" ? " selected" : ""}>Schnellste zuerst</option>
+      <option value="time"${filter.sort === "time" ? " selected" : ""}>${tr("Schnellste zuerst", "Fastest first")}</option>
     </select>
-    <button class="random" type="button">Was kochen?</button>
+    <button class="random" type="button">${tr("Was kochen?", "What to cook?")}</button>
   </div>`;
 };
 
@@ -690,8 +717,11 @@ const isManualSource = (source) =>
 
 /* HEIC is the default photo format on iPhones. Safari can convert it, other
  * browsers cannot, and Home Assistant only stores JPEG, PNG and GIF. */
-const HEIC_PHOTO_MESSAGE =
-  "HEIC-Fotos kann dieser Browser nicht umwandeln. Bitte das Foto als JPG speichern oder direkt mit der Handy-Kamera aufnehmen.";
+const heicPhotoMessage = () =>
+  tr(
+    "HEIC-Fotos kann dieser Browser nicht umwandeln. Bitte das Foto als JPG speichern oder direkt mit der Handy-Kamera aufnehmen.",
+    "This browser cannot convert HEIC photos. Save the photo as JPG or take it with the phone camera."
+  );
 
 const looksHeic = (file) => {
   const type = String((file && file.type) || "").toLowerCase();
@@ -724,21 +754,33 @@ const errorText = (error) => {
 };
 
 const photoErrorMessage = (error, file) => {
-  if (looksHeic(file)) return HEIC_PHOTO_MESSAGE;
+  if (looksHeic(file)) return heicPhotoMessage();
   const raw = errorText(error).trim();
   if (/413|too large|payload/i.test(raw)) {
-    return "Das Foto ist zu groß (maximal 10 MB).";
+    return tr(
+      "Das Foto ist zu groß (maximal 10 MB).",
+      "The photo is too large (10 MB maximum)."
+    );
   }
   if (/404|not found/i.test(raw)) {
-    return "Home Assistant nimmt keine Fotos an. Bitte die Integration 'image_upload' aktivieren.";
+    return tr(
+      "Home Assistant nimmt keine Fotos an. Bitte die Integration 'image_upload' aktivieren.",
+      "Home Assistant is not accepting photos. Enable the 'image_upload' integration."
+    );
   }
   if (/401|403|unauthori|forbidden/i.test(raw)) {
-    return "Der Foto-Upload wurde abgelehnt. Bitte neu anmelden.";
+    return tr(
+      "Der Foto-Upload wurde abgelehnt. Bitte neu anmelden.",
+      "The photo upload was refused. Please sign in again."
+    );
   }
   if (/400|bad request|invalid/i.test(raw)) {
-    return "Dieses Bildformat wird nicht unterstützt. Bitte JPG oder PNG verwenden.";
+    return tr(
+      "Dieses Bildformat wird nicht unterstützt. Bitte JPG oder PNG verwenden.",
+      "This image format is not supported. Please use JPG or PNG."
+    );
   }
-  return raw || "Upload fehlgeschlagen";
+  return raw || tr("Upload fehlgeschlagen", "Upload failed");
 };
 
 /* A backup stays importable when photos were cleaned up, but recipes whose
@@ -748,9 +790,14 @@ const missingImageWarning = (data) => {
     ? data.missing_images.length
     : 0;
   if (!missing) return "";
-  return ` – Achtung: fehlende Fotos bei ${missing} ${
-    missing === 1 ? "Rezept" : "Rezepten"
-  }.`;
+  return tr(
+    ` – Achtung: fehlende Fotos bei ${missing} ${
+      missing === 1 ? "Rezept" : "Rezepten"
+    }.`,
+    ` – Warning: missing photos for ${missing} ${
+      missing === 1 ? "recipe" : "recipes"
+    }.`
+  );
 };
 
 /* Downscale in the browser: keeps uploads small and turns phone photos
@@ -812,7 +859,7 @@ const uploadError = async (response) => {
   ]
     .filter(Boolean)
     .join(": ");
-  return new Error(raw || "Upload fehlgeschlagen");
+  return new Error(raw || tr("Upload fehlgeschlagen", "Upload failed"));
 };
 
 /* Home Assistant only stores jpeg, png and gif. Some Android pickers hand
@@ -859,7 +906,9 @@ const postPhoto = (hass, form) => {
   const token =
     hass && hass.auth && hass.auth.data && hass.auth.data.access_token;
   if (typeof fetch !== "function") {
-    throw new Error("Dieser Browser kann keine Fotos hochladen.");
+    throw new Error(
+      tr("Dieser Browser kann keine Fotos hochladen.", "This browser cannot upload photos.")
+    );
   }
   return fetch(url, {
     method: "POST",
@@ -872,7 +921,7 @@ const postPhoto = (hass, form) => {
 const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   const blob = await shrink(file);
   if (blob === file && looksHeic(file)) {
-    throw new Error(HEIC_PHOTO_MESSAGE);
+    throw new Error(heicPhotoMessage());
   }
   const base = String((file && file.name) || "rezept")
     .replace(/\.[^.]+$/, "")
@@ -889,7 +938,10 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
     response = await postPhoto(hass, form);
   } catch (error) {
     throw new Error(
-      `Netzwerkfehler beim Foto-Upload: ${errorText(error) || "unbekannt"}`
+      tr(
+        `Netzwerkfehler beim Foto-Upload: ${errorText(error) || "unbekannt"}`,
+        `Network error during the photo upload: ${errorText(error) || "unknown"}`
+      )
     );
   }
   if (!response || !response.ok) {
@@ -900,40 +952,71 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   try {
     result = await response.json();
   } catch (error) {
-    throw new Error("Die Antwort von Home Assistant war nicht lesbar.");
+    throw new Error(
+      tr(
+        "Die Antwort von Home Assistant war nicht lesbar.",
+        "The answer from Home Assistant could not be read."
+      )
+    );
   }
   if (!result || !result.id) {
-    throw new Error("Der Upload hat keine Bild-ID geliefert.");
+    throw new Error(
+      tr(
+        "Der Upload hat keine Bild-ID geliefert.",
+        "The upload did not return an image id."
+      )
+    );
   }
   return `/api/image/serve/${result.id}/original`;
 };
 
 const manualFormHtml = () => `<div class="manual data-section">
-  <h3>Eigenes Rezept</h3>
-  <p class="tab-hint">Zutaten und Zubereitung je eine Zeile.</p>
+  <h3>${tr("Eigenes Rezept", "Own recipe")}</h3>
+  <p class="tab-hint">${tr(
+    "Zutaten und Zubereitung je eine Zeile.",
+    "One ingredient and one step per line."
+  )}</p>
   <div class="manual-body">
-    <input class="manual-title" type="text" placeholder="Titel">
-    <input class="manual-servings" type="number" min="1" max="100" placeholder="Portionen">
-    <textarea class="manual-ingredients" rows="3" placeholder="Zutaten – eine pro Zeile"></textarea>
-    <textarea class="manual-instructions" rows="3" placeholder="Zubereitung – ein Schritt pro Zeile"></textarea>
-    <input class="manual-tags" type="text" placeholder="Tags, mit Komma getrennt">
-    <label class="manual-photo-label">Foto hinzufügen (JPG/PNG, optional)<input class="manual-photo" type="file" accept="image/*"></label>
+    <input class="manual-title" type="text" placeholder="${tr("Titel", "Title")}">
+    <input class="manual-servings" type="number" min="1" max="100" placeholder="${tr("Portionen", "Servings")}">
+    <textarea class="manual-ingredients" rows="3" placeholder="${tr(
+      "Zutaten – eine pro Zeile",
+      "Ingredients – one per line"
+    )}"></textarea>
+    <textarea class="manual-instructions" rows="3" placeholder="${tr(
+      "Zubereitung – ein Schritt pro Zeile",
+      "Steps – one per line"
+    )}"></textarea>
+    <input class="manual-tags" type="text" placeholder="${tr(
+      "Tags, mit Komma getrennt",
+      "Tags, separated by commas"
+    )}">
+    <label class="manual-photo-label">${tr(
+      "Foto hinzufügen (JPG/PNG, optional)",
+      "Add a photo (JPG/PNG, optional)"
+    )}<input class="manual-photo" type="file" accept="image/*"></label>
     <div class="manual-photo-preview" hidden>
-      <img alt="Gewähltes Rezeptfoto">
-      <button class="manual-photo-remove" type="button">Foto entfernen</button>
+      <img alt="${tr("Gewähltes Rezeptfoto", "Chosen recipe photo")}">
+      <button class="manual-photo-remove" type="button">${tr(
+        "Foto entfernen",
+        "Remove photo"
+      )}</button>
     </div>
-    <button class="manual-save" type="button">Rezept speichern</button>
+    <button class="manual-save" type="button">${tr(
+      "Rezept speichern",
+      "Save recipe"
+    )}</button>
   </div>
 </div>`;
 
 const TABS = [
-  { id: "recipes", label: "Rezepte" },
-  { id: "plan", label: "Wochenplan" },
-  { id: "data", label: "Daten" },
+  { id: "recipes", label: () => tr("Rezepte", "Recipes") },
+  { id: "plan", label: () => tr("Wochenplan", "Meal plan") },
+  { id: "data", label: () => tr("Daten", "Data") },
 ];
 
 const tabsHtml = (active) => `<div class="tabs" role="tablist">${TABS.map(
-  (tab) => `<button class="tab${active === tab.id ? " active" : ""}" type="button" role="tab" aria-selected="${active === tab.id}" data-tab="${tab.id}">${escapeHtml(tab.label)}</button>`
+  (tab) => `<button class="tab${active === tab.id ? " active" : ""}" type="button" role="tab" aria-selected="${active === tab.id}" data-tab="${tab.id}">${escapeHtml(tab.label())}</button>`
 ).join("")}</div>`;
 
 const TAB_PREFIX = "recipe_box:tab:";
@@ -1041,17 +1124,23 @@ const planHtml = (hass, entries) => {
         <select class="plan-select" data-date="${day.iso}"><option value="">—</option>${options}</select>
         ${
           current
-            ? `<button class="plan-clear" type="button" data-date="${day.iso}" title="Tag leeren" aria-label="Tag leeren">✕</button>`
+            ? `<button class="plan-clear" type="button" data-date="${day.iso}" title="${tr("Tag leeren", "Clear day")}" aria-label="${tr("Tag leeren", "Clear day")}">✕</button>`
             : ""
         }
       </div>`;
     })
     .join("");
   return `<div class="plan">
-    <p class="tab-hint">Wochenplan für die nächsten sieben Tage.</p>
+    <p class="tab-hint">${tr(
+      "Wochenplan für die nächsten sieben Tage.",
+      "Meal plan for the next seven days."
+    )}</p>
     <div class="plan-body">
       ${rows}
-      <button class="week-shopping" type="button">Woche auf die Einkaufsliste</button>
+      <button class="week-shopping" type="button">${tr(
+      "Woche auf die Einkaufsliste",
+      "Add the week to the shopping list"
+    )}</button>
     </div>
   </div>`;
 };
@@ -1087,7 +1176,10 @@ const recipeEntities = (hass, filter) => {
     result.push({ entityId, state });
   }
   result.sort((first, second) =>
-    recipeTitle(first.state).localeCompare(recipeTitle(second.state), "de")
+    recipeTitle(first.state).localeCompare(
+      recipeTitle(second.state),
+      uiCollator()
+    )
   );
   return result;
 };
@@ -1129,7 +1221,7 @@ const recipeGroups = (state) => {
 
 const allGroups = (entries) =>
   [...new Set(entries.flatMap(({ state }) => recipeGroups(state)))].sort(
-    (first, second) => first.localeCompare(second, "de")
+    (first, second) => first.localeCompare(second, uiCollator())
   );
 
 /* Groups created in the data tab live on the meal plan sensor, so they exist
@@ -1163,10 +1255,10 @@ const groupCounts = (entries) => {
 const groupTabsHtml = (groups, active) => {
   if (!groups.length) return "";
   const items = [
-    { id: "", label: "Alle" },
+    { id: "", label: tr("Alle", "All") },
     ...groups.map((group) => ({ id: group, label: group })),
   ];
-  return `<div class="group-tabs" role="tablist" aria-label="Rezeptgruppen">${items
+  return `<div class="group-tabs" role="tablist" aria-label="${tr("Rezeptgruppen", "Recipe groups")}">${items
     .map(
       (item) =>
         `<button class="group-tab${
@@ -1179,8 +1271,11 @@ const groupTabsHtml = (groups, active) => {
 };
 
 const groupsManagerHtml = (groups, counts, pending, renaming) => `<div class="section groups-manager data-section">
-    <h3>Gruppen</h3>
-    <p class="tab-hint">Gruppen hier anlegen, sortieren und umbenennen. Die Reihenfolge gilt für die Tabs in der Rezeptliste; neue Gruppen hängen hinten an. Zuweisen kannst du sie im Rezept unter „Gruppen“.</p>
+    <h3>${tr("Gruppen", "Groups")}</h3>
+    <p class="tab-hint">${tr(
+      "Gruppen hier anlegen, sortieren und umbenennen. Die Reihenfolge gilt für die Tabs in der Rezeptliste; neue Gruppen hängen hinten an. Zuweisen kannst du sie im Rezept unter „Gruppen“.",
+      "Create, sort and rename groups here. The order is the order of the tabs in the recipe list; new groups are added at the end. Assign them in a recipe under “Groups”."
+    )}</p>
     ${
       groups.length
         ? `<div class="group-chips">${groups
@@ -1189,45 +1284,51 @@ const groupsManagerHtml = (groups, counts, pending, renaming) => `<div class="se
               if (renaming === group) {
                 return `<span class="group-chip editing"><input class="group-rename-input" type="text" maxlength="40" value="${escapeHtml(
                   group
-                )}" aria-label="Neuer Name für ${escapeHtml(
+                )}" aria-label="${tr("Neuer Name für", "New name for")} ${escapeHtml(
                   group
-                )}"><button class="group-rename-save" type="button" title="Umbenennen speichern" aria-label="Umbenennen speichern">OK</button><button class="group-rename-cancel" type="button" title="Umbenennen abbrechen" aria-label="Umbenennen abbrechen">×</button></span>`;
+                )}"><button class="group-rename-save" type="button" title="${tr("Umbenennen speichern", "Save rename")}" aria-label="${tr(
+      "Umbenennen speichern",
+      "Save rename"
+    )}">OK</button><button class="group-rename-cancel" type="button" title="${tr("Umbenennen abbrechen", "Cancel rename")}" aria-label="${tr(
+      "Umbenennen abbrechen",
+      "Cancel rename"
+    )}">×</button></span>`;
               }
               const confirming = pending === group;
               return `<span class="group-chip">${escapeHtml(
                 group
               )}<span class="group-count">${
-                count === 1 ? "1 Rezept" : `${count} Rezepte`
+                count === 1 ? tr("1 Rezept", "1 recipe") : `${count} ${tr("Rezepte", "recipes")}`
               }</span><button class="group-move" type="button" data-group="${escapeHtml(
                 group
-              )}" data-direction="up" title="Nach oben" aria-label="${escapeHtml(
+              )}" data-direction="up" title="${tr("Nach oben", "Move up")}" aria-label="${escapeHtml(
                 group
-              )} nach oben"${
+              )} ${tr("nach oben", "up")}"${
                 index === 0 ? " disabled" : ""
               }>▲</button><button class="group-move" type="button" data-group="${escapeHtml(
                 group
-              )}" data-direction="down" title="Nach unten" aria-label="${escapeHtml(
+              )}" data-direction="down" title="${tr("Nach unten", "Move down")}" aria-label="${escapeHtml(
                 group
-              )} nach unten"${
+              )} ${tr("nach unten", "down")}"${
                 index === groups.length - 1 ? " disabled" : ""
               }>▼</button><button class="group-rename" type="button" data-group="${escapeHtml(
                 group
-              )}" title="Gruppe umbenennen" aria-label="${escapeHtml(
+              )}" title="${tr("Gruppe umbenennen", "Rename group")}" aria-label="${escapeHtml(
                 group
-              )} umbenennen">✎</button><button class="group-delete${
+              )} ${tr("umbenennen", "rename")}">✎</button><button class="group-delete${
                 confirming ? " confirm" : ""
               }" type="button" data-group="${escapeHtml(
                 group
-              )}" title="Gruppe löschen" aria-label="${escapeHtml(
+              )}" title="${tr("Gruppe löschen", "Delete group")}" aria-label="${escapeHtml(
                 group
-              )} löschen">${confirming ? "Löschen?" : "×"}</button></span>`;
+              )} ${tr("löschen", "delete")}">${confirming ? tr("Löschen?", "Delete?") : "×"}</button></span>`;
             })
             .join("")}</div>`
-        : `<p class="tab-hint">Noch keine Gruppen angelegt.</p>`
+        : `<p class="tab-hint">${tr("Noch keine Gruppen angelegt.", "No groups yet.")}</p>`
     }
     <div class="group-add">
-      <input class="group-new-input" type="text" placeholder="Neue Gruppe, z. B. Familie" maxlength="40">
-      <button class="group-create-button" type="button">Anlegen</button>
+      <input class="group-new-input" type="text" placeholder="${tr("Neue Gruppe, z. B. Familie", "New group, e.g. family")}" maxlength="40">
+      <button class="group-create-button" type="button">${tr("Anlegen", "Create")}</button>
     </div>
   </div>`;
 
@@ -1237,7 +1338,9 @@ const groupsEditorHtml = (attributes, meta, knownGroups) => {
   const chips = current
     .map(
       (group) =>
-        `<span class="group-chip">${escapeHtml(group)}<button class="group-remove" type="button" data-group="${escapeHtml(group)}" title="Aus der Gruppe entfernen" aria-label="${escapeHtml(group)} entfernen">×</button></span>`
+        `<span class="group-chip">${escapeHtml(group)}<button class="group-remove" type="button" data-group="${escapeHtml(group)}" title="${tr("Aus der Gruppe entfernen", "Remove from group")}" aria-label="${escapeHtml(
+      group
+    )} ${tr("entfernen", "remove")}">×</button></span>`
     )
     .join("");
   const available = knownGroups.filter((group) => !current.includes(group));
@@ -1248,19 +1351,22 @@ const groupsEditorHtml = (attributes, meta, knownGroups) => {
     )
     .join("");
   return `<div class="section groups-editor">
-    <h3>Gruppen</h3>
+    <h3>${tr("Gruppen", "Groups")}</h3>
     ${chips ? `<div class="group-chips">${chips}</div>` : ""}
     ${
       available.length
         ? `<div class="group-add">
-      <select class="group-select" aria-label="Vorhandene Gruppe wählen"><option value="">Gruppe wählen …</option>${options}</select>
-      <button class="group-add-button" type="button">Hinzufügen</button>
+      <select class="group-select" aria-label="${tr("Vorhandene Gruppe wählen", "Choose an existing group")}"><option value="">${tr(
+      "Gruppe wählen …",
+      "Choose a group …"
+    )}</option>${options}</select>
+      <button class="group-add-button" type="button">${tr("Hinzufügen", "Add")}</button>
     </div>`
         : ""
     }
     <div class="group-add">
-      <input class="group-input" type="text" placeholder="Neue Gruppe, z. B. Familie" maxlength="40">
-      <button class="group-new-button" type="button">Neue Gruppe</button>
+      <input class="group-input" type="text" placeholder="${tr("Neue Gruppe, z. B. Familie", "New group, e.g. family")}" maxlength="40">
+      <button class="group-new-button" type="button">${tr("Neue Gruppe", "New group")}</button>
     </div>
   </div>`;
 };
@@ -1283,9 +1389,9 @@ const servingsControlHtml = (attributes, servings) => {
   const chosen = Number(servings);
   const value = Number.isFinite(chosen) && chosen > 0 ? chosen : base;
   return `<div class="servings">
-    <button class="servings-button" type="button" data-step="-1" aria-label="Weniger Portionen"${value <= 1 ? " disabled" : ""}>−</button>
+    <button class="servings-button" type="button" data-step="-1" aria-label="${tr("Weniger Portionen", "Fewer servings")}"${value <= 1 ? " disabled" : ""}>−</button>
     <span class="servings-value">${escapeHtml(formatServings(value))}</span>
-    <button class="servings-button" type="button" data-step="1" aria-label="Mehr Portionen"${value >= 99 ? " disabled" : ""}>+</button>
+    <button class="servings-button" type="button" data-step="1" aria-label="${tr("Mehr Portionen", "More servings")}"${value >= 99 ? " disabled" : ""}>+</button>
   </div>`;
 };
 
@@ -1305,7 +1411,7 @@ const ingredientsHtml = (attributes, checked, factor) => {
     return groups
       .map(
         (group) => `
-          <h4>${escapeHtml(group.name || "Zutaten")}</h4>
+          <h4>${escapeHtml(group.name || tr("Zutaten", "Ingredients"))}</h4>
           <ul class="ingredients">${group.items
             .map((item) => ingredientRow(item, checked, factor))
             .join("")}</ul>`
@@ -1323,13 +1429,13 @@ const stepsHtml = (attributes) => {
     ? attributes.instructions.filter(Boolean)
     : [];
   if (!steps.length) return "";
-  return `<div class="section"><h3>Zubereitung</h3><ol class="steps">${steps
+  return `<div class="section"><h3>${tr("Zubereitung", "Preparation")}</h3><ol class="steps">${steps
     .map(
       (step, index) =>
         `<li><span class="step-text">${escapeHtml(step)}</span>${stepTimers(step)
           .map(
             (minutes) =>
-              `<button class="step-timer" type="button" data-timer="${index}" data-minutes="${minutes}">⏱ ${minutes} Min.</button>`
+              `<button class="step-timer" type="button" data-timer="${index}" data-minutes="${minutes}">⏱ ${minutes} ${tr("Min.", "min")}</button>`
           )
           .join("")}</li>`
     )
@@ -1358,18 +1464,21 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
   const ingredients = ingredientsHtml(attributes, checked, factor);
   const steps = options.show_steps ? stepsHtml(attributes) : "";
   const source = isWebUrl(attributes.source_url)
-    ? `<a class="source" href="${escapeHtml(attributes.source_url)}" target="_blank" rel="noopener noreferrer">Originalrezept ↗</a>`
+    ? `<a class="source" href="${escapeHtml(attributes.source_url)}" target="_blank" rel="noopener noreferrer">${tr("Originalrezept", "Original recipe")} ↗</a>`
     : "<span></span>";
   const refresh =
     meta.entityId && isWebUrl(attributes.source_url)
-      ? `<button class="refresh" type="button">Aktualisieren</button>`
+      ? `<button class="refresh" type="button">${tr("Aktualisieren", "Refresh")}</button>`
       : "";
-  const printButton = `<button class="print" type="button">Drucken</button>`;
+  const printButton = `<button class="print" type="button">${tr("Drucken", "Print")}</button>`;
   const shopping =
     Array.isArray(attributes.ingredients) && attributes.ingredients.length
       ? `<div class="shopping-row">
-          <label class="only-missing"><input class="only-missing-input" type="checkbox" checked> nur fehlende</label>
-          <button class="shopping" type="button">Zutaten auf die Liste</button>
+          <label class="only-missing"><input class="only-missing-input" type="checkbox" checked> ${tr("nur fehlende", "only missing")}</label>
+          <button class="shopping" type="button">${tr(
+            "Zutaten auf die Liste",
+            "Add the ingredients"
+          )}</button>
         </div>`
       : "";
   const servingsControl = forPrint
@@ -1378,8 +1487,8 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
   const photoEdit =
     !forPrint && meta.entityId && isManualSource(attributes.source_url)
       ? `<div class="photo-edit">
-          <label class="photo-edit-label">${attributes.image_url ? "Foto ändern" : "Foto hinzufügen"}<input class="photo-edit-input" type="file" accept="image/*"></label>
-          ${attributes.image_url ? '<button class="photo-remove" type="button">Foto entfernen</button>' : ""}
+          <label class="photo-edit-label">${attributes.image_url ? tr("Foto ändern", "Change photo") : tr("Foto hinzufügen", "Add photo")}<input class="photo-edit-input" type="file" accept="image/*"></label>
+          ${attributes.image_url ? '<button class="photo-remove" type="button">${tr("Foto entfernen", "Remove photo")}</button>' : ""}
         </div>`
       : "";
   const footer = forPrint
@@ -1395,7 +1504,7 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       ${photoEdit}
       ${groupsEditorHtml(attributes, meta, Array.isArray(meta.groups) ? meta.groups : [])}
       ${updateHintHtml(attributes)}
-      ${ingredients ? `<div class="section"><h3>Zutaten</h3>${servingsControl}${ingredients}</div>` : ""}
+      ${ingredients ? `<div class="section"><h3>${tr("Zutaten", "Ingredients")}</h3>${servingsControl}${ingredients}</div>` : ""}
       ${nutritionHtml(attributes)}
       ${steps}
       ${footer}
@@ -1428,7 +1537,7 @@ const PRINT_STYLES = `
 `;
 
 const printDocumentHtml = (state, options, checked, servings) => `<!DOCTYPE html>
-<html lang="de">
+<html lang="${UI_LANG}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1542,8 +1651,11 @@ const openPrintWindow = (html) => {
 };
 
 const selectionBarHtml = (count, groups) => `<div class="selection-bar">
-  <span class="selection-count">${count} ausgewählt</span>
-  <select class="selection-group" aria-label="Gruppe für die Auswahl"><option value="">Gruppe wählen …</option>${(
+  <span class="selection-count">${count} ${tr("ausgewählt", "selected")}</span>
+  <select class="selection-group" aria-label="${tr("Gruppe für die Auswahl", "Group for the selection")}"><option value="">${tr(
+      "Gruppe wählen …",
+      "Choose a group …"
+    )}</option>${(
     groups || []
   )
     .map(
@@ -1551,37 +1663,52 @@ const selectionBarHtml = (count, groups) => `<div class="selection-bar">
         `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`
     )
     .join("")}</select>
-  <button class="selection-assign" type="button">Zuweisen</button>
-  <button class="selection-remove" type="button">Entfernen</button>
-  <button class="selection-delete" type="button">Löschen</button>
-  <button class="selection-cancel" type="button">Abbrechen</button>
+  <button class="selection-assign" type="button">${tr("Zuweisen", "Assign")}</button>
+  <button class="selection-remove" type="button">${tr("Entfernen", "Remove")}</button>
+  <button class="selection-delete" type="button">${tr("Löschen", "Delete")}</button>
+  <button class="selection-cancel" type="button">${tr("Abbrechen", "Cancel")}</button>
 </div>`;
 
 const deleteDialogHtml = (titles) => {
   const list = (titles || []).filter(Boolean);
   if (!list.length) return "";
   const count = list.length;
-  const heading = count === 1 ? "Rezept löschen?" : `${count} Rezepte löschen?`;
+  const heading =
+    count === 1
+      ? tr("Rezept löschen?", "Delete recipe?")
+      : tr(`${count} Rezepte löschen?`, `Delete ${count} recipes?`);
   const names = list
     .slice(0, 5)
     .map((title) => `„${escapeHtml(title)}“`)
     .join(", ");
-  const more = count > 5 ? ` und ${count - 5} weitere` : "";
+  const more =
+    count > 5
+      ? tr(` und ${count - 5} weitere`, ` and ${count - 5} more`)
+      : "";
   return `<div class="dialog-backdrop">
     <div class="dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(
       heading
     )}">
       <h3>${heading}</h3>
-      <p class="tab-hint">Endgültig löschen: ${names}${more}? Die Rezepte verschwinden aus der Rezeptbox und aus dem Wochenplan.</p>
+      <p class="tab-hint">${tr(
+        "Endgültig löschen:",
+        "Delete permanently:"
+      )} ${names}${more}? ${tr(
+        "Die Rezepte verschwinden aus der Rezeptbox und aus dem Wochenplan.",
+        "The recipes disappear from the recipe box and from the meal plan."
+      )}</p>
       <div class="dialog-actions">
-        <button class="dialog-cancel" type="button">Abbrechen</button>
-        <button class="dialog-confirm" type="button">Löschen</button>
+        <button class="dialog-cancel" type="button">${tr("Abbrechen", "Cancel")}</button>
+        <button class="dialog-confirm" type="button">${tr("Löschen", "Delete")}</button>
       </div>
     </div>
   </div>`;
 };
 
-const deleteButtonHtml = (entityId, pending) => `<button class="delete${pending ? " confirm" : ""}" type="button" data-entity="${escapeHtml(entityId)}" title="Rezept löschen" aria-label="Rezept löschen">${pending ? "Löschen?" : `<ha-icon icon="mdi:delete-outline"></ha-icon>`}</button>`;
+const deleteButtonHtml = (entityId, pending) => `<button class="delete${pending ? " confirm" : ""}" type="button" data-entity="${escapeHtml(entityId)}" title="${tr("Rezept löschen", "Delete recipe")}" aria-label="${tr(
+    "Rezept löschen",
+    "Delete recipe"
+  )}">${pending ? tr("Löschen?", "Delete?") : `<ha-icon icon="mdi:delete-outline"></ha-icon>`}</button>`;
 
 const notify = (target, message) => {
   if (!target || typeof target.dispatchEvent !== "function") return;
@@ -1632,9 +1759,15 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
         await hass.callService("recipe_box", "refresh_recipe", {
           entity_id: entityId,
         });
-        notify(dispatcher, "Rezept aktualisiert.");
+        notify(dispatcher, tr("Rezept aktualisiert.", "Recipe updated."));
       } catch (error) {
-        notify(dispatcher, `Aktualisieren: ${error.message || error.code || error}`);
+        notify(
+          dispatcher,
+          tr(
+            `Aktualisieren: ${error.message || error.code || error}`,
+            `Refresh: ${error.message || error.code || error}`
+          )
+        );
       } finally {
         refresh.disabled = false;
       }
@@ -1653,7 +1786,10 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
       } catch (error) {
         notify(
           dispatcher,
-          `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, file)}`
+          tr(
+            `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, file)}`,
+            `Photo upload failed (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, file)}`
+          )
         );
         photoInput.disabled = false;
         photoInput.value = "";
@@ -1664,11 +1800,14 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
           entity_id: entityId,
           image_url: imageUrl,
         });
-        notify(dispatcher, "Foto gespeichert.");
+        notify(dispatcher, tr("Foto gespeichert.", "Photo saved."));
       } catch (error) {
         notify(
           dispatcher,
-          `Foto speichern fehlgeschlagen: ${errorText(error) || "unbekannter Fehler"}`
+          tr(
+            `Foto speichern fehlgeschlagen: ${errorText(error) || "unbekannter Fehler"}`,
+            `Saving the photo failed: ${errorText(error) || "unknown error"}`
+          )
         );
       } finally {
         /* Also re-enable when no re-render happens (for example when the
@@ -1688,11 +1827,14 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
           entity_id: entityId,
           image_url: "",
         });
-        notify(dispatcher, "Foto entfernt.");
+        notify(dispatcher, tr("Foto entfernt.", "Photo removed."));
       } catch (error) {
         notify(
           dispatcher,
-          `Foto: ${(error && (error.message || error.code)) || "Fehler"}`
+          tr(
+            `Foto: ${(error && (error.message || error.code)) || "Fehler"}`,
+            `Photo: ${(error && (error.message || error.code)) || "error"}`
+          )
         );
         photoRemove.disabled = false;
       }
@@ -1713,7 +1855,13 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
         options.servings
       );
       if (!openPrintWindow(html)) {
-        notify(dispatcher, "Drucken wird von diesem Gerät nicht unterstützt.");
+        notify(
+          dispatcher,
+          tr(
+            "Drucken wird von diesem Gerät nicht unterstützt.",
+            "Printing is not supported on this device."
+          )
+        );
       }
     });
   }
@@ -1730,9 +1878,15 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
         entity_id: entityId,
         groups: [...current, value],
       });
-      notify(dispatcher, `Gruppe zugewiesen: ${value}`);
+      notify(dispatcher, tr(`Gruppe zugewiesen: ${value}`, `Group assigned: ${value}`));
     } catch (error) {
-      notify(dispatcher, `Gruppe: ${error.message || error.code || error}`);
+      notify(
+        dispatcher,
+        tr(
+          `Gruppe: ${error.message || error.code || error}`,
+          `Group: ${error.message || error.code || error}`
+        )
+      );
     }
   };
 
@@ -1742,7 +1896,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
     groupAdd.addEventListener("click", () => {
       const name = String(groupSelect.value || "").trim();
       if (!name) {
-        notify(dispatcher, "Bitte eine Gruppe wählen.");
+        notify(dispatcher, tr("Bitte eine Gruppe wählen.", "Please choose a group."));
         return;
       }
       assignGroup(name);
@@ -1755,7 +1909,10 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
     const addNew = () => {
       const name = String(groupInput.value || "").trim();
       if (!name) {
-        notify(dispatcher, "Bitte einen Gruppennamen eingeben.");
+        notify(
+        dispatcher,
+        tr("Bitte einen Gruppennamen eingeben.", "Please enter a group name.")
+      );
         return;
       }
       groupInput.value = "";
@@ -1783,9 +1940,15 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
           entity_id: entityId,
           groups: next,
         });
-        notify(dispatcher, `Gruppe entfernt: ${name}`);
+        notify(dispatcher, tr(`Gruppe entfernt: ${name}`, `Group removed: ${name}`));
       } catch (error) {
-        notify(dispatcher, `Gruppe: ${error.message || error.code || error}`);
+        notify(
+        dispatcher,
+        tr(
+          `Gruppe: ${error.message || error.code || error}`,
+          `Group: ${error.message || error.code || error}`
+        )
+      );
         removeButton.disabled = false;
       }
     });
@@ -1808,11 +1971,23 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
       notify(
         dispatcher,
         params.exclude
-          ? "Fehlende Zutaten zur Einkaufsliste hinzugefügt."
-          : "Zutaten zur Einkaufsliste hinzugefügt."
+          ? tr(
+              "Fehlende Zutaten zur Einkaufsliste hinzugefügt.",
+              "Missing ingredients added to the shopping list."
+            )
+          : tr(
+              "Zutaten zur Einkaufsliste hinzugefügt.",
+              "Ingredients added to the shopping list."
+            )
       );
     } catch (error) {
-      notify(dispatcher, `Einkaufsliste: ${error.message || error}`);
+      notify(
+        dispatcher,
+        tr(
+          `Einkaufsliste: ${error.message || error}`,
+          `Shopping list: ${error.message || error}`
+        )
+      );
     } finally {
       button.disabled = false;
     }
@@ -1991,7 +2166,12 @@ class RecipeBoxCard extends HTMLElement {
 
   setConfig(config) {
     if (!config || !config.entity) {
-      throw new Error("recipe-box-card: Bitte 'entity' angeben.");
+      throw new Error(
+        tr(
+          "recipe-box-card: Bitte 'entity' angeben.",
+          "recipe-box-card: please set 'entity'."
+        )
+      );
     }
     this._config = { show_image: true, show_steps: true, ...config };
     this._render();
@@ -1999,6 +2179,7 @@ class RecipeBoxCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    setUiLanguage(hass);
     if (!this._config) return;
     const state = hass.states[this._config.entity];
     if (state === this._state) return;
@@ -2016,7 +2197,9 @@ class RecipeBoxCard extends HTMLElement {
     if (!this._state) {
       this.shadowRoot.innerHTML = `${STYLES}
         <ha-card>
-          <p class="empty">Entität ${escapeHtml(this._config ? this._config.entity : "")} nicht gefunden.</p>
+          <p class="empty">${tr("Entität", "Entity")} ${escapeHtml(
+            this._config ? this._config.entity : ""
+          )} ${tr("nicht gefunden.", "not found.")}</p>
         </ha-card>`;
       return;
     }
@@ -2079,7 +2262,7 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return { title: "Rezepte" };
+    return {};
   }
 
   setConfig(config) {
@@ -2088,7 +2271,6 @@ class RecipeBoxListCard extends HTMLElement {
         ? [config.entities]
         : (config || {}).entities;
     this._config = {
-      title: "Rezepte",
       show_image: true,
       show_steps: true,
       show_import: true,
@@ -2105,6 +2287,7 @@ class RecipeBoxListCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    setUiLanguage(hass);
     if (!this._config) return;
 
     const recipes = this._recipes();
@@ -2129,6 +2312,11 @@ class RecipeBoxListCard extends HTMLElement {
 
   _recipes() {
     return this._hass ? recipeEntities(this._hass, this._config.entities) : [];
+  }
+
+  /* The title is only localised when the dashboard leaves it out. */
+  _title() {
+    return (this._config && this._config.title) || tr("Rezepte", "Recipes");
   }
 
   _session(entityId) {
@@ -2243,7 +2431,13 @@ class RecipeBoxListCard extends HTMLElement {
   async _import() {
     const urls = parseUrls(this._importUrl);
     if (!urls.length) {
-      notify(this, "Bitte mindestens eine Rezept-URL einfügen.");
+      notify(
+        this,
+        tr(
+          "Bitte mindestens eine Rezept-URL einfügen.",
+          "Please add at least one recipe URL."
+        )
+      );
       return;
     }
     if (this._importing || !this._hass) return;
@@ -2262,7 +2456,12 @@ class RecipeBoxListCard extends HTMLElement {
         );
         this._importUrl = "";
         const title = response && response.title;
-        notify(this, title ? `Rezept importiert: ${title}` : "Rezept importiert.");
+        notify(
+          this,
+          title
+            ? tr(`Rezept importiert: ${title}`, `Recipe imported: ${title}`)
+            : tr("Rezept importiert.", "Recipe imported.")
+        );
       } else {
         const response = await this._hass.callService(
           "recipe_box",
@@ -2280,7 +2479,10 @@ class RecipeBoxListCard extends HTMLElement {
     } catch (error) {
       notify(
         this,
-        `Import fehlgeschlagen: ${(error && (error.message || error.code)) || "unbekannter Fehler"}`
+        tr(
+          `Import fehlgeschlagen: ${(error && (error.message || error.code)) || "unbekannter Fehler"}`,
+          `Import failed: ${(error && (error.message || error.code)) || "unknown error"}`
+        )
       );
     } finally {
       this._importing = false;
@@ -2292,12 +2494,18 @@ class RecipeBoxListCard extends HTMLElement {
   _importSummary(importedCount, failed) {
     const total = importedCount + failed.length;
     if (!failed.length) {
-      return `${importedCount} von ${total} Rezepten importiert.`;
+      return tr(
+        `${importedCount} von ${total} Rezepten importiert.`,
+        `${importedCount} of ${total} recipes imported.`
+      );
     }
     const first = failed[0] || {};
     const raw = String(first.url || "");
     const label = raw.length > 60 ? `${raw.slice(0, 57)}…` : raw;
-    return `${importedCount} von ${total} importiert, ${failed.length} fehlgeschlagen (${label}: ${first.error || "Fehler"}).`;
+    return tr(
+      `${importedCount} von ${total} importiert, ${failed.length} fehlgeschlagen (${label}: ${first.error || "Fehler"}).`,
+      `${importedCount} of ${total} imported, ${failed.length} failed (${label}: ${first.error || "error"}).`
+    );
   }
 
   /* Deleting always goes through the confirmation dialog in the card. */
@@ -2348,12 +2556,17 @@ class RecipeBoxListCard extends HTMLElement {
       }
       notify(
         this,
-        removed === 1 ? "Rezept gelöscht." : `${removed} Rezepte gelöscht.`
+        removed === 1
+          ? tr("Rezept gelöscht.", "Recipe deleted.")
+          : tr(`${removed} Rezepte gelöscht.`, `${removed} recipes deleted.`)
       );
     } catch (error) {
       notify(
         this,
-        `Löschen fehlgeschlagen: ${(error && (error.message || error.code)) || "unbekannter Fehler"}`
+        tr(
+          `Löschen fehlgeschlagen: ${(error && (error.message || error.code)) || "unbekannter Fehler"}`,
+          `Deleting failed: ${(error && (error.message || error.code)) || "unknown error"}`
+        )
       );
     } finally {
       this._selection.clear();
@@ -2443,21 +2656,38 @@ class RecipeBoxListCard extends HTMLElement {
         });
         changed += 1;
       }
-      const label = `${changed} ${changed === 1 ? "Rezept" : "Rezepte"}`;
+      const label = `${changed} ${
+        changed === 1 ? tr("Rezept", "recipe") : tr("Rezepte", "recipes")
+      }`;
       notify(
         this,
         remove
           ? changed
-            ? `Aus „${name}“ entfernt: ${label}.`
-            : `Keines der ausgewählten Rezepte ist in „${name}“.`
+            ? tr(
+                `Aus „${name}“ entfernt: ${label}.`,
+                `Removed from “${name}”: ${label}.`
+              )
+            : tr(
+                `Keines der ausgewählten Rezepte ist in „${name}“.`,
+                `None of the selected recipes is in “${name}”.`
+              )
           : changed
-            ? `${name}: ${label} zugewiesen.`
-            : `Alle ausgewählten Rezepte sind schon in „${name}“.`
+            ? tr(
+                `${name}: ${label} zugewiesen.`,
+                `${name}: ${label} assigned.`
+              )
+            : tr(
+                `Alle ausgewählten Rezepte sind schon in „${name}“.`,
+                `All selected recipes are already in “${name}”.`
+              )
       );
     } catch (error) {
       notify(
         this,
-        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+        tr(
+          `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Group: ${(error && (error.message || error.code)) || "error"}`
+        )
       );
     } finally {
       this._selection.clear();
@@ -2479,16 +2709,22 @@ class RecipeBoxListCard extends HTMLElement {
     const input = this.shadowRoot.querySelector("input.group-new-input");
     const name = String((input && input.value) || "").trim();
     if (!name) {
-      notify(this, "Bitte einen Gruppennamen eingeben.");
+      notify(
+        this,
+        tr("Bitte einen Gruppennamen eingeben.", "Please enter a group name.")
+      );
       return;
     }
     try {
       await this._hass.callService("recipe_box", "add_group", { group: name });
-      notify(this, `Gruppe angelegt: ${name}`);
+      notify(this, tr(`Gruppe angelegt: ${name}`, `Group created: ${name}`));
     } catch (error) {
       notify(
         this,
-        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+        tr(
+          `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Group: ${(error && (error.message || error.code)) || "error"}`
+        )
       );
     } finally {
       this._signature = null;
@@ -2522,11 +2758,14 @@ class RecipeBoxListCard extends HTMLElement {
         group: name,
       });
       if (this._filter.group === name) this._rememberGroup("");
-      notify(this, `Gruppe gelöscht: ${name}`);
+      notify(this, tr(`Gruppe gelöscht: ${name}`, `Group deleted: ${name}`));
     } catch (error) {
       notify(
         this,
-        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+        tr(
+          `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Group: ${(error && (error.message || error.code)) || "error"}`
+        )
       );
     } finally {
       this._signature = null;
@@ -2560,7 +2799,10 @@ class RecipeBoxListCard extends HTMLElement {
     } catch (error) {
       notify(
         this,
-        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+        tr(
+          `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Group: ${(error && (error.message || error.code)) || "error"}`
+        )
       );
     } finally {
       this._signature = null;
@@ -2584,11 +2826,20 @@ class RecipeBoxListCard extends HTMLElement {
         name,
       });
       if (this._filter.group === previous) this._rememberGroup(name);
-      notify(this, `Gruppe umbenannt: ${previous} → ${name}`);
+      notify(
+        this,
+        tr(
+          `Gruppe umbenannt: ${previous} → ${name}`,
+          `Group renamed: ${previous} → ${name}`
+        )
+      );
     } catch (error) {
       notify(
         this,
-        `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`
+        tr(
+          `Gruppe: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Group: ${(error && (error.message || error.code)) || "error"}`
+        )
       );
     } finally {
       this._renamingGroup = null;
@@ -2639,21 +2890,24 @@ class RecipeBoxListCard extends HTMLElement {
 
     const importBar = this._config.show_import
       ? `<div class="data-section">
-          <h3>Rezepte importieren</h3>
+          <h3>${tr("Rezepte importieren", "Import recipes")}</h3>
           <div class="import-bar">
-            <textarea class="import-input" rows="2" placeholder="Rezept-URLs – eine pro Zeile"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
-            <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? "Importiere…" : "Importieren"}</button>
+            <textarea class="import-input" rows="2" placeholder="${tr("Rezept-URLs – eine pro Zeile", "Recipe URLs – one per line")}"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
+            <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? tr("Importiere…", "Importing…") : tr("Importieren", "Import")}</button>
           </div>
         </div>`
       : "";
 
     const tools = this._config.show_tools
       ? `<div class="data-section">
-        <h3>Sicherung</h3>
-        <p class="tab-hint">Alle Rezepte, der Wochenplan und die Gruppen als JSON-Datei.</p>
+        <h3>${tr("Sicherung", "Backup")}</h3>
+        <p class="tab-hint">${tr(
+          "Alle Rezepte, der Wochenplan und die Gruppen als JSON-Datei.",
+          "All recipes, the meal plan and the groups as a JSON file."
+        )}</p>
         <div class="tools">
-          <button class="export" type="button">Sichern</button>
-          <label class="import-file-label">Laden<input class="import-file" type="file" accept="application/json"></label>
+          <button class="export" type="button">${tr("Sichern", "Save")}</button>
+          <label class="import-file-label">${tr("Laden", "Load")}<input class="import-file" type="file" accept="application/json"></label>
         </div>
       </div>
 `
@@ -2662,10 +2916,19 @@ class RecipeBoxListCard extends HTMLElement {
     const filterBar = entries.length > 1 ? filterBarHtml(entries, this._filter) : "";
     const groups = knownGroups(this._hass, entries);
     const emptyText = !entries.length
-      ? "Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch."
+      ? tr(
+          "Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch.",
+          "No recipes yet. Add one or more recipe URLs above – from Chefkoch, for example."
+        )
       : this._filter.group
-        ? `Keine Rezepte in der Gruppe „${this._filter.group}“.`
-        : "Keine Rezepte passen zu Suche oder Filter.";
+        ? tr(
+            `Keine Rezepte in der Gruppe „${this._filter.group}“.`,
+            `No recipes in the group “${this._filter.group}”.`
+          )
+        : tr(
+            "Keine Rezepte passen zu Suche oder Filter.",
+            "No recipes match the search or filter."
+          );
     const body = filtered.length
       ? `<ul class="recipe-list">${items.join("")}</ul>`
       : `<p class="empty">${emptyText}</p>`;
@@ -2693,14 +2956,17 @@ class RecipeBoxListCard extends HTMLElement {
       )}${tools}${manualFormHtml()}</div>`,
       plan: entries.length
         ? planHtml(this._hass, entries)
-        : `<p class="empty">Noch keine Rezepte für den Wochenplan.</p>`,
+        : `<p class="empty">${tr(
+            "Noch keine Rezepte für den Wochenplan.",
+            "No recipes for the meal plan yet."
+          )}</p>`,
     };
 
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
         <div class="content">
           <div class="list-header">
-            <h2>${escapeHtml(this._config.title)}</h2>
+            <h2>${escapeHtml(this._title())}</h2>
             <span class="count">${count}</span>
           </div>
           ${showTabs ? tabsHtml(tab) : ""}
@@ -2761,7 +3027,7 @@ class RecipeBoxListCard extends HTMLElement {
         const select = this.shadowRoot.querySelector("select.selection-group");
         const group = String((select && select.value) || "").trim();
         if (!group) {
-          notify(this, "Bitte eine Gruppe wählen.");
+          notify(this, tr("Bitte eine Gruppe wählen.", "Please choose a group."));
           return;
         }
         this._assignGroupToSelection(group);
@@ -2775,7 +3041,7 @@ class RecipeBoxListCard extends HTMLElement {
         const select = this.shadowRoot.querySelector("select.selection-group");
         const group = String((select && select.value) || "").trim();
         if (!group) {
-          notify(this, "Bitte eine Gruppe wählen.");
+          notify(this, tr("Bitte eine Gruppe wählen.", "Please choose a group."));
           return;
         }
         this._removeGroupFromSelection(group);
@@ -2975,7 +3241,13 @@ class RecipeBoxListCard extends HTMLElement {
   _openRandom(entries) {
     const pool = this._filtered(entries);
     if (!pool.length) {
-      notify(this, "Keine Rezepte in der aktuellen Auswahl.");
+      notify(
+        this,
+        tr(
+          "Keine Rezepte in der aktuellen Auswahl.",
+          "No recipes in the current selection."
+        )
+      );
       return;
     }
     const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -3015,7 +3287,13 @@ class RecipeBoxListCard extends HTMLElement {
         .filter(Boolean),
     };
     if (!data.title || !data.ingredients.length) {
-      notify(this, "Titel und mindestens eine Zutat werden benötigt.");
+      notify(
+        this,
+        tr(
+          "Titel und mindestens eine Zutat werden benötigt.",
+          "A title and at least one ingredient are required."
+        )
+      );
       return;
     }
     if (Number.isFinite(servings) && servings > 0) data.servings = servings;
@@ -3041,7 +3319,10 @@ class RecipeBoxListCard extends HTMLElement {
         } catch (error) {
           notify(
             this,
-            `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, photo)}`
+            tr(
+              `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, photo)}`,
+              `Photo upload failed (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, photo)}`
+            )
           );
           return;
         }
@@ -3055,16 +3336,24 @@ class RecipeBoxListCard extends HTMLElement {
         false,
         true
       );
-      notify(this, `Rezept gespeichert: ${data.title}`);
+      notify(
+        this,
+        tr(`Rezept gespeichert: ${data.title}`, `Recipe saved: ${data.title}`)
+      );
       this._rememberTab("recipes");
       this._signature = null;
       this._render();
     } catch (error) {
       notify(
         this,
-        `Speichern fehlgeschlagen: ${
-          (error && (error.message || error.code)) || "unbekannter Fehler"
-        }`
+        tr(
+          `Speichern fehlgeschlagen: ${
+            (error && (error.message || error.code)) || "unbekannter Fehler"
+          }`,
+          `Saving failed: ${
+            (error && (error.message || error.code)) || "unknown error"
+          }`
+        )
       );
     } finally {
       setBusy(false);
@@ -3119,7 +3408,12 @@ class RecipeBoxListCard extends HTMLElement {
         true
       );
       if (!data || typeof data !== "object" || !Array.isArray(data.recipes)) {
-        throw new Error("Der Export-Service hat keine Sicherungsdaten geliefert.");
+        throw new Error(
+          tr(
+            "Der Export-Service hat keine Sicherungsdaten geliefert.",
+            "The export service did not return any backup data."
+          )
+        );
       }
 
       const text = JSON.stringify(data, null, 2);
@@ -3134,7 +3428,7 @@ class RecipeBoxListCard extends HTMLElement {
             suggestedName: filename,
             types: [
               {
-                description: "Rezeptbox-Sicherung",
+                description: tr("Rezeptbox-Sicherung", "Rezeptbox backup"),
                 accept: { "application/json": [".json"] },
               },
             ],
@@ -3144,9 +3438,14 @@ class RecipeBoxListCard extends HTMLElement {
           await writable.close();
           notify(
             this,
-            `Sicherung gespeichert: ${handle.name || filename}${missingImageWarning(
-              data
-            )}`
+            tr(
+              `Sicherung gespeichert: ${handle.name || filename}${missingImageWarning(
+                data
+              )}`,
+              `Backup saved: ${handle.name || filename}${missingImageWarning(
+                data
+              )}`
+            )
           );
           return;
         } catch (error) {
@@ -3168,10 +3467,13 @@ class RecipeBoxListCard extends HTMLElement {
         const file = new File([blob], filename, { type });
         if (navigator.canShare({ files: [file] })) {
           try {
-            await navigator.share({ files: [file], title: "Rezeptbox-Sicherung" });
+            await navigator.share({ files: [file], title: tr("Rezeptbox-Sicherung", "Rezeptbox backup") });
             notify(
               this,
-              `Sicherung gespeichert.${missingImageWarning(data)}`
+              tr(
+                `Sicherung gespeichert.${missingImageWarning(data)}`,
+                `Backup saved.${missingImageWarning(data)}`
+              )
             );
             return;
           } catch (error) {
@@ -3193,14 +3495,22 @@ class RecipeBoxListCard extends HTMLElement {
       setTimeout(() => URL.revokeObjectURL(url), 30000);
       notify(
         this,
-        `Sicherung heruntergeladen: ${filename}${missingImageWarning(data)}`
+        tr(
+          `Sicherung heruntergeladen: ${filename}${missingImageWarning(data)}`,
+          `Backup downloaded: ${filename}${missingImageWarning(data)}`
+        )
       );
     } catch (error) {
       notify(
         this,
-        `Sichern fehlgeschlagen: ${
-          (error && (error.message || error.code)) || "unbekannter Fehler"
-        }`
+        tr(
+          `Sichern fehlgeschlagen: ${
+            (error && (error.message || error.code)) || "unbekannter Fehler"
+          }`,
+          `Saving the backup failed: ${
+            (error && (error.message || error.code)) || "unknown error"
+          }`
+        )
       );
     }
   }
@@ -3211,7 +3521,12 @@ class RecipeBoxListCard extends HTMLElement {
       const data = JSON.parse(await file.text());
       const recipes = Array.isArray(data) ? data : data.recipes;
       if (!Array.isArray(recipes)) {
-        throw new Error("Keine Rezeptliste in der Datei.");
+        throw new Error(
+          tr(
+            "Keine Rezeptliste in der Datei.",
+            "No recipe list in the file."
+          )
+        );
       }
       const response = await this._hass.callService(
         "recipe_box",
@@ -3227,16 +3542,24 @@ class RecipeBoxListCard extends HTMLElement {
       );
       notify(
         this,
-        `Sicherung eingelesen: ${(response && response.imported) || 0} Rezepte.`
+        tr(
+          `Sicherung eingelesen: ${(response && response.imported) || 0} Rezepte.`,
+          `Backup imported: ${(response && response.imported) || 0} recipes.`
+        )
       );
       this._signature = null;
       this._render();
     } catch (error) {
       notify(
         this,
-        `Laden fehlgeschlagen: ${
-          (error && (error.message || error)) || "unbekannter Fehler"
-        }`
+        tr(
+          `Laden fehlgeschlagen: ${
+            (error && (error.message || error)) || "unbekannter Fehler"
+          }`,
+          `Loading failed: ${
+            (error && (error.message || error)) || "unknown error"
+          }`
+        )
       );
     }
   }
@@ -3249,15 +3572,18 @@ class RecipeBoxListCard extends HTMLElement {
           date,
           entity_id: entityId,
         });
-        notify(this, "Rezept eingeplant.");
+        notify(this, tr("Rezept eingeplant.", "Recipe planned."));
       } else {
         await this._hass.callService("recipe_box", "clear_meal_plan", { date });
-        notify(this, "Tag geleert.");
+        notify(this, tr("Tag geleert.", "Day cleared."));
       }
     } catch (error) {
       notify(
         this,
-        `Wochenplan: ${(error && (error.message || error.code)) || "Fehler"}`
+        tr(
+          `Wochenplan: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Meal plan: ${(error && (error.message || error.code)) || "error"}`
+        )
       );
     } finally {
       this._signature = null;
@@ -3278,7 +3604,13 @@ class RecipeBoxListCard extends HTMLElement {
       if (match) targets.push({ entityId: match.entityId, servings: item.servings });
     }
     if (!targets.length) {
-      notify(this, "Im Wochenplan steht noch kein Rezept.");
+      notify(
+        this,
+        tr(
+          "Im Wochenplan steht noch kein Rezept.",
+          "The meal plan has no recipe yet."
+        )
+      );
       return;
     }
 
@@ -3291,12 +3623,18 @@ class RecipeBoxListCard extends HTMLElement {
       }
       notify(
         this,
-        `${targets.length} Rezept(e) aus dem Wochenplan auf die Einkaufsliste übernommen.`
+        tr(
+          `${targets.length} Rezept(e) aus dem Wochenplan auf die Einkaufsliste übernommen.`,
+          `${targets.length} recipe(s) from the meal plan added to the shopping list.`
+        )
       );
     } catch (error) {
       notify(
         this,
-        `Einkaufsliste: ${(error && (error.message || error.code)) || "Fehler"}`
+        tr(
+          `Einkaufsliste: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Shopping list: ${(error && (error.message || error.code)) || "error"}`
+        )
       );
     }
   }
@@ -3309,7 +3647,7 @@ class RecipeBoxListCard extends HTMLElement {
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>
         <div class="list-bar">
-          <button class="back" type="button">← ${escapeHtml(this._config.title || "Rezepte")}</button>
+          <button class="back" type="button">← ${escapeHtml(this._title())}</button>
           <span class="list-bar-title">${escapeHtml(recipeTitle(entry.state))}</span>
           ${this._config.show_delete ? deleteButtonHtml(entry.entityId, false) : ""}
         </div>
@@ -3450,7 +3788,7 @@ class RecipeBoxPanel extends HTMLElement {
     this._shell = true;
     this.shadowRoot.innerHTML = `<style>${PANEL_STYLES}</style>
       <div class="toolbar">
-        <button class="menu" type="button" aria-label="Menü">${PANEL_MENU_ICON}</button>
+        <button class="menu" type="button" aria-label="${tr("Menü", "Menu")}">${PANEL_MENU_ICON}</button>
         <span class="title">${escapeHtml((this._panel && this._panel.title) || "Rezeptbox")}</span>
       </div>
       <div class="content"></div>`;
@@ -3527,12 +3865,20 @@ class RecipeBoxPanel extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    const previousLanguage = UI_LANG;
+    setUiLanguage(hass);
+    if (UI_LANG !== previousLanguage) {
+      /* The toolbar is built once; a late language keeps its old labels. */
+      this._shell = false;
+      this._renderShell();
+      if (this._card && this._content) this._content.appendChild(this._card);
+    }
     this._renderShell();
     this._updateToolbar();
     if (!this._card && this._content) {
       this._card = document.createElement(LIST_TYPE);
       this._card.setConfig({
-        title: "Rezepte",
+        title: tr("Rezepte", "Recipes"),
         show_import: true,
         show_delete: true,
         navigate: (view, options) => this._navigate(view, options),
@@ -3583,18 +3929,32 @@ const CUSTOM_CARDS = [
   {
     type: LIST_TYPE,
     name: "Rezeptbox Liste",
-    description:
-      "Zeigt alle Rezepte als Liste und importiert neue Rezepte per URL; ein Rezept antippen öffnet die Details.",
+    description: "",
     preview: false,
   },
   {
     type: DETAIL_TYPE,
     name: "Rezeptbox Rezept",
-    description:
-      "Zeigt ein importiertes Rezept mit Bild, Zutaten und Zubereitung.",
+    description: "",
     preview: false,
   },
 ];
+
+/* The picker is filled once when the file loads, so the texts are written
+ * again whenever the language changes. */
+localizeCustomCards = () => {
+  CUSTOM_CARDS[0].name = tr("Rezeptbox Liste", "Rezeptbox list");
+  CUSTOM_CARDS[0].description = tr(
+    "Zeigt alle Rezepte als Liste und importiert neue Rezepte per URL; ein Rezept antippen öffnet die Details.",
+    "Shows all recipes as a list and imports new recipes from URLs; tap a recipe to open its details."
+  );
+  CUSTOM_CARDS[1].name = tr("Rezeptbox Rezept", "Rezeptbox recipe");
+  CUSTOM_CARDS[1].description = tr(
+    "Zeigt ein importiertes Rezept mit Bild, Zutaten und Zubereitung.",
+    "Shows an imported recipe with photo, ingredients and preparation."
+  );
+};
+localizeCustomCards();
 for (const card of CUSTOM_CARDS) {
   if (!window.customCards.some((known) => known.type === card.type)) {
     window.customCards.push(card);
