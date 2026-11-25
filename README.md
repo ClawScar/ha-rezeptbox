@@ -96,7 +96,11 @@ Den Ordner `custom_components/recipe_box` nach
 3. Die Karte `custom:recipe-box-list` in ein Dashboard legen (siehe unten)
 
 Das Aktualisierungsintervall für alle Rezepte lässt sich über
-**Konfigurieren** am Eintrag ändern.
+**Konfigurieren** am Eintrag ändern. Dort steht auch die **Ziel-Einkaufsliste**:
+eine beliebige To-do-Liste aus Home Assistant, zum Beispiel die
+Alexa-Einkaufsliste aus der Integration **Alexa Devices**. Bleibt das Feld leer,
+schreiben Button, Karte und Service wie bisher in die
+Home-Assistant-Einkaufsliste.
 
 ## Rezept importieren
 
@@ -363,12 +367,21 @@ nach einem Neustart nicht wiederhergestellt.
 | `exclude` | nein | Zutatenzeilen, die nicht auf die Liste sollen (z. B. bereits vorhandene) |
 | `merge` | nein | Gleiche Zutaten mit vorhandenen Einträgen zusammenrechnen (Standard: `true`) |
 
-Der Service nutzt die eingebaute Einkaufsliste (`shopping_list`). Ist sie nicht
-eingerichtet, meldet Home Assistant einen Fehler. Ohne `servings` werden die
-Originalmengen übernommen; Rezepte aus älteren Versionen ohne strukturierte
-Zutaten werden dabei aus dem Zutatentext umgerechnet. Mit `merge` werden
-gleiche Zutaten zusammengeführt, auch mit Einträgen, die schon auf der Liste
-stehen – aus zweimal „500 g Kartoffeln“ wird „1 kg Kartoffeln“.
+Ohne Ziel-Einkaufsliste nutzt der Service die eingebaute Einkaufsliste
+(`shopping_list`); ist sie nicht eingerichtet, meldet Home Assistant einen
+Fehler. Ohne `servings` werden die Originalmengen übernommen; Rezepte aus
+älteren Versionen ohne strukturierte Zutaten werden dabei aus dem Zutatentext
+umgerechnet. Mit `merge` werden gleiche Zutaten zusammengeführt, auch mit
+Einträgen, die schon auf der Liste stehen – aus zweimal „500 g Kartoffeln“
+wird „1 kg Kartoffeln“.
+
+Ist in den Optionen eine Ziel-Einkaufsliste gewählt, gehen die Zutaten
+stattdessen in diese To-do-Liste. Für die Alexa-Einkaufsliste braucht es die
+Integration **Alexa Devices** (Amazon-Konto mit 2FA über eine
+Authenticator-App); sie stellt die Liste als `todo`-Entität bereit, und der
+Service schreibt direkt hinein. Das Zusammenführen funktioniert dort genauso:
+passende Einträge werden umbenannt, abgehakte Einträge bleiben unberührt und
+werden nicht erneut zusammengerechnet.
 
 ### `recipe_box.add_recipe`
 

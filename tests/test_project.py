@@ -65,6 +65,13 @@ class TranslationTest(unittest.TestCase):
             set(self.strings["options"]["step"]["init"]["data"]),
         )
 
+    def test_shopping_target_option_translated(self) -> None:
+        for data in (self.strings, self.german, self.english):
+            step = data["options"]["step"]["init"]
+            self.assertEqual(set(step["data_description"]), set(step["data"]))
+            self.assertIn("shopping_target", step["data"])
+            self.assertIn("shopping_target_missing", data["exceptions"])
+
 
 class FilesTest(unittest.TestCase):
     def test_card_exists(self) -> None:
@@ -336,6 +343,29 @@ class FilesTest(unittest.TestCase):
     def test_hacs_manifest(self) -> None:
         hacs = json.loads((BASE / "hacs.json").read_text("utf-8"))
         self.assertEqual(hacs["name"], "Rezeptbox")
+
+
+class ShoppingTargetFilesTest(unittest.TestCase):
+    def test_options_offer_todo_entities(self) -> None:
+        flow = (COMPONENT / "config_flow.py").read_text("utf-8")
+        self.assertIn("CONF_SHOPPING_TARGET", flow)
+        self.assertIn('EntitySelector(EntitySelectorConfig(domain="todo"))', flow)
+
+    def test_shopping_writer_can_target_todo_lists(self) -> None:
+        module = (COMPONENT / "shopping.py").read_text("utf-8")
+        for marker in (
+            "TODO_DOMAIN",
+            "shopping_target",
+            "get_items",
+            "update_item",
+            "summary",
+        ):
+            self.assertIn(marker, module)
+
+    def test_readme_explains_the_shopping_list_target(self) -> None:
+        readme = (BASE / "README.md").read_text("utf-8")
+        self.assertIn("Ziel-Einkaufsliste", readme)
+        self.assertIn("Alexa Devices", readme)
 
 
 if __name__ == "__main__":

@@ -9,12 +9,15 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
 )
 
 from .const import (
+    CONF_SHOPPING_TARGET,
     CONF_UPDATE_INTERVAL_HOURS,
     DEFAULT_UPDATE_INTERVAL_HOURS,
     DOMAIN,
@@ -47,18 +50,25 @@ class RecipeBoxConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class RecipeBoxOptionsFlow(OptionsFlow):
-    """Configure how often all recipes are refreshed."""
+    """Configure the refresh interval and the shopping list target."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the refresh interval."""
+        """Handle the refresh interval and the shopping list target."""
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            data = dict(user_input)
+            data[CONF_SHOPPING_TARGET] = str(
+                data.get(CONF_SHOPPING_TARGET) or ""
+            ).strip()
+            return self.async_create_entry(data=data)
 
         current = self.config_entry.options.get(
             CONF_UPDATE_INTERVAL_HOURS, DEFAULT_UPDATE_INTERVAL_HOURS
         )
+        target = str(
+            self.config_entry.options.get(CONF_SHOPPING_TARGET) or ""
+        ).strip()
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -73,7 +83,11 @@ class RecipeBoxOptionsFlow(OptionsFlow):
                             mode=NumberSelectorMode.BOX,
                             unit_of_measurement="h",
                         )
-                    )
+                    ),
+                    vol.Optional(
+                        CONF_SHOPPING_TARGET,
+                        description={"suggested_value": target} if target else {},
+                    ): EntitySelector(EntitySelectorConfig(domain="todo")),
                 }
             ),
         )

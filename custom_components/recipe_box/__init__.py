@@ -81,7 +81,7 @@ from .parser import (
     parse_ingredient_text,
     scale_ingredient_lines,
 )
-from .shopping import async_add_ingredient_lines
+from .shopping import TODO_DOMAIN, async_add_ingredient_lines, shopping_target
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -586,8 +586,16 @@ async def _async_remove_recipe(
 async def _async_add_to_shopping_list(
     hass: HomeAssistant, call: ServiceCall
 ) -> None:
-    """Add the ingredients of the selected recipes to the shopping list."""
-    if "shopping_list" not in hass.config.components:
+    """Add the ingredients of the selected recipes to the configured list."""
+    target = shopping_target(hass)
+    if target:
+        if hass.states.get(target) is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="shopping_target_missing",
+                translation_placeholders={"entity_id": target},
+            )
+    elif "shopping_list" not in hass.config.components:
         raise HomeAssistantError(
             "The Home Assistant shopping list (shopping_list) is not set up."
         )
@@ -634,22 +642,30 @@ async def _async_add_to_shopping_list(
         return
 
     if call.data.get(ATTR_MERGE, True):
-        added = await async_add_ingredient_lines(hass, lines)
+        added = await async_add_ingredient_lines(hass, lines, target=target)
     else:
         added = 0
         for name in lines:
             name = str(name).strip()
             if not name:
                 continue
-            await hass.services.async_call(
-                "shopping_list",
-                "add_item",
-                {"name": name},
-                blocking=True,
-            )
+            if target:
+                await hass.services.async_call(
+                    TODO_DOMAIN,
+                    "add_item",
+                    {"entity_id": target, "item": name},
+                    blocking=True,
+                )
+            else:
+                await hass.services.async_call(
+                    "shopping_list",
+                    "add_item",
+                    {"name": name},
+                    blocking=True,
+                )
             added += 1
 
-    _LOGGER.debug("Added %s ingredients to the shopping list", added)
+    _LOGGER.debug("Added %s ingredients to %s", added, target or "the shopping list")
 
 
 def _call_recipe_url(hass: HomeAssistant, call: ServiceCall) -> str:
