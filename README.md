@@ -217,7 +217,11 @@ Detailansicht. **Foto entfernen** verwirft die Auswahl wieder. Bei einem
 gespeicherten eigenen Rezept stehen in der Detailansicht **Foto ändern** und
 **Foto entfernen** bereit. HEIC-Fotos vom iPhone kann nicht jeder Browser
 umwandeln; die Karte weist dann darauf hin, das Foto als JPG zu speichern oder
-direkt mit der Handy-Kamera aufzunehmen.
+direkt mit der Handy-Kamera aufzunehmen. Der Upload nutzt Home Assistants
+Bildablage (`image_upload`, in `default_config` enthalten); fehlt sie, sagt die
+Karte das beim Hochladen. Schlägt ein Foto fehl, nennt die Meldung die
+Rezeptbox-Version sowie getrennt, ob das Hochladen oder das Speichern
+scheiterte.
 
 Unter **Fotos** im Tab **Daten** entfernt **Fotos aufräumen** die Bilder eigener
 Rezepte, die zu keinem Rezept mehr gehören – etwa nach dem Löschen eines

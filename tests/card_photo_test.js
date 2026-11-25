@@ -46,6 +46,13 @@ const context = {
       this.entries.push(args);
     }
   },
+  Blob: class {
+    constructor(parts, options) {
+      this.parts = parts;
+      this.type = (options && options.type) || "";
+      this.size = 1;
+    }
+  },
   setTimeout: () => 0,
   clearTimeout: () => {},
   window: { customCards: [], localStorage: { getItem: () => null, setItem() {} } },
@@ -163,7 +170,7 @@ const run = async () => {
   assert.equal(state.calls.length, 0, "no recipe without its photo");
   assert.match(
     state.notifications[0],
-    /Foto: Dieses Bildformat wird nicht unterstützt/
+    /Foto hochladen fehlgeschlagen \(Rezeptbox [\d.]+\): Dieses Bildformat wird nicht unterstützt/
   );
   assert.equal(failing.shadowRoot.querySelector("button.manual-save").disabled, false);
 
@@ -331,15 +338,26 @@ const run = async () => {
     /fehlende Fotos bei 2 Rezepten\./
   );
 
-  // 15. Without fetchWithAuth the legacy callApi path still works.
+  // 15. Without fetchWithAuth the upload falls back to fetch with the token
+  //     instead of callApi, which would serialise the multipart body as JSON.
   const legacy = makeCard();
   legacy._hass.fetchWithAuth = undefined;
-  legacy._shrinkPhoto = async () => ({ size: 1 });
+  legacy._hass.hassUrl = (path) => `https://ha.example${path}`;
+  legacy._hass.auth = { data: { access_token: "token-1" } };
+  legacy._shrinkPhoto = async () => ({ size: 1, type: "image/jpeg" });
+  context.fetch = async (url, init) => {
+    state.uploads.push({ url, init });
+    return { ok: true, json: async () => ({ id: "abc123" }) };
+  };
   const legacyUrl = await legacy._uploadPhoto({
     name: "karte.jpg",
     type: "image/jpeg",
   });
-  assert.equal(state.uploads[0].path, "image/upload");
+  assert.equal(state.uploads[0].url, "https://ha.example/api/image/upload");
+  assert.equal(
+    state.uploads[0].init.headers.authorization,
+    "Bearer token-1"
+  );
   assert.equal(legacyUrl, "/api/image/serve/abc123/original");
 
   // 16. A too large upload gets its own hint.
@@ -363,7 +381,70 @@ const run = async () => {
     /zu groß/
   );
 
-  console.log("card_photo_test: 16 checks passed");
+  // 17. A file without MIME type gets one from its name, so Home Assistant
+  //     does not reject the upload as an unknown format.
+  const typed = makeCard();
+  typed._shrinkPhoto = async (item) => item;
+  const typedUrl = await typed._uploadPhoto({
+    name: "Kuchen.PNG",
+    type: "",
+    size: 4096,
+  });
+  assert.equal(state.uploads[0].form.entries[0][1].type, "image/png");
+  assert.equal(state.uploads[0].form.entries[0][2], "rezeptbox-Kuchen.png");
+  assert.equal(typedUrl, "/api/image/serve/abc123/original");
+
+  // 18. Plain objects thrown by Home Assistant no longer lose their message.
+  assert.match(
+    photoErrorMessage(
+      { error: "Response error: 500", status_code: 500 },
+      { name: "karte.jpg", type: "image/jpeg" }
+    ),
+    /Response error: 500/
+  );
+  assert.match(
+    photoErrorMessage(new Error("404: Not Found"), {
+      name: "karte.jpg",
+      type: "image/jpeg",
+    }),
+    /image_upload/
+  );
+
+  // 19. A failing set_recipe_image is reported as a save error after upload.
+  const saveError = makeCard();
+  saveError._hass.callService = async () => {
+    throw { error: "Response error: 500", status_code: 500 };
+  };
+  let saveHandler = null;
+  const savePicker = {
+    disabled: false,
+    value: "C:\\fakepath\\karte.jpg",
+    files: [{ name: "karte.jpg", type: "image/jpeg", size: 10 }],
+    addEventListener: (type, handler) => {
+      if (type === "change") saveHandler = handler;
+    },
+  };
+  bindDetail(
+    {
+      querySelectorAll: () => [],
+      querySelector: (selector) =>
+        selector === "input.photo-edit-input" ? savePicker : null,
+    },
+    saveError._hass,
+    "sensor.manual",
+    new Set(),
+    saveError,
+    {}
+  );
+  await saveHandler();
+  assert.match(
+    state.notifications[0],
+    /Foto speichern fehlgeschlagen: Response error: 500/
+  );
+  assert.equal(savePicker.disabled, false);
+  assert.equal(savePicker.value, "");
+
+  console.log("card_photo_test: 19 checks passed");
 };
 
 run().catch((error) => {

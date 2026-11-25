@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.4";
+const CARD_VERSION = "2.4.5";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -703,11 +703,34 @@ const looksHeic = (file) => {
   );
 };
 
+/* Home Assistant rejects service calls with plain objects such as
+ * {error, status_code, body} instead of Error instances, which used to leave
+ * the user with an empty message. */
+const errorText = (error) => {
+  if (error === null || error === undefined) return "";
+  if (typeof error === "string" || typeof error === "number") {
+    return String(error);
+  }
+  const parts = [error.message, error.error, error.code]
+    .filter((part) => typeof part === "string" || typeof part === "number")
+    .map(String)
+    .filter(Boolean);
+  const text = [...new Set(parts)].join(": ");
+  const status = error.status || error.status_code;
+  if (typeof status === "number" && !text.includes(String(status))) {
+    return [text, status].filter(Boolean).join(": ");
+  }
+  return text;
+};
+
 const photoErrorMessage = (error, file) => {
   if (looksHeic(file)) return HEIC_PHOTO_MESSAGE;
-  const raw = String((error && (error.message || error.code)) || "").trim();
+  const raw = errorText(error).trim();
   if (/413|too large|payload/i.test(raw)) {
     return "Das Foto ist zu groß (maximal 10 MB).";
+  }
+  if (/404|not found/i.test(raw)) {
+    return "Home Assistant nimmt keine Fotos an. Bitte die Integration 'image_upload' aktivieren.";
   }
   if (/401|403|unauthori|forbidden/i.test(raw)) {
     return "Der Foto-Upload wurde abgelehnt. Bitte neu anmelden.";
@@ -792,6 +815,60 @@ const uploadError = async (response) => {
   return new Error(raw || "Upload fehlgeschlagen");
 };
 
+/* Home Assistant only stores jpeg, png and gif. Some Android pickers hand
+ * out files without a MIME type, so derive it from the file name. */
+const UPLOAD_CONTENT_TYPES = ["image/jpeg", "image/png", "image/gif"];
+
+const CONTENT_TYPE_BY_EXTENSION = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+};
+
+const photoBlobFor = (blob, name) => {
+  const type = String((blob && blob.type) || "").toLowerCase();
+  if (UPLOAD_CONTENT_TYPES.includes(type)) return blob;
+  const source = String(name || (blob && blob.name) || "");
+  const match = /\.([a-z0-9]+)$/i.exec(source);
+  const guessed = match
+    ? CONTENT_TYPE_BY_EXTENSION[match[1].toLowerCase()]
+    : "";
+  if (!guessed || typeof Blob !== "function") return blob;
+  return new Blob([blob], { type: guessed });
+};
+
+const photoFileName = (base, blob) => {
+  const type = String((blob && blob.type) || "").toLowerCase();
+  const extension = type === "image/png" ? "png" : type === "image/gif" ? "gif" : "jpg";
+  return `rezeptbox-${base}.${extension}`;
+};
+
+/* Home Assistant's own image upload uses fetchWithAuth with the FormData as
+ * body. hass.callApi serialises its payload as JSON, which turns the multipart
+ * body into an empty object, so it must never be used here. */
+const postPhoto = (hass, form) => {
+  if (hass && typeof hass.fetchWithAuth === "function") {
+    return hass.fetchWithAuth("/api/image/upload", {
+      method: "POST",
+      body: form,
+    });
+  }
+  const path = "/api/image/upload";
+  const url = hass && typeof hass.hassUrl === "function" ? hass.hassUrl(path) : path;
+  const token =
+    hass && hass.auth && hass.auth.data && hass.auth.data.access_token;
+  if (typeof fetch !== "function") {
+    throw new Error("Dieser Browser kann keine Fotos hochladen.");
+  }
+  return fetch(url, {
+    method: "POST",
+    body: form,
+    credentials: "same-origin",
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+};
+
 const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   const blob = await shrink(file);
   if (blob === file && looksHeic(file)) {
@@ -801,30 +878,30 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
     .replace(/\.[^.]+$/, "")
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .slice(0, 40) || "rezept";
+  const part = photoBlobFor(blob, file && file.name);
   const form = new FormData();
   /* The prefix marks the upload as ours, so the cleanup never touches
    * profile photos or images from other integrations. */
-  form.append("file", blob, `rezeptbox-${base}.jpg`);
+  form.append("file", part, photoFileName(base, part));
 
-  let result = null;
-  /* hass.callApi serialises its payload as JSON, which turns the multipart
-   * body into an empty object and makes the upload fail. fetchWithAuth sends
-   * the FormData untouched. */
-  if (hass && typeof hass.fetchWithAuth === "function") {
-    const response = await hass.fetchWithAuth("/api/image/upload", {
-      method: "POST",
-      body: form,
-    });
-    if (!response || !response.ok) {
-      throw await uploadError(response);
-    }
-    result = await response.json();
-  } else if (hass && typeof hass.callApi === "function") {
-    result = await hass.callApi("POST", "image/upload", form);
-  } else {
-    throw new Error("Dieser Browser kann keine Fotos hochladen.");
+  let response = null;
+  try {
+    response = await postPhoto(hass, form);
+  } catch (error) {
+    throw new Error(
+      `Netzwerkfehler beim Foto-Upload: ${errorText(error) || "unbekannt"}`
+    );
+  }
+  if (!response || !response.ok) {
+    throw await uploadError(response);
   }
 
+  let result = null;
+  try {
+    result = await response.json();
+  } catch (error) {
+    throw new Error("Die Antwort von Home Assistant war nicht lesbar.");
+  }
   if (!result || !result.id) {
     throw new Error("Der Upload hat keine Bild-ID geliefert.");
   }
@@ -1539,15 +1616,29 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
       const file = photoInput.files && photoInput.files[0];
       if (!file) return;
       photoInput.disabled = true;
+      let imageUrl = "";
       try {
-        const imageUrl = await uploadPhoto(hass, file);
+        imageUrl = await uploadPhoto(hass, file);
+      } catch (error) {
+        notify(
+          dispatcher,
+          `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, file)}`
+        );
+        photoInput.disabled = false;
+        photoInput.value = "";
+        return;
+      }
+      try {
         await hass.callService("recipe_box", "set_recipe_image", {
           entity_id: entityId,
           image_url: imageUrl,
         });
         notify(dispatcher, "Foto gespeichert.");
       } catch (error) {
-        notify(dispatcher, `Foto: ${photoErrorMessage(error, file)}`);
+        notify(
+          dispatcher,
+          `Foto speichern fehlgeschlagen: ${errorText(error) || "unbekannter Fehler"}`
+        );
       } finally {
         /* Also re-enable when no re-render happens (for example when the
          * same image is uploaded again); a detached node is harmless. */
@@ -2896,7 +2987,10 @@ class RecipeBoxListCard extends HTMLElement {
       try {
         data.image_url = await this._uploadPhoto(photo);
       } catch (error) {
-        notify(this, `Foto: ${photoErrorMessage(error, photo)}`);
+        notify(
+          this,
+          `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, photo)}`
+        );
         return;
       } finally {
         if (saveButton) saveButton.disabled = false;
