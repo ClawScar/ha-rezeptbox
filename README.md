@@ -173,14 +173,14 @@ nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
 Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js?v=2.9.0-beta.6
+url: /recipe_box/recipe-card.js?v=2.9.0-beta.7
 type: module
 ```
 
 Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
 Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
 und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
-aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.6“).
+aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.7“).
 
 ### Rezeptliste mit Detailansicht
 
@@ -272,8 +272,10 @@ Texterkennung läuft mit Tesseract und dem deutschen Sprachmodell direkt im
 Browser – rund 5,5 MB liegen dafür unter `www/ocr/`, es geht kein Foto und kein
 Text an einen Dienst, und eine KI ist nicht beteiligt. Vor der Erkennung wird
 jede Seite auf etwa 2000 Pixel lange Kante gebracht (kleine Fotos bis zur
-doppelten Größe), in Graustufen umgewandelt und im Kontrast angehoben, damit
-auch dünne Großschrift auf hellen Karten lesbar bleibt. Handschrift erkennt der
+doppelten Größe), in Graustufen umgewandelt, im Kontrast angehoben und an der
+Schwelle zwischen Papier und Druck in Schwarz-Weiß getrennt. Bleibt eine Seite
+dabei ohne Text (etwa bei harten Schatten), liest der Scanner sie zusätzlich in
+Graustufen und nimmt das bessere Ergebnis. Handschrift erkennt der
 Scanner nicht; bei Reflexen oder schräger Aufnahme steigt die Fehlerquote, ein
 gerades, gut beleuchtetes Foto liefert die besten Ergebnisse. Bei älteren
 Browsern ohne WebAssembly-SIMD erscheint eine Fehlermeldung.

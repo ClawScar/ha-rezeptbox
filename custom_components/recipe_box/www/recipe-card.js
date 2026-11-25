@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.6";
+const CARD_VERSION = "2.9.0-beta.7";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1563,11 +1563,48 @@ const loadTesseract = () => {
 /* Tesseract needs enough pixels per letter: the thin print on a recipe card
  * fades away when a phone shrinks the photo. Every page is therefore rendered
  * at about 2000 px on its long side, small photos up to twice their size, in
- * grey and with more contrast so the strokes stand out from the paper. */
+ * grey and with more contrast. The grey values are then split into black and
+ * white at the threshold that best separates paper and print (Otsu), which
+ * gives thin strokes a firm edge. */
 const OCR_TARGET_SIDE = 2000;
 const OCR_MAX_SIDE = 2400;
 
-const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE) => {
+const ocrThreshold = (pixels) => {
+  const histogram = new Array(256).fill(0);
+  for (let index = 0; index < pixels.length; index += 4) {
+    histogram[
+      Math.round(
+        pixels[index] * 0.299 +
+          pixels[index + 1] * 0.587 +
+          pixels[index + 2] * 0.114
+      )
+    ] += 1;
+  }
+  const total = pixels.length / 4;
+  let sum = 0;
+  for (let grey = 0; grey < 256; grey += 1) sum += grey * histogram[grey];
+  let weightDark = 0;
+  let sumDark = 0;
+  let best = -1;
+  let threshold = 128;
+  for (let grey = 0; grey < 256; grey += 1) {
+    weightDark += histogram[grey];
+    if (!weightDark) continue;
+    const weightLight = total - weightDark;
+    if (!weightLight) break;
+    sumDark += grey * histogram[grey];
+    const meanDark = sumDark / weightDark;
+    const meanLight = (sum - sumDark) / weightLight;
+    const between = weightDark * weightLight * (meanDark - meanLight) ** 2;
+    if (between > best) {
+      best = between;
+      threshold = grey;
+    }
+  }
+  return threshold;
+};
+
+const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE, binarize = true) => {
   if (
     typeof document === "undefined" ||
     typeof createImageBitmap !== "function" ||
@@ -1597,14 +1634,44 @@ const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE) => {
     }
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     if (typeof bitmap.close === "function") bitmap.close();
+
+    let type = binarize ? "image/png" : "image/jpeg";
+    if (binarize) {
+      try {
+        const image = context.getImageData(0, 0, canvas.width, canvas.height);
+        const threshold = ocrThreshold(image.data);
+        const pixels = image.data;
+        for (let index = 0; index < pixels.length; index += 4) {
+          const grey =
+            pixels[index] * 0.299 +
+            pixels[index + 1] * 0.587 +
+            pixels[index + 2] * 0.114;
+          const value = grey <= threshold ? 0 : 255;
+          pixels[index] = value;
+          pixels[index + 1] = value;
+          pixels[index + 2] = value;
+          pixels[index + 3] = 255;
+        }
+        context.putImageData(image, 0, 0);
+      } catch (error) {
+        /* Pages that cannot be read back stay grey; Tesseract handles them. */
+        type = "image/jpeg";
+      }
+    }
     const blob = await new Promise((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.95)
+      canvas.toBlob(resolve, type, 0.95)
     );
     return blob || file;
   } catch (error) {
     return file;
   }
 };
+
+/* A page with hard shadows can lose whole lines to a global threshold; the
+ * scan falls back to this grey version when the black-and-white pass stays
+ * empty. */
+const ocrPhotoGrey = (file, maxSide = OCR_MAX_SIDE) =>
+  ocrPhoto(file, maxSide, false);
 
 const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-section">
   <h3>${edit ? tr("Rezept bearbeiten", "Edit recipe") : tr("Eigenes Rezept", "Own recipe")}</h3>
@@ -4747,7 +4814,14 @@ class RecipeBoxListCard extends HTMLElement {
           )
         );
         const image = await ocrPhoto(pages[index]);
-        const { data } = await worker.recognize(image);
+        let { data } = await worker.recognize(image);
+        const text = (data && data.text) || "";
+        if (text.trim().length < 40) {
+          const grey = await ocrPhotoGrey(pages[index]);
+          const second = await worker.recognize(grey);
+          const more = (second.data && second.data.text) || "";
+          if (more.trim().length > text.trim().length) data = second.data;
+        }
         texts.push((data && data.text) || "");
       }
 

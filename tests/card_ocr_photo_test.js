@@ -2,7 +2,9 @@
  *
  * Tesseract needs enough pixels and contrast for the thin print on a recipe
  * card, so every page is redrawn at about 2000 px on its long side (small
- * photos up to twice their size) in grey and with more contrast.
+ * photos up to twice their size) in grey, contrasted, and split into black
+ * and white at the Otsu threshold. A grey version stays available as a
+ * fallback for pages with hard shadows.
  *
  * Run with: node tests/card_ocr_photo_test.js
  */
@@ -23,13 +25,18 @@ const CARD = path.join(
 const source = fs.readFileSync(CARD, "utf8");
 
 const state = {
+  width: 300,
+  height: 424,
   canvas: null,
   context: null,
   scaled: null,
   closed: false,
+  pixels: null,
+  written: null,
   blob: null,
   blobType: "",
   blobQuality: 0,
+  readBack: true,
 };
 
 const makeCanvas = () => {
@@ -44,6 +51,13 @@ const makeCanvas = () => {
         imageSmoothingQuality: "low",
         drawImage(bitmap, x, y, width, height) {
           state.scaled = { width, height };
+        },
+        getImageData() {
+          if (!state.readBack) throw new Error("tainted");
+          return { data: Uint8ClampedArray.from(state.pixels) };
+        },
+        putImageData(image) {
+          state.written = image.data;
         },
       };
       state.context = context;
@@ -82,9 +96,12 @@ context.createImageBitmap = async () => ({
 });
 
 vm.runInContext(
-  `${source}\nthis.ocrPhoto = ocrPhoto;`,
+  `${source}\nthis.ocrPhoto = ocrPhoto;\nthis.ocrPhotoGrey = ocrPhotoGrey;`,
   vm.createContext(context)
 );
+
+/* One dark and one light tone, so Otsu has something to split. */
+const PIXELS = [0, 0, 0, 255, 255, 255, 255, 255];
 
 const reset = (width, height) => {
   state.width = width;
@@ -93,16 +110,20 @@ const reset = (width, height) => {
   state.context = null;
   state.scaled = null;
   state.closed = false;
-  state.blob = { type: "image/jpeg", size: 1024 };
+  state.pixels = PIXELS.slice();
+  state.written = null;
+  state.blob = { type: "image/png", size: 1024 };
   state.blobType = "";
   state.blobQuality = 0;
+  state.readBack = true;
 };
 
 const run = async () => {
-  // 1. A small phone photo is doubled and turned into a grey, contrasted JPEG
-  //    so thin print survives the scan.
-  reset(300, 424);
   const file = { name: "seite.jpg" };
+
+  // 1. A small phone photo is doubled, turned grey and split into pure black
+  //    and white so thin print keeps a firm edge.
+  reset(300, 424);
   const prepared = await context.ocrPhoto(file);
   assert.equal(state.canvas.width, 600);
   assert.equal(state.canvas.height, 848);
@@ -110,7 +131,11 @@ const run = async () => {
   assert.equal(state.context.filter, "grayscale(1) contrast(1.6)");
   assert.equal(state.context.imageSmoothingEnabled, true);
   assert.equal(state.context.imageSmoothingQuality, "high");
-  assert.equal(state.blobType, "image/jpeg");
+  assert.deepEqual(
+    Array.from(state.written || []),
+    [0, 0, 0, 255, 255, 255, 255, 255]
+  );
+  assert.equal(state.blobType, "image/png");
   assert.equal(state.blobQuality, 0.95);
   assert.equal(state.closed, true, "the bitmap is released");
   assert.equal(prepared, state.blob);
@@ -128,7 +153,22 @@ const run = async () => {
   assert.equal(state.canvas.width, 2400);
   assert.equal(state.canvas.height, 1600);
 
-  // 4. Without a canvas the original file is used.
+  // 4. The grey fallback keeps the mid tones and stays a JPEG.
+  reset(300, 424);
+  const grey = await context.ocrPhotoGrey(file);
+  assert.equal(state.written, null, "the grey version is not binarised");
+  assert.equal(state.blobType, "image/jpeg");
+  assert.equal(grey, state.blob);
+
+  // 5. If the pixels cannot be read back (e.g. a tainted canvas), the grey
+  //    image is returned instead of the unprocessed file.
+  reset(300, 424);
+  state.readBack = false;
+  const unreadable = await context.ocrPhoto(file);
+  assert.equal(unreadable, state.blob);
+  assert.equal(state.blobType, "image/jpeg");
+
+  // 6. Without a canvas the original file is used.
   reset(300, 424);
   const originalCreate = context.document.createElement;
   context.document.createElement = () => ({
@@ -138,7 +178,7 @@ const run = async () => {
   assert.equal(await context.ocrPhoto(file), file);
   context.document.createElement = originalCreate;
 
-  // 5. A broken decoder also leaves the scan working with the original file.
+  // 7. A broken decoder also leaves the scan working with the original file.
   reset(300, 424);
   const originalBitmap = context.createImageBitmap;
   context.createImageBitmap = async () => {
@@ -147,7 +187,7 @@ const run = async () => {
   assert.equal(await context.ocrPhoto(file), file);
   context.createImageBitmap = originalBitmap;
 
-  console.log("card_ocr_photo_test: 5 checks passed");
+  console.log("card_ocr_photo_test: 7 checks passed");
 };
 
 run().catch((error) => {
