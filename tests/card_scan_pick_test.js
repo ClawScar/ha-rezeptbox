@@ -1,4 +1,4 @@
-/* Tests for choosing scan photos (Fotos wählen).
+/* Tests for choosing scan photos (Foto hinzufügen).
  *
  * The file input lives inside the form as part of a label: Android webviews
  * only open the photo picker for a tapped input in the page, not for a hidden
@@ -102,14 +102,17 @@ const run = () => {
   // 1. The form offers a native file input in a label, not a scripted button.
   const form = context.manualFormHtml();
   assert.match(form, /<label class="scan-add scan-pick">/);
-  assert.match(form, /<input class="scan-input" type="file" accept="image\/\*" multiple>/);
-  assert.match(form, /Fotos wählen/);
+  /* Android only hands the chosen file to a plain input: no photo filter,
+   * no multiple selection. One picture per pick, further pages by tapping
+   * again. */
+  const scanInput = (form.match(/<input class="scan-input"[^>]*>/) || [""])[0];
+  assert.match(scanInput, /type="file"/);
+  assert.doesNotMatch(scanInput, /accept=/);
+  assert.doesNotMatch(scanInput, /multiple/);
+  assert.match(form, /Foto hinzufügen/);
+  assert.match(form, /ein Bild pro Auswahl/);
   assert.doesNotMatch(form, /button class="scan-add/);
-  // ... plus a plain file field without the photo filter, in case Android's
-  // photo picker swallows the selection.
-  assert.match(form, /<label class="scan-add scan-pick scan-plain">/);
-  assert.match(form, /<input class="scan-input-alt" type="file">/);
-  assert.match(form, /Datei wählen/);
+  assert.equal((form.match(/class="scan-input"/g) || []).length, 1);
   assert.match(form, /<button class="ocr-run" type="button" disabled>/);
 
   // 2. The tap goes straight to the input, so Android opens the picker.
@@ -209,17 +212,17 @@ const run = () => {
   input3.fire("change");
   assert.match(state.status, /keine Dateien geliefert/);
 
-  // 10. The plain file field feeds the same page list.
+  // 10. One picture per pick still fills the page list.
   reset();
-  const plainCard = makeCard();
-  const plainInput = makeInput();
-  plainInput.type = "file";
-  plainCard._attachScanInput(plainInput);
-  const plain = { name: "seite9.jpg", type: "image/jpeg" };
-  plainInput.files = [plain];
-  plainInput.fire("change");
-  assert.equal(plainCard._ocrPages.length, 1);
-  assert.equal(plainCard._ocrPages[0], plain);
+  const singleCard = makeCard();
+  const singleInput = makeInput();
+  singleInput.type = "file";
+  singleCard._attachScanInput(singleInput);
+  const single = { name: "seite9.jpg", type: "image/jpeg" };
+  singleInput.files = [single];
+  singleInput.fire("change");
+  assert.equal(singleCard._ocrPages.length, 1);
+  assert.equal(singleCard._ocrPages[0], single);
   assert.equal(state.rendered, 1);
 
   console.log("card_scan_pick_test: 10 checks passed");

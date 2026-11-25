@@ -173,14 +173,14 @@ nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
 Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js?v=2.9.0-beta.15
+url: /recipe_box/recipe-card.js?v=2.9.0-beta.16
 type: module
 ```
 
 Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
 Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
 und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
-aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.15“).
+aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.16“).
 
 ### Rezeptliste mit Detailansicht
 
@@ -263,9 +263,11 @@ und Tags. Über **Bearbeiten** in der Detailansicht eines gespeicherten Rezepts
 aktualisieren** speichert die Korrektur über `recipe_box.update_recipe`.
 
 Für gedruckte Rezeptkarten gibt es im Formular den **Foto-Scanner**: mit
-**Fotos wählen** eine oder mehrere Seiten aufnehmen oder aus der Galerie
-holen (das Handy bietet dabei auch die Kamera an); die gewählten Seiten
-erscheinen mit Vorschaubild in der Liste. Mit **Text erkennen** werden sie der
+**Foto hinzufügen** nimmt ein Bild pro Auswahl auf – Kamera oder Galerie, je
+nachdem, was der Datei-Dialog des Geräts anbietet; für jede weitere Seite wird
+erneut getippt. Die gewählten Seiten erscheinen mit Vorschaubild in der Liste.
+Ein Feld mit Mehrfachauswahl oder Foto-Filter liefert auf Android keine Dateien,
+deshalb bewusst ein einfaches Dateifeld. Mit **Text erkennen** werden sie der
 Reihe nach eingelesen und das Ergebnis im Formular geprüft. Abschnitte wie „Zutaten“
 und „Zubereitung“ dürfen sich auf späteren Seiten wiederholen; sie werden
 fortgesetzt statt neu begonnen. Das erste Foto wird das Rezeptfoto. Die
