@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.5";
+const CARD_VERSION = "2.4.6";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -907,6 +907,35 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   }
   return `/api/image/serve/${result.id}/original`;
 };
+
+/* A valid 1x1 PNG. The photo test uploads it through the very same path a real
+ * photo uses, so a broken browser upload shows up instead of being hidden. */
+const TEST_PHOTO_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+const testPhotoFile = () => {
+  const binary = atob(TEST_PHOTO_PNG);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const blob = new Blob([bytes], { type: "image/png" });
+  const name = "foto-test.png";
+  if (typeof File === "function") {
+    return new File([blob], name, { type: "image/png" });
+  }
+  blob.name = name;
+  return blob;
+};
+
+const photoTestHtml = (lines, verdict) => `<div class="photo-test-report ${
+  verdict.ok ? "ok" : "fail"
+}">
+  <p class="photo-test-verdict">${escapeHtml(verdict.text)}</p>
+  <ul>${lines
+    .map((line) => `<li class="${line.state}">${escapeHtml(line.text)}</li>`)
+    .join("")}</ul>
+</div>`;
 
 const manualFormHtml = () => `<div class="manual data-section">
   <h3>Eigenes Rezept</h3>
@@ -1891,6 +1920,16 @@ const STYLES = `<style>
   .data-panel > * { padding-top: 16px; border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
   .data-panel > :first-child { padding-top: 0; border-top: none; }
   .data-section h3 { margin-bottom: 8px; }
+  .photo-test-result { margin-top: 8px; font-size: 0.82rem; }
+  .photo-test-result[hidden] { display: none; }
+  .photo-test-verdict { margin: 0; font-weight: 600; }
+  .photo-test-report.ok .photo-test-verdict { color: var(--success-color, #2e7d32); }
+  .photo-test-report.fail .photo-test-verdict { color: var(--error-color, #db4437); }
+  .photo-test-result ul { margin: 6px 0 0; padding-left: 18px; }
+  .photo-test-result li { margin-top: 2px; }
+  .photo-test-result li.ok { color: var(--success-color, #2e7d32); }
+  .photo-test-result li.fail { color: var(--error-color, #db4437); }
+  .photo-test-result li.info { color: var(--secondary-text-color); }
   li.recipe-row.selected { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); border-radius: 8px; }
   .selection-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border-radius: 8px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); }
   .selection-count { font-size: 0.82rem; font-weight: 600; color: var(--primary-text-color); }
@@ -2611,6 +2650,14 @@ class RecipeBoxListCard extends HTMLElement {
         <div class="tools">
           <button class="cleanup-photos" type="button">Fotos aufräumen</button>
         </div>
+      </div>
+      <div class="data-section">
+        <h3>Foto-Test</h3>
+        <p class="tab-hint">Prüft, ob Home Assistant die Bildablage (image_upload) bereitstellt und ob dieser Browser ein Foto über /api/image/upload hochladen kann. Das Testbild wird danach wieder aufgeräumt.</p>
+        <div class="tools">
+          <button class="photo-test" type="button">Foto-Test starten</button>
+        </div>
+        <div class="photo-test-result" hidden></div>
       </div>`
       : "";
 
@@ -2830,6 +2877,13 @@ class RecipeBoxListCard extends HTMLElement {
     if (cleanupPhotos) {
       cleanupPhotos.addEventListener("click", () =>
         this._cleanupPhotos(cleanupPhotos)
+      );
+    }
+
+    const photoTest = this.shadowRoot.querySelector("button.photo-test");
+    if (photoTest) {
+      photoTest.addEventListener("click", () =>
+        this._runPhotoTest(photoTest)
       );
     }
 
@@ -3089,6 +3143,111 @@ class RecipeBoxListCard extends HTMLElement {
     } finally {
       if (button) button.disabled = false;
     }
+  }
+
+  /* Diagnostic for the photo upload: ask Home Assistant for its stored images,
+   * then upload a tiny picture through the same code path a real photo uses and
+   * remove it again. That tells a server problem apart from a browser one. */
+  async _runPhotoTest(button) {
+    if (!this._hass) return;
+    const root = this.shadowRoot;
+    const box = root && root.querySelector(".photo-test-result");
+    if (!box) return;
+    if (button) button.disabled = true;
+    box.hidden = false;
+    box.innerHTML = '<p class="photo-test-verdict">Test läuft …</p>';
+
+    const lines = [];
+    let serverOk = false;
+    try {
+      const images = await this._hass.callWS({ type: "image/list" });
+      serverOk = true;
+      const count = Array.isArray(images) ? images.length : 0;
+      lines.push({
+        state: "ok",
+        text: `Server: image_upload vorhanden, ${count} ${
+          count === 1 ? "Bild" : "Bilder"
+        } gespeichert.`,
+      });
+    } catch (error) {
+      const detail = errorText(error) || "unbekannt";
+      lines.push(
+        /unauthori|admin|forbidden/i.test(detail)
+          ? {
+              state: "info",
+              text: `Server: Prüfung nur für Administratoren möglich (${detail}).`,
+            }
+          : {
+              state: "fail",
+              text: `Server: image_upload fehlt oder antwortet nicht (${detail}).`,
+            }
+      );
+    }
+
+    let uploadOk = false;
+    try {
+      const imageUrl = await uploadPhoto(this._hass, testPhotoFile());
+      uploadOk = true;
+      const imageId =
+        (String(imageUrl).match(/\/serve\/([^/]+)\//) || [])[1] || "";
+      lines.push({
+        state: "ok",
+        text: `Browser: Upload über /api/image/upload erfolgreich${
+          imageId ? ` (Bild ${imageId.slice(0, 8)}…)` : ""
+        }.`,
+      });
+    } catch (error) {
+      lines.push({
+        state: "fail",
+        text: `Browser: Upload fehlgeschlagen – ${photoErrorMessage(
+          error,
+          null
+        )}`,
+      });
+    }
+
+    if (uploadOk) {
+      try {
+        const result = await this._hass.callService(
+          "recipe_box",
+          "cleanup_recipe_images",
+          {},
+          undefined,
+          false,
+          true
+        );
+        const removed = Number(result && result.removed) || 0;
+        lines.push({
+          state: "info",
+          text: removed
+            ? `${removed} ${
+                removed === 1 ? "Foto" : "Fotos"
+              } aufgeräumt, darunter das Testbild.`
+            : "Testbild hochgeladen, aber nicht zum Aufräumen gefunden.",
+        });
+      } catch (error) {
+        lines.push({
+          state: "info",
+          text: `Testbild konnte nicht aufgeräumt werden (${
+            errorText(error) || "unbekannt"
+          }).`,
+        });
+      }
+    }
+
+    const verdict = uploadOk
+      ? { ok: true, text: "Foto-Upload funktioniert." }
+      : serverOk
+        ? {
+            ok: false,
+            text: "Der Server ist bereit, aber der Browser bekommt den Upload nicht durch. Bitte den Browser-Fehler oben notieren.",
+          }
+        : {
+            ok: false,
+            text: "Home Assistant nimmt keine Fotos an. Bitte die Integration 'image_upload' aktivieren (in default_config enthalten).",
+          };
+    box.innerHTML = photoTestHtml(lines, verdict);
+    if (button) button.disabled = false;
   }
 
   async _export() {

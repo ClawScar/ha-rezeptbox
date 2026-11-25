@@ -18,7 +18,7 @@ const CARD = path.join(
 );
 const source = fs.readFileSync(CARD, "utf8");
 
-const state = { calls: [], uploads: [], notifications: [] };
+const state = { calls: [], uploads: [], notifications: [], ws: [] };
 
 const context = {
   console: { info() {} },
@@ -55,6 +55,7 @@ const context = {
   },
   setTimeout: () => 0,
   clearTimeout: () => {},
+  atob: (value) => Buffer.from(String(value), "base64").toString("binary"),
   window: { customCards: [], localStorage: { getItem: () => null, setItem() {} } },
 };
 
@@ -92,6 +93,7 @@ const makeCard = () => {
   state.calls = [];
   state.uploads = [];
   state.notifications = [];
+  state.ws = [];
   card._hass = {
     states: {},
     callService: async (domain, service, data) => {
@@ -101,9 +103,9 @@ const makeCard = () => {
       state.uploads.push({ path, form: init && init.body });
       return { ok: true, json: async () => ({ id: "abc123" }) };
     },
-    callApi: async (method, path, body) => {
-      state.uploads.push({ method, path, form: body });
-      return { id: "abc123" };
+    callWS: async (message) => {
+      state.ws.push(message);
+      return [];
     },
   };
   card._config = {};
@@ -444,7 +446,82 @@ const run = async () => {
   assert.equal(savePicker.disabled, false);
   assert.equal(savePicker.value, "");
 
-  console.log("card_photo_test: 19 checks passed");
+  // 20. The photo test checks the server, uploads a real test picture through
+  //     the normal path and cleans it up again.
+  const tested = makeCard();
+  const testBox = { hidden: true, innerHTML: "" };
+  const testButton = { disabled: false };
+  tested.shadowRoot = {
+    querySelector: (selector) =>
+      selector === ".photo-test-result"
+        ? testBox
+        : selector === "button.photo-test"
+          ? testButton
+          : null,
+  };
+  tested._hass.callWS = async (message) => {
+    state.ws.push(message);
+    return [{ id: "a" }, { id: "b" }];
+  };
+  tested._hass.callService = async (domain, service) => {
+    state.calls.push({ domain, service });
+    return { removed: 1, kept: 0, available: true };
+  };
+  await tested._runPhotoTest(testButton);
+  assert.equal(state.ws[0].type, "image/list");
+  assert.match(testBox.innerHTML, /image_upload vorhanden, 2 Bilder/);
+  assert.match(testBox.innerHTML, /Upload über \/api\/image\/upload erfolgreich/);
+  assert.match(testBox.innerHTML, /Foto-Upload funktioniert/);
+  assert.equal(testBox.hidden, false);
+  assert.equal(testButton.disabled, false);
+  assert.equal(state.uploads.length, 1, "the test uploads one picture");
+  assert.equal(
+    state.uploads[0].form.entries[0][2].startsWith("rezeptbox-foto-test"),
+    true,
+    "the test picture is recognised as ours and cleaned up"
+  );
+  assert.equal(state.calls[0].service, "cleanup_recipe_images");
+
+  // 21. A working server plus a failing browser upload names the browser.
+  const browserFail = makeCard();
+  browserFail._hass.fetchWithAuth = async () => ({
+    ok: false,
+    status: 400,
+    statusText: "Bad Request",
+    text: async () => "Only jpeg, png, and gif images are allowed",
+  });
+  const failBox = { hidden: true, innerHTML: "" };
+  browserFail.shadowRoot = {
+    querySelector: (selector) =>
+      selector === ".photo-test-result" ? failBox : null,
+  };
+  await browserFail._runPhotoTest(null);
+  assert.match(failBox.innerHTML, /Server: image_upload vorhanden/);
+  assert.match(failBox.innerHTML, /Browser: Upload fehlgeschlagen – Dieses Bildformat/);
+  assert.match(failBox.innerHTML, /Der Server ist bereit/);
+  assert.equal(state.calls.length, 0, "nothing to clean up after a failed upload");
+
+  // 22. Without image_upload the test blames the server, not the browser.
+  const allFail = makeCard();
+  allFail._hass.callWS = async () => {
+    throw { code: "unknown_command", message: "Unknown command." };
+  };
+  allFail._hass.fetchWithAuth = async () => ({
+    ok: false,
+    status: 404,
+    statusText: "Not Found",
+    text: async () => "",
+  });
+  const allFailBox = { hidden: true, innerHTML: "" };
+  allFail.shadowRoot = {
+    querySelector: (selector) =>
+      selector === ".photo-test-result" ? allFailBox : null,
+  };
+  await allFail._runPhotoTest(null);
+  assert.match(allFailBox.innerHTML, /Server: image_upload fehlt oder antwortet nicht/);
+  assert.match(allFailBox.innerHTML, /Home Assistant nimmt keine Fotos an/);
+
+  console.log("card_photo_test: 22 checks passed");
 };
 
 run().catch((error) => {
