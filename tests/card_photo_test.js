@@ -18,7 +18,7 @@ const CARD = path.join(
 );
 const source = fs.readFileSync(CARD, "utf8");
 
-const state = { calls: [], uploads: [], notifications: [], ws: [] };
+const state = { calls: [], uploads: [], notifications: [] };
 
 const context = {
   console: { info() {} },
@@ -55,7 +55,6 @@ const context = {
   },
   setTimeout: () => 0,
   clearTimeout: () => {},
-  atob: (value) => Buffer.from(String(value), "base64").toString("binary"),
   window: { customCards: [], localStorage: { getItem: () => null, setItem() {} } },
 };
 
@@ -68,7 +67,6 @@ this.PHOTO_HELPERS = {
   photoErrorMessage,
   bindDetail,
   missingImageWarning,
-  photoTestHtml,
 };`,
   vm.createContext(context)
 );
@@ -79,7 +77,6 @@ const {
   photoErrorMessage,
   bindDetail,
   missingImageWarning,
-  photoTestHtml,
 } = context.PHOTO_HELPERS;
 
 // 1. The manual form offers a photo picker with a preview and a remove button.
@@ -95,7 +92,6 @@ const makeCard = () => {
   state.calls = [];
   state.uploads = [];
   state.notifications = [];
-  state.ws = [];
   card._hass = {
     states: {},
     callService: async (domain, service, data) => {
@@ -104,10 +100,6 @@ const makeCard = () => {
     fetchWithAuth: async (path, init) => {
       state.uploads.push({ path, form: init && init.body });
       return { ok: true, json: async () => ({ id: "abc123" }) };
-    },
-    callWS: async (message) => {
-      state.ws.push(message);
-      return [];
     },
   };
   card._config = {};
@@ -448,86 +440,7 @@ const run = async () => {
   assert.equal(savePicker.disabled, false);
   assert.equal(savePicker.value, "");
 
-  // 20. The photo test checks the server, uploads a real test picture through
-  //     the normal path, cleans it up and keeps the report on the card so a
-  //     re-render cannot hide it.
-  const tested = makeCard();
-  let testRenders = 0;
-  tested._render = () => {
-    testRenders += 1;
-  };
-  tested._hass.callWS = async (message) => {
-    state.ws.push(message);
-    return [{ id: "a" }, { id: "b" }];
-  };
-  tested._hass.callService = async (domain, service) => {
-    state.calls.push({ domain, service });
-    return {
-      context: { id: "abc" },
-      response: { removed: 1, kept: 0, available: true },
-    };
-  };
-  await tested._runPhotoTest();
-  const report = photoTestHtml(
-    tested._photoTest.lines,
-    tested._photoTest.verdict
-  );
-  assert.equal(state.ws[0].type, "image/list");
-  assert.match(report, /image_upload vorhanden, 2 Bilder/);
-  assert.match(report, /Upload über \/api\/image\/upload erfolgreich/);
-  assert.match(report, /Foto-Upload funktioniert/);
-  assert.match(report, /1 Foto aufgeräumt, darunter das Testbild/);
-  assert.equal(tested._photoTest.running, false);
-  assert.ok(
-    testRenders >= 4,
-    "the report is rendered before, during and after the test"
-  );
-  assert.equal(state.uploads.length, 1, "the test uploads one picture");
-  assert.equal(
-    state.uploads[0].form.entries[0][2].startsWith("rezeptbox-foto-test"),
-    true,
-    "the test picture is recognised as ours and cleaned up"
-  );
-  assert.equal(state.calls[0].service, "cleanup_recipe_images");
-
-  // 21. A working server plus a failing browser upload names the browser.
-  const browserFail = makeCard();
-  browserFail._hass.fetchWithAuth = async () => ({
-    ok: false,
-    status: 400,
-    statusText: "Bad Request",
-    text: async () => "Only jpeg, png, and gif images are allowed",
-  });
-  await browserFail._runPhotoTest();
-  const failReport = photoTestHtml(
-    browserFail._photoTest.lines,
-    browserFail._photoTest.verdict
-  );
-  assert.match(failReport, /Server: image_upload vorhanden/);
-  assert.match(failReport, /Browser: Upload fehlgeschlagen – Dieses Bildformat/);
-  assert.match(failReport, /Der Server ist bereit/);
-  assert.equal(state.calls.length, 0, "nothing to clean up after a failed upload");
-
-  // 22. Without image_upload the test blames the server, not the browser.
-  const allFail = makeCard();
-  allFail._hass.callWS = async () => {
-    throw { code: "unknown_command", message: "Unknown command." };
-  };
-  allFail._hass.fetchWithAuth = async () => ({
-    ok: false,
-    status: 404,
-    statusText: "Not Found",
-    text: async () => "",
-  });
-  await allFail._runPhotoTest();
-  const allFailReport = photoTestHtml(
-    allFail._photoTest.lines,
-    allFail._photoTest.verdict
-  );
-  assert.match(allFailReport, /Server: image_upload fehlt oder antwortet nicht/);
-  assert.match(allFailReport, /Home Assistant nimmt keine Fotos an/);
-
-  // 23. Home Assistant wraps service answers in { context, response }; the
+  // 20. Home Assistant wraps service answers in { context, response }; the
   //     cleanup reports the numbers from the wrapped response.
   const cleanupCard = makeCard();
   const cleanupButton = { disabled: false };
@@ -539,7 +452,7 @@ const run = async () => {
   assert.deepEqual(state.notifications, ["2 Fotos aufgeräumt."]);
   assert.equal(cleanupButton.disabled, false);
 
-  // 24. A missing image_upload is reported instead of "nothing to clean up".
+  // 21. A missing image_upload is reported instead of "nothing to clean up".
   const noUpload = makeCard();
   noUpload._hass.callService = async () => ({
     context: { id: "abc" },
@@ -548,7 +461,49 @@ const run = async () => {
   await noUpload._cleanupPhotos(null);
   assert.match(state.notifications[0], /nicht verfügbar/);
 
-  console.log("card_photo_test: 24 checks passed");
+  // 22. While a photo uploads, the save button shows a spinner and is locked.
+  const busyCard = makeCard();
+  const busyClasses = new Set();
+  const busyButton = {
+    disabled: false,
+    attributes: {},
+    classList: {
+      toggle(name, on) {
+        if (on) busyClasses.add(name);
+        else busyClasses.delete(name);
+      },
+      contains(name) {
+        return busyClasses.has(name);
+      },
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
+    removeAttribute(name) {
+      delete this.attributes[name];
+    },
+  };
+  const busyRoot = formRoot({ name: "foto.jpg", size: 4096, type: "image/jpeg" });
+  const baseQuery = busyRoot.querySelector;
+  busyRoot.querySelector = (selector) =>
+    selector === "button.manual-save" ? busyButton : baseQuery(selector);
+  busyCard.shadowRoot = busyRoot;
+  let finishUpload = null;
+  busyCard._uploadPhoto = () =>
+    new Promise((resolve) => {
+      finishUpload = () => resolve("/api/image/serve/abc123/original");
+    });
+  const savingManual = busyCard._saveManual();
+  assert.equal(busyButton.disabled, true);
+  assert.equal(busyButton.classList.contains("busy"), true);
+  assert.equal(busyButton.attributes["aria-busy"], "true");
+  finishUpload();
+  await savingManual;
+  assert.equal(busyButton.disabled, false);
+  assert.equal(busyButton.classList.contains("busy"), false);
+  assert.match(state.notifications[0], /Rezept gespeichert/);
+
+  console.log("card_photo_test: 22 checks passed");
 };
 
 run().catch((error) => {

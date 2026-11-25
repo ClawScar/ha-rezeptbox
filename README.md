@@ -230,11 +230,8 @@ Bilder, die sie selbst hochgeladen hat (erkennbar am Namenspräfix
 `rezeptbox-` und an einer internen Liste); Profilfotos und Bilder anderer
 Integrationen bleiben unangetastet. Fotos aus Versionen vor 2.4.2, deren
 Rezept längst gelöscht wurde, lassen sich nicht sicher zuordnen und bleiben
-deshalb liegen. Daneben prüft **Foto-Test starten**, ob Home Assistant die
-Bildablage bereitstellt (`image/list`) und ob der Browser ein winziges Testbild
-über `/api/image/upload` hochladen kann. Die drei Zeilen und die Gesamtaussage
-stehen direkt unter dem Knopf (und die Gesamtaussage zusätzlich als Meldung),
-das Testbild wird anschließend aufgeräumt.
+deshalb liegen. Solange ein Foto hochlädt, zeigt **Rezept speichern** einen
+Kreisel und nimmt keine weiteren Klicks an.
 
 Sicherungen bleiben nach dem Aufräumen einlesbar. Fotos von Rezepten, die beim
 Sichern noch existieren, werden nie gelöscht; nur Sicherungen von zuvor

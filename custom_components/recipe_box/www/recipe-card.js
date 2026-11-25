@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.8";
+const CARD_VERSION = "2.4.9";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -917,35 +917,6 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   }
   return `/api/image/serve/${result.id}/original`;
 };
-
-/* A valid 1x1 PNG. The photo test uploads it through the very same path a real
- * photo uses, so a broken browser upload shows up instead of being hidden. */
-const TEST_PHOTO_PNG =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-
-const testPhotoFile = () => {
-  const binary = atob(TEST_PHOTO_PNG);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  const blob = new Blob([bytes], { type: "image/png" });
-  const name = "foto-test.png";
-  if (typeof File === "function") {
-    return new File([blob], name, { type: "image/png" });
-  }
-  blob.name = name;
-  return blob;
-};
-
-const photoTestHtml = (lines, verdict) => `<div class="photo-test-report ${
-  verdict.ok ? "ok" : "fail"
-}">
-  <p class="photo-test-verdict">${escapeHtml(verdict.text)}</p>
-  <ul>${lines
-    .map((line) => `<li class="${line.state}">${escapeHtml(line.text)}</li>`)
-    .join("")}</ul>
-</div>`;
 
 const manualFormHtml = () => `<div class="manual data-section">
   <h3>Eigenes Rezept</h3>
@@ -1930,16 +1901,6 @@ const STYLES = `<style>
   .data-panel > * { padding-top: 16px; border-top: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
   .data-panel > :first-child { padding-top: 0; border-top: none; }
   .data-section h3 { margin-bottom: 8px; }
-  .photo-test-result { margin-top: 8px; font-size: 0.82rem; }
-  .photo-test-result[hidden] { display: none; }
-  .photo-test-verdict { margin: 0; font-weight: 600; }
-  .photo-test-report.ok .photo-test-verdict { color: var(--success-color, #2e7d32); }
-  .photo-test-report.fail .photo-test-verdict { color: var(--error-color, #db4437); }
-  .photo-test-result ul { margin: 6px 0 0; padding-left: 18px; }
-  .photo-test-result li { margin-top: 2px; }
-  .photo-test-result li.ok { color: var(--success-color, #2e7d32); }
-  .photo-test-result li.fail { color: var(--error-color, #db4437); }
-  .photo-test-result li.info { color: var(--secondary-text-color); }
   li.recipe-row.selected { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); border-radius: 8px; }
   .selection-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; border-radius: 8px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); }
   .selection-count { font-size: 0.82rem; font-weight: 600; color: var(--primary-text-color); }
@@ -1958,6 +1919,10 @@ const STYLES = `<style>
   .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; }
   .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
   .manual-body button, button.week-shopping { align-self: flex-start; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.88rem; cursor: pointer; }
+  button.busy { cursor: progress; }
+  button.busy::before { content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 6px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; vertical-align: -1px; animation: recipe-box-spin 0.8s linear infinite; }
+  button.busy:disabled { opacity: 0.75; }
+  @keyframes recipe-box-spin { to { transform: rotate(360deg); } }
   .manual-photo-label { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 6px; border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); font-size: 0.85rem; color: var(--primary-text-color); cursor: pointer; }
   .manual-photo-label input { display: none; }
   .manual-photo-preview { display: flex; align-items: center; gap: 10px; }
@@ -2087,7 +2052,6 @@ class RecipeBoxListCard extends HTMLElement {
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
     this._renamingGroup = null;
-    this._photoTest = null;
     this._filter = { query: "", tag: "", group: "", maxTime: "", sort: "title" };
     this._tab = "recipes";
     this._restoreFocus = false;
@@ -2646,16 +2610,6 @@ class RecipeBoxListCard extends HTMLElement {
         </div>`
       : "";
 
-    const photoTestButton =
-      this._photoTest && this._photoTest.running
-        ? '<button class="photo-test" type="button" disabled>Test läuft …</button>'
-        : '<button class="photo-test" type="button">Foto-Test starten</button>';
-    const photoTestReport = this._photoTest
-      ? this._photoTest.verdict
-        ? photoTestHtml(this._photoTest.lines, this._photoTest.verdict)
-        : '<p class="photo-test-verdict">Test läuft …</p>'
-      : "";
-
     const tools = this._config.show_tools
       ? `<div class="data-section">
         <h3>Sicherung</h3>
@@ -2672,14 +2626,7 @@ class RecipeBoxListCard extends HTMLElement {
           <button class="cleanup-photos" type="button">Fotos aufräumen</button>
         </div>
       </div>
-      <div class="data-section">
-        <h3>Foto-Test</h3>
-        <p class="tab-hint">Prüft, ob Home Assistant die Bildablage (image_upload) bereitstellt und ob dieser Browser ein Foto über /api/image/upload hochladen kann. Das Testbild wird danach wieder aufgeräumt.</p>
-        <div class="tools">
-          ${photoTestButton}
-        </div>
-        <div class="photo-test-result"${this._photoTest ? "" : " hidden"}>${photoTestReport}</div>
-      </div>`
+`
       : "";
 
     const filterBar = entries.length > 1 ? filterBarHtml(entries, this._filter) : "";
@@ -2901,11 +2848,6 @@ class RecipeBoxListCard extends HTMLElement {
       );
     }
 
-    const photoTest = this.shadowRoot.querySelector("button.photo-test");
-    if (photoTest) {
-      photoTest.addEventListener("click", () => this._runPhotoTest());
-    }
-
     const file = this.shadowRoot.querySelector("input.import-file");
     if (file) {
       file.addEventListener("change", () => {
@@ -3054,23 +2996,33 @@ class RecipeBoxListCard extends HTMLElement {
     }
     if (Number.isFinite(servings) && servings > 0) data.servings = servings;
 
-    if (photo) {
-      const saveButton = root.querySelector("button.manual-save");
-      if (saveButton) saveButton.disabled = true;
-      try {
-        data.image_url = await this._uploadPhoto(photo);
-      } catch (error) {
-        notify(
-          this,
-          `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, photo)}`
-        );
-        return;
-      } finally {
-        if (saveButton) saveButton.disabled = false;
+    const saveButton = root.querySelector("button.manual-save");
+    const setBusy = (busy) => {
+      if (!saveButton) return;
+      saveButton.disabled = busy;
+      if (saveButton.classList) saveButton.classList.toggle("busy", busy);
+      if (saveButton.setAttribute) {
+        if (busy) saveButton.setAttribute("aria-busy", "true");
+        else saveButton.removeAttribute("aria-busy");
       }
-    }
+    };
 
+    /* The upload is the slow part. The spinner runs until the recipe is stored,
+     * so the button also cannot send the same recipe twice. */
+    setBusy(true);
     try {
+      if (photo) {
+        try {
+          data.image_url = await this._uploadPhoto(photo);
+        } catch (error) {
+          notify(
+            this,
+            `Foto hochladen fehlgeschlagen (Rezeptbox ${CARD_VERSION}): ${photoErrorMessage(error, photo)}`
+          );
+          return;
+        }
+      }
+
       await this._hass.callService(
         "recipe_box",
         "add_recipe",
@@ -3090,6 +3042,8 @@ class RecipeBoxListCard extends HTMLElement {
           (error && (error.message || error.code)) || "unbekannter Fehler"
         }`
       );
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -3164,118 +3118,6 @@ class RecipeBoxListCard extends HTMLElement {
     } finally {
       if (button) button.disabled = false;
     }
-  }
-
-  /* Diagnostic for the photo upload: ask Home Assistant for its stored images,
-   * then upload a tiny picture through the same code path a real photo uses and
-   * remove it again. That tells a server problem apart from a browser one. The
-   * report lives on the card, so a re-render during the test cannot wipe it. */
-  async _runPhotoTest() {
-    if (!this._hass) return;
-    if (this._photoTest && this._photoTest.running) return;
-    const test = { running: true, lines: [], verdict: null };
-    this._photoTest = test;
-    this._render();
-
-    const lines = test.lines;
-    let serverOk = false;
-    try {
-      const images = await this._hass.callWS({ type: "image/list" });
-      serverOk = true;
-      const count = Array.isArray(images) ? images.length : 0;
-      lines.push({
-        state: "ok",
-        text: `Server: image_upload vorhanden, ${count} ${
-          count === 1 ? "Bild" : "Bilder"
-        } gespeichert.`,
-      });
-    } catch (error) {
-      const detail = errorText(error) || "unbekannt";
-      lines.push(
-        /unauthori|admin|forbidden/i.test(detail)
-          ? {
-              state: "info",
-              text: `Server: Prüfung nur für Administratoren möglich (${detail}).`,
-            }
-          : {
-              state: "fail",
-              text: `Server: image_upload fehlt oder antwortet nicht (${detail}).`,
-            }
-      );
-    }
-
-    this._render();
-
-    let uploadOk = false;
-    try {
-      const imageUrl = await uploadPhoto(this._hass, testPhotoFile());
-      uploadOk = true;
-      const imageId =
-        (String(imageUrl).match(/\/serve\/([^/]+)\//) || [])[1] || "";
-      lines.push({
-        state: "ok",
-        text: `Browser: Upload über /api/image/upload erfolgreich${
-          imageId ? ` (Bild ${imageId.slice(0, 8)}…)` : ""
-        }.`,
-      });
-    } catch (error) {
-      lines.push({
-        state: "fail",
-        text: `Browser: Upload fehlgeschlagen – ${photoErrorMessage(
-          error,
-          null
-        )}`,
-      });
-    }
-
-    this._render();
-
-    if (uploadOk) {
-      try {
-        const result = serviceResponse(
-          await this._hass.callService(
-            "recipe_box",
-            "cleanup_recipe_images",
-            {},
-            undefined,
-            false,
-            true
-          )
-        );
-        const removed = Number(result && result.removed) || 0;
-        lines.push({
-          state: "info",
-          text: removed
-            ? `${removed} ${
-                removed === 1 ? "Foto" : "Fotos"
-              } aufgeräumt, darunter das Testbild.`
-            : "Testbild hochgeladen, aber nicht zum Aufräumen gefunden.",
-        });
-      } catch (error) {
-        lines.push({
-          state: "info",
-          text: `Testbild konnte nicht aufgeräumt werden (${
-            errorText(error) || "unbekannt"
-          }).`,
-        });
-      }
-    }
-
-    const verdict = uploadOk
-      ? { ok: true, text: "Foto-Upload funktioniert." }
-      : serverOk
-        ? {
-            ok: false,
-            text: "Der Server ist bereit, aber der Browser bekommt den Upload nicht durch. Bitte den Browser-Fehler oben notieren.",
-          }
-        : {
-            ok: false,
-            text: "Home Assistant nimmt keine Fotos an. Bitte die Integration 'image_upload' aktivieren (in default_config enthalten).",
-          };
-    test.verdict = verdict;
-    test.running = false;
-    this._render();
-    notify(this, verdict.text);
   }
 
   async _export() {
