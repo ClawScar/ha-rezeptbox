@@ -508,7 +508,10 @@ class BackupTargetFilesTest(unittest.TestCase):
         self.assertIn('ATTR_WRITE_BACKUP = "write_backup"', const)
         self.assertIn("call.data.get(ATTR_WRITE_BACKUP)", init)
         card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
-        self.assertIn("write_backup: !canPickFile && !canShareFile", card)
+        # The card offers a dialog instead of asking the server to write.
+        self.assertNotIn("write_backup", card)
+        for marker in ("backupDialogHtml", "showSaveFilePicker", "navigator.share"):
+            self.assertIn(marker, card)
 
     def test_options_offer_a_backup_folder(self) -> None:
         flow = (COMPONENT / "config_flow.py").read_text("utf-8")

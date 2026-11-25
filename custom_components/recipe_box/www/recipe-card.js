@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.1";
+const CARD_VERSION = "2.9.0-beta.2";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1487,7 +1487,7 @@ const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-sec
       )}</p>
   <div class="scan">
     <div class="scan-bar">
-      <label class="scan-add">${tr("Fotos wählen", "Choose photos")}<input class="ocr-input" type="file" accept="image/*" multiple></label>
+      <button class="scan-add scan-pick" type="button">${tr("Fotos wählen", "Choose photos")}</button>
       <button class="ocr-run" type="button"${pages.length ? "" : " disabled"}>${tr(
         "Text erkennen",
         "Read text"
@@ -2433,7 +2433,7 @@ const deleteDialogHtml = (titles) => {
     count > 5
       ? tr(` und ${count - 5} weitere`, ` and ${count - 5} more`)
       : "";
-  return `<div class="dialog-backdrop">
+  return `<div class="dialog-backdrop delete-backdrop">
     <div class="dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(
       heading
     )}">
@@ -2448,6 +2448,52 @@ const deleteDialogHtml = (titles) => {
       <div class="dialog-actions">
         <button class="dialog-cancel" type="button">${tr("Abbrechen", "Cancel")}</button>
         <button class="dialog-confirm" type="button">${tr("Löschen", "Delete")}</button>
+      </div>
+    </div>
+  </div>`;
+};
+
+/* The backup dialog is opened after the export service answered. Every
+ * action runs in its own user gesture: the browser only shows its save
+ * dialog or the share sheet when the click is handled synchronously, and an
+ * awaited service call would already have used the gesture up. */
+const backupDialogHtml = (backup) => {
+  if (!backup) return "";
+  let canPick = false;
+  try {
+    canPick = typeof window.showSaveFilePicker === "function";
+  } catch (error) {
+    canPick = false;
+  }
+  let canShare = false;
+  try {
+    canShare =
+      Boolean(backup.file) &&
+      typeof navigator.share === "function" &&
+      typeof navigator.canShare === "function" &&
+      navigator.canShare({ files: [backup.file] });
+  } catch (error) {
+    canShare = false;
+  }
+  return `<div class="dialog-backdrop backup-backdrop">
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(
+      tr("Sicherung", "Backup")
+    )}">
+      <h3>${tr("Sicherung", "Backup")}</h3>
+      <p class="tab-hint">${tr(
+        "Sicherung bereit. Wähle, wo die Datei gespeichert werden soll – oder teile sie.",
+        "Backup ready. Choose where to save the file – or share it."
+      )}<br><span class="backup-name">${escapeHtml(backup.filename)}</span></p>
+      <div class="dialog-actions">
+        <button class="dialog-cancel backup-close" type="button">${tr(
+          "Schließen",
+          "Close"
+        )}</button>
+        ${canPick ? `<button class="backup-save" type="button">${tr("Speichern…", "Save…")}</button>` : ""}
+        ${canShare ? `<button class="backup-share" type="button">${tr("Teilen…", "Share…")}</button>` : ""}
+        <a class="backup-download" href="${escapeHtml(backup.url)}" download="${escapeHtml(
+          backup.filename
+        )}">${tr("Herunterladen", "Download")}</a>
       </div>
     </div>
   </div>`;
@@ -2915,8 +2961,11 @@ const STYLES = `<style>
   .dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.5); }
   .dialog { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 12px; background: var(--card-background-color, #fff); color: var(--primary-text-color); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
   .dialog h3 { margin: 0; font-size: 0.95rem; letter-spacing: 0; text-transform: none; color: var(--primary-text-color); }
-  .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
-  .dialog-actions button { border-radius: 6px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
+  .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .dialog-actions button, .dialog-actions a.backup-download { border-radius: 6px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
+  .dialog-actions a.backup-download { background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; text-decoration: none; }
+  button.backup-save, button.backup-share { background: none; border: 1px solid var(--primary-color); color: var(--primary-color); font-weight: 600; }
+  .backup-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
   button.dialog-cancel { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); color: var(--primary-text-color); }
   button.dialog-confirm { background: var(--error-color, #db4437); border: none; color: #fff; font-weight: 600; }
   select.group-select { flex: 1 1 140px; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
@@ -2932,8 +2981,7 @@ const STYLES = `<style>
   @keyframes recipe-box-spin { to { transform: rotate(360deg); } }
   .scan { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.08)); }
   .scan-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .scan-add { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--primary-color); color: var(--primary-color); font-size: 0.85rem; cursor: pointer; }
-  .scan-add input { display: none; }
+  .scan-add { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--primary-color); background: none; color: var(--primary-color); font-family: inherit; font-size: 0.85rem; cursor: pointer; }
   button.ocr-run { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
   button.ocr-run[disabled] { opacity: 0.5; cursor: default; }
   button.ocr-clear { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; color: var(--text-primary-color); cursor: pointer; }
@@ -3153,6 +3201,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._longPressTimer = null;
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
+    this._backup = null;
     this._renamingGroup = null;
     this._filter = {
       query: "",
@@ -3488,11 +3537,13 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _bindDeleteDialog() {
-    const cancel = this.shadowRoot.querySelector("button.dialog-cancel");
+    const dialog = this.shadowRoot.querySelector(".delete-backdrop");
+    if (!dialog) return;
+    const cancel = dialog.querySelector("button.dialog-cancel");
     if (cancel) cancel.addEventListener("click", () => this._cancelDelete());
-    const confirm = this.shadowRoot.querySelector("button.dialog-confirm");
+    const confirm = dialog.querySelector("button.dialog-confirm");
     if (confirm) confirm.addEventListener("click", () => this._deleteConfirmed());
-    const backdrop = this.shadowRoot.querySelector(".dialog-backdrop");
+    const backdrop = dialog;
     if (backdrop) {
       backdrop.addEventListener("click", (event) => {
         if (event.target === backdrop) this._cancelDelete();
@@ -3953,7 +4004,7 @@ class RecipeBoxListCard extends HTMLElement {
           ${showTabs ? tabsHtml(tab) : ""}
           <div class="tab-panel" role="tabpanel">${panels[tab] || panels.recipes}</div>
         </div>
-      </ha-card>${dialog}`;
+      </ha-card>${dialog}${backupDialogHtml(this._backup)}`;
 
     this.shadowRoot.querySelectorAll("button.tab").forEach((button) => {
       button.addEventListener("click", () => {
@@ -4100,6 +4151,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
 
     this._bindDeleteDialog();
+    this._bindBackupDialog(this.shadowRoot.querySelector(".backup-backdrop"));
 
     const input = this.shadowRoot.querySelector("textarea.import-input");
     if (input) {
@@ -4198,23 +4250,8 @@ class RecipeBoxListCard extends HTMLElement {
       manualCancel.addEventListener("click", () => this._cancelEdit());
     }
 
-    const ocrInput = this.shadowRoot.querySelector("input.ocr-input");
-    if (ocrInput) {
-      ocrInput.addEventListener("change", () => {
-        const chosen = Array.from(ocrInput.files || []);
-        ocrInput.value = "";
-        if (!chosen.length) return;
-        this._ocrPages = [...(this._ocrPages || []), ...chosen];
-        this._renderOcrPages();
-        this._previewPhoto((this._ocrPages || [])[0] || null);
-        this._scanStatus(
-          tr(
-            "Fotos bereit. „Text erkennen“ liest sie der Reihe nach.",
-            "Photos ready. “Read text” scans them in order."
-          )
-        );
-      });
-    }
+    const ocrPick = this.shadowRoot.querySelector("button.scan-pick");
+    if (ocrPick) ocrPick.addEventListener("click", () => this._pickPhotos());
     const ocrRun = this.shadowRoot.querySelector("button.ocr-run");
     if (ocrRun) ocrRun.addEventListener("click", () => this._scanPages());
     const ocrClear = this.shadowRoot.querySelector("button.ocr-clear");
@@ -4420,6 +4457,78 @@ class RecipeBoxListCard extends HTMLElement {
     const status =
       this.shadowRoot && this.shadowRoot.querySelector(".scan-status");
     if (status) status.textContent = message || "";
+  }
+
+  /* Home Assistant re-renders the card while the native photo picker is
+   * open, and a file input inside the card's shadow tree loses its files
+   * then (typical in the mobile app). The input therefore lives outside the
+   * card and is removed as soon as the selection is read. */
+  _pickPhotos() {
+    if (typeof document === "undefined" || !document.createElement) return;
+    if (!document.body) return;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.setAttribute("aria-hidden", "true");
+    input.style.position = "fixed";
+    input.style.top = "0";
+    input.style.left = "-10000px";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+
+    let handled = false;
+    let retries = 0;
+    const cleanup = () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("focus", onWindowFocus);
+      }
+      if (input.parentNode) input.parentNode.removeChild(input);
+    };
+    const take = () => {
+      if (handled) return true;
+      let chosen = [];
+      try {
+        chosen = Array.from(input.files || []);
+      } catch (error) {
+        chosen = [];
+      }
+      if (!chosen.length) return false;
+      handled = true;
+      cleanup();
+      this._addPhotos(chosen);
+      return true;
+    };
+    /* Some app webviews close the picker without a change event. After the
+     * window returns, the files are read from the input a few times. */
+    const retry = () => {
+      if (take()) return;
+      retries += 1;
+      if (retries < 12) setTimeout(retry, 250);
+      else cleanup();
+    };
+    const onWindowFocus = () => setTimeout(retry, 300);
+
+    input.addEventListener("change", take);
+    input.addEventListener("cancel", cleanup);
+    if (typeof window !== "undefined") {
+      window.addEventListener("focus", onWindowFocus);
+    }
+    input.click();
+  }
+
+  _addPhotos(chosen) {
+    const files = Array.from(chosen || []).filter(Boolean);
+    if (!files.length) return;
+    this._ocrPages = [...(this._ocrPages || []), ...files];
+    this._renderOcrPages();
+    this._previewPhoto((this._ocrPages || [])[0] || null);
+    this._scanStatus(
+      tr(
+        "Fotos bereit. „Text erkennen“ liest sie der Reihe nach.",
+        "Photos ready. “Read text” scans them in order."
+      )
+    );
   }
 
   _renderOcrPages() {
@@ -4769,20 +4878,12 @@ class RecipeBoxListCard extends HTMLElement {
   async _export() {
     if (!this._hass) return;
     try {
-      // The save dialog is the preferred way to store a backup: the user
-      // picks name and folder themselves. Only when neither the dialog nor
-      // the share sheet is available does the integration write the file
-      // into the configured backup folder instead.
-      const canPickFile = typeof window.showSaveFilePicker === "function";
-      const canShareFile =
-        typeof File === "function" &&
-        typeof navigator.share === "function" &&
-        typeof navigator.canShare === "function" &&
-        navigator.maxTouchPoints > 0;
+      /* The card never asks the server to store the file. The dialog below
+       * lets the user save or share it themselves. */
       const data = await this._hass.callService(
         "recipe_box",
         "export_recipes",
-        { write_backup: !canPickFile && !canShareFile },
+        {},
         undefined,
         false,
         true
@@ -4799,108 +4900,20 @@ class RecipeBoxListCard extends HTMLElement {
       const text = JSON.stringify(data, null, 2);
       const filename = `rezeptbox-${isoDate(new Date())}.json`;
       const type = "application/json";
-
-      // Chromium opens the real save dialog through the File System Access API.
-      if (canPickFile) {
-        let handle = null;
-        try {
-          handle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            types: [
-              {
-                description: tr("Rezeptbox-Sicherung", "Rezeptbox backup"),
-                accept: { "application/json": [".json"] },
-              },
-            ],
-          });
-          const writable = await handle.createWritable();
-          await writable.write(new Blob([text], { type }));
-          await writable.close();
-          notify(
-            this,
-            tr(
-              `Sicherung gespeichert: ${handle.name || filename}${missingImageWarning(
-                data
-              )}`,
-              `Backup saved: ${handle.name || filename}${missingImageWarning(
-                data
-              )}`
-            )
-          );
-          return;
-        } catch (error) {
-          if (error && error.name === "AbortError") return;
-          /* the picker is unavailable here, the download below takes over */
-        }
-      }
-
-      // Without a save dialog the integration may have written the file into
-      // the configured backup folder, for example in the mobile app.
-      if (typeof data.path === "string" && data.path) {
-        notify(
-          this,
-          tr(
-            `Sicherung gespeichert: ${data.path}${missingImageWarning(data)}`,
-            `Backup saved: ${data.path}${missingImageWarning(data)}`
-          )
-        );
-        return;
-      }
-
       const blob = new Blob([text], { type });
-
-      // Mobile Home Assistant apps have no download dialog; the share sheet
-      // lets the user store the backup in the file manager instead.
-      if (canShareFile) {
-        const file = new File([blob], filename, { type });
-        if (navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({ files: [file], title: tr("Rezeptbox-Sicherung", "Rezeptbox backup") });
-            notify(
-              this,
-              tr(
-                `Sicherung gespeichert.${missingImageWarning(data)}`,
-                `Backup saved.${missingImageWarning(data)}`
-              )
-            );
-            return;
-          } catch (error) {
-            if (error && error.name === "AbortError") return;
-          }
-        }
-      }
-
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.rel = "noopener";
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      // Revoking right after the click cancels the download in some browsers.
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-      // Mobile webviews often have no download target; point at the reliable
-      // option without blocking the download that browsers do support.
-      const targetHint =
-        navigator.maxTouchPoints > 0
-          ? tr(
-              " Tipp: In den Optionen der Integration lässt sich ein Zielordner für Sicherungen festlegen.",
-              " Tip: set a backup target folder in the integration options."
-            )
-          : "";
-      notify(
-        this,
-        tr(
-          `Sicherung heruntergeladen: ${filename}${missingImageWarning(
-            data
-          )}${targetHint}`,
-          `Backup downloaded: ${filename}${missingImageWarning(
-            data
-          )}${targetHint}`
-        )
-      );
+      let file = null;
+      if (typeof File === "function") {
+        file = new File([blob], filename, { type });
+      }
+      this._backup = {
+        blob,
+        url,
+        file,
+        filename,
+        warning: missingImageWarning(data),
+      };
+      this._showBackupDialog();
     } catch (error) {
       notify(
         this,
@@ -4911,6 +4924,135 @@ class RecipeBoxListCard extends HTMLElement {
           `Saving the backup failed: ${
             (error && (error.message || error.code)) || "unknown error"
           }`
+        )
+      );
+    }
+  }
+
+  /* The dialog is appended to the rendered card instead of re-rendering it,
+   * so unsaved input in the recipe form is not lost while it is open. */
+  _showBackupDialog() {
+    if (!this.shadowRoot || !this._backup) return;
+    const existing = this.shadowRoot.querySelector(".backup-backdrop");
+    if (existing) existing.remove();
+    const holder = document.createElement("div");
+    holder.innerHTML = backupDialogHtml(this._backup);
+    const node = holder.firstElementChild;
+    if (!node) return;
+    this.shadowRoot.appendChild(node);
+    this._bindBackupDialog(node);
+  }
+
+  _closeBackup() {
+    const backup = this._backup;
+    this._backup = null;
+    const node =
+      this.shadowRoot && this.shadowRoot.querySelector(".backup-backdrop");
+    if (node) node.remove();
+    // Keep the blob URL alive for a moment: revoking it right away cancels a
+    // download that has only just started.
+    if (backup && backup.url && typeof URL !== "undefined" && URL.revokeObjectURL) {
+      setTimeout(() => URL.revokeObjectURL(backup.url), 30000);
+    }
+  }
+
+  /* Every action runs synchronously from its click: only then do browsers
+   * show the save dialog or the share sheet. */
+  _bindBackupDialog(node) {
+    const backup = this._backup;
+    if (!node || !backup) return;
+    const close = node.querySelector("button.backup-close");
+    if (close) close.addEventListener("click", () => this._closeBackup());
+    const save = node.querySelector("button.backup-save");
+    if (save) {
+      save.addEventListener("click", () => {
+        save.disabled = true;
+        this._saveBackupWithPicker(backup, save);
+      });
+    }
+    const share = node.querySelector("button.backup-share");
+    if (share) {
+      share.addEventListener("click", () => {
+        share.disabled = true;
+        this._shareBackup(backup, share);
+      });
+    }
+    const download = node.querySelector("a.backup-download");
+    if (download) {
+      download.addEventListener("click", () => {
+        notify(
+          this,
+          tr(
+            `Sicherung heruntergeladen: ${backup.filename}${backup.warning}`,
+            `Backup downloaded: ${backup.filename}${backup.warning}`
+          )
+        );
+        // Give the browser a moment to start the download before the link
+        // and its blob URL disappear.
+        setTimeout(() => {
+          if (this._backup === backup) this._closeBackup();
+        }, 1000);
+      });
+    }
+  }
+
+  async _saveBackupWithPicker(backup, button) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: backup.filename,
+        types: [
+          {
+            description: tr("Rezeptbox-Sicherung", "Rezeptbox backup"),
+            accept: { "application/json": [".json"] },
+          },
+        ],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(backup.blob);
+      await writable.close();
+      notify(
+        this,
+        tr(
+          `Sicherung gespeichert: ${handle.name || backup.filename}${backup.warning}`,
+          `Backup saved: ${handle.name || backup.filename}${backup.warning}`
+        )
+      );
+      this._closeBackup();
+    } catch (error) {
+      if (button) button.disabled = false;
+      if (error && error.name === "AbortError") return;
+      notify(
+        this,
+        tr(
+          `Speichern fehlgeschlagen: ${errorText(error)}`,
+          `Saving the backup failed: ${errorText(error)}`
+        )
+      );
+    }
+  }
+
+  async _shareBackup(backup, button) {
+    try {
+      await navigator.share({
+        files: backup.file ? [backup.file] : [],
+        title: tr("Rezeptbox-Sicherung", "Rezeptbox backup"),
+      });
+      notify(
+        this,
+        tr(
+          `Sicherung geteilt.${backup.warning}`,
+          `Backup shared.${backup.warning}`
+        )
+      );
+      this._closeBackup();
+    } catch (error) {
+      if (button) button.disabled = false;
+      if (error && error.name === "AbortError") return;
+      notify(
+        this,
+        tr(
+          `Teilen fehlgeschlagen: ${errorText(error)}`,
+          `Sharing the backup failed: ${errorText(error)}`
         )
       );
     }

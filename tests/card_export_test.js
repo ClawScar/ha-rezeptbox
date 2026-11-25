@@ -1,5 +1,8 @@
 /* Behaviour tests for the backup (Sichern) flow of recipe-card.js.
  *
+ * The card opens a dialog and saves, shares or downloads the file from a
+ * click in that dialog, so no user gesture is used up by the service call.
+ *
  * Run with: node tests/card_export_test.js
  */
 
@@ -19,15 +22,14 @@ const CARD = path.join(
 const source = fs.readFileSync(CARD, "utf8");
 
 const state = {
+  serviceData: null,
+  dialogShown: 0,
   saved: null,
   pickerOptions: null,
-  download: null,
-  objectUrl: null,
-  revoked: [],
-  timers: [],
   shared: null,
   notifications: [],
-  serviceData: null,
+  revoked: [],
+  timers: [],
 };
 
 const context = {
@@ -44,20 +46,7 @@ const context = {
       this.detail = init && init.detail;
     }
   },
-  document: {
-    createElement: (tag) => {
-      const link = {
-        tag,
-        style: {},
-        click() {
-          state.download = link;
-        },
-        remove() {},
-      };
-      return link;
-    },
-    body: { appendChild() {} },
-  },
+  document: { createElement: () => ({}) },
   navigator: { maxTouchPoints: 0 },
   Blob: class {
     constructor(parts, options) {
@@ -73,10 +62,7 @@ const context = {
     }
   },
   URL: {
-    createObjectURL: (blob) => {
-      state.objectUrl = blob;
-      return "blob:test";
-    },
+    createObjectURL: () => "blob:test",
     revokeObjectURL: (url) => state.revoked.push(url),
   },
   setTimeout: (fn, ms) => {
@@ -89,47 +75,69 @@ const context = {
 };
 
 vm.runInContext(
-  `${source}\nthis.RecipeBoxListCard = RecipeBoxListCard;`,
+  `${source}\nthis.RecipeBoxListCard = RecipeBoxListCard;\nthis.backupDialogHtml = backupDialogHtml;`,
   vm.createContext(context)
 );
 
-const RECIPES = { recipes: [{ title: "Testrezept" }], plan: {} };
+const RECIPES = { recipes: [{ title: "Testrezept" }], plan: {}, missing_images: [] };
+
+const reset = () => {
+  state.serviceData = null;
+  state.dialogShown = 0;
+  state.saved = null;
+  state.pickerOptions = null;
+  state.shared = null;
+  state.notifications = [];
+  state.revoked = [];
+  state.timers = [];
+  delete context.window.showSaveFilePicker;
+  delete context.navigator.share;
+  delete context.navigator.canShare;
+};
 
 const makeCard = (response = RECIPES) => {
   const card = new context.RecipeBoxListCard();
+  card.shadowRoot = { querySelector: () => null };
   card._hass = {
     callService: async (domain, service, data) => {
-      state.serviceData = data;
+      state.serviceData = { domain, service, data };
       return response;
     },
+  };
+  card._showBackupDialog = () => {
+    state.dialogShown += 1;
   };
   card.dispatchEvent = (event) => state.notifications.push(event.detail.message);
   return card;
 };
 
-const reset = () => {
-  state.saved = null;
-  state.pickerOptions = null;
-  state.download = null;
-  state.objectUrl = null;
-  state.revoked = [];
-  state.timers = [];
-  state.shared = null;
-  state.notifications = [];
-  state.serviceData = null;
-  delete context.window.showSaveFilePicker;
-  context.navigator.maxTouchPoints = 0;
-  delete context.navigator.share;
-  delete context.navigator.canShare;
-};
-
 const run = async () => {
-  // 1. Chromium: the save dialog receives the backup.
+  // 1. The dialog opens with the fetched backup; nothing is written by the
+  //    server and no browser API is called yet.
   reset();
+  let card = makeCard();
+  await card._export();
+  assert.deepEqual(
+    Object.keys(state.serviceData.data),
+    [],
+    "no write_backup is sent"
+  );
+  assert.equal(state.serviceData.service, "export_recipes");
+  assert.equal(state.dialogShown, 1, "the dialog is opened");
+  assert.match(card._backup.filename, /^rezeptbox-\d{4}-\d{2}-\d{2}\.json$/);
+  assert.match(card._backup.blob.parts[0], /"title": "Testrezept"/);
+  assert.equal(card._backup.url, "blob:test");
+  assert.ok(card._backup.file, "a File for the share sheet exists");
+  assert.deepEqual(state.notifications, []);
+
+  // 2. "Speichern…" opens the real save dialog and writes the file.
+  reset();
+  card = makeCard();
+  await card._export();
   context.window.showSaveFilePicker = async (options) => {
     state.pickerOptions = options;
     return {
-      name: "sicherung.json",
+      name: "gewaehlt.json",
       createWritable: async () => ({
         write: async (blob) => {
           state.saved = blob;
@@ -138,103 +146,107 @@ const run = async () => {
       }),
     };
   };
-  await makeCard()._export();
-  assert.equal(
-    state.serviceData.write_backup,
-    false,
-    "a save dialog means the server writes nothing"
-  );
-  assert.equal(state.pickerOptions.suggestedName.startsWith("rezeptbox-"), true);
-  assert.match(state.pickerOptions.suggestedName, /\.json$/);
-  assert.equal(state.download, null, "no download link when the dialog was used");
+  const savedBackup = card._backup;
+  await card._saveBackupWithPicker(savedBackup, { disabled: false });
+  assert.match(state.pickerOptions.suggestedName, /^rezeptbox-.*\.json$/);
+  assert.equal(state.saved, savedBackup.blob);
   assert.match(state.saved.parts[0], /"title": "Testrezept"/);
-  assert.deepEqual(state.notifications, ["Sicherung gespeichert: sicherung.json"]);
+  assert.deepEqual(state.notifications, ["Sicherung gespeichert: gewaehlt.json"]);
+  assert.equal(card._backup, null, "the dialog closes after saving");
 
-  // 2. Cancelling the dialog writes nothing and reports nothing.
+  // 3. Cancelling the dialog keeps the backup dialog open and reports nothing.
   reset();
+  card = makeCard();
+  await card._export();
   context.window.showSaveFilePicker = async () => {
     const error = new Error("cancelled");
     error.name = "AbortError";
     throw error;
   };
-  await makeCard()._export();
-  assert.equal(state.saved, null);
-  assert.equal(state.download, null);
+  const saveButton = { disabled: true };
+  await card._saveBackupWithPicker(card._backup, saveButton);
+  assert.equal(card._backup !== null, true);
+  assert.equal(saveButton.disabled, false, "the button is usable again");
   assert.deepEqual(state.notifications, []);
 
-  // 3. Without the API the JSON is downloaded; the blob URL is kept alive.
+  // 4. "Teilen…" hands the JSON file to the share sheet.
   reset();
-  await makeCard()._export();
-  assert.equal(state.serviceData.write_backup, true);
-  assert.ok(state.download, "download link was clicked");
-  assert.match(state.download.download, /^rezeptbox-\d{4}-\d{2}-\d{2}\.json$/);
-  assert.equal(state.download.href, "blob:test");
-  assert.deepEqual(state.revoked, [], "URL is not revoked before the download starts");
-  assert.equal(state.timers.length, 1);
-  assert.equal(state.timers[0].ms, 30000);
-  state.timers[0].fn();
-  assert.deepEqual(state.revoked, ["blob:test"]);
-  assert.match(state.notifications[0], /^Sicherung heruntergeladen: rezeptbox-/);
-
-  // 4. Touch devices use the share sheet when it accepts files.
-  reset();
-  context.navigator.maxTouchPoints = 5;
+  card = makeCard();
+  await card._export();
   context.navigator.canShare = () => true;
   context.navigator.share = async (data) => {
     state.shared = data;
   };
-  await makeCard()._export();
-  assert.equal(state.serviceData.write_backup, false);
-  assert.equal(state.download, null);
+  const sharedBackup = card._backup;
+  await card._shareBackup(sharedBackup, { disabled: false });
+  assert.equal(state.shared.files[0].name, sharedBackup.filename);
   assert.match(state.shared.files[0].name, /^rezeptbox-\d{4}-\d{2}-\d{2}\.json$/);
   assert.match(state.shared.files[0].parts[0].parts[0], /"title": "Testrezept"/);
-  assert.deepEqual(state.notifications, ["Sicherung gespeichert."]);
+  assert.deepEqual(state.notifications, ["Sicherung geteilt."]);
+  assert.equal(card._backup, null);
 
-  // 5. Without a dialog and a share sheet the integration may write into the
-  //    configured backup folder; the card reports that path.
+  // 5. Cancelling the share sheet keeps the dialog open.
   reset();
-  await makeCard({
-    ...RECIPES,
-    path: "/config/backups/rezeptbox-2026-11-25.json",
-    filename: "rezeptbox-2026-11-25.json",
-  })._export();
-  assert.equal(state.serviceData.write_backup, true);
-  assert.equal(state.pickerOptions, null);
-  assert.equal(state.download, null, "the browser stores nothing");
-  assert.deepEqual(state.notifications, [
-    "Sicherung gespeichert: /config/backups/rezeptbox-2026-11-25.json",
-  ]);
+  card = makeCard();
+  await card._export();
+  context.navigator.share = async () => {
+    const error = new Error("cancelled");
+    error.name = "AbortError";
+    throw error;
+  };
+  const shareButton = { disabled: true };
+  await card._shareBackup(card._backup, shareButton);
+  assert.equal(card._backup !== null, true);
+  assert.equal(shareButton.disabled, false);
+  assert.deepEqual(state.notifications, []);
 
-  // 7. A configured backup folder never replaces the save dialog.
+  // 6. Closing the dialog releases the blob URL, but not immediately.
   reset();
-  context.window.showSaveFilePicker = async () => ({
-    name: "gewaehlt.json",
-    createWritable: async () => ({
-      write: async (blob) => {
-        state.saved = blob;
-      },
-      close: async () => {},
-    }),
-  });
-  await makeCard({
-    ...RECIPES,
-    path: "/config/backups/rezeptbox-2026-11-25.json",
-    filename: "rezeptbox-2026-11-25.json",
-  })._export();
-  assert.equal(state.serviceData.write_backup, false);
-  assert.equal(state.download, null);
-  assert.deepEqual(state.notifications, ["Sicherung gespeichert: gewaehlt.json"]);
+  card = makeCard();
+  await card._export();
+  card._closeBackup();
+  assert.equal(card._backup, null);
+  assert.deepEqual(state.revoked, []);
+  assert.equal(state.timers.length, 1);
+  assert.equal(state.timers[0].ms, 30000);
+  state.timers[0].fn();
+  assert.deepEqual(state.revoked, ["blob:test"]);
 
-  // 6. A missing service response is reported, no empty backup is written.
+  // 7. A missing service response is reported, no empty backup is offered.
   reset();
-  await makeCard({})._export();
-  assert.equal(state.download, null);
+  card = makeCard({});
+  await card._export();
+  assert.equal(card._backup, null);
+  assert.equal(state.dialogShown, 0);
   assert.match(
     state.notifications[0],
     /^Sichern fehlgeschlagen: .*Sicherungsdaten/
   );
 
-  console.log("card_export_test: 7 checks passed");
+  // 8. The dialog only offers the actions the device supports.
+  reset();
+  const plain = context.backupDialogHtml({
+    filename: "rezeptbox-2026-11-25.json",
+    url: "blob:test",
+    file: new context.File([], "rezeptbox-2026-11-25.json", {}),
+  });
+  assert.match(plain, /a class="backup-download" href="blob:test"/);
+  assert.doesNotMatch(plain, /backup-save/);
+  assert.doesNotMatch(plain, /backup-share/);
+
+  context.window.showSaveFilePicker = async () => {};
+  context.navigator.canShare = () => true;
+  context.navigator.share = async () => {};
+  const full = context.backupDialogHtml({
+    filename: "rezeptbox-2026-11-25.json",
+    url: "blob:test",
+    file: new context.File([], "rezeptbox-2026-11-25.json", {}),
+  });
+  assert.match(full, /class="backup-save"/);
+  assert.match(full, /class="backup-share"/);
+  assert.match(full, /download="rezeptbox-2026-11-25.json"/);
+
+  console.log("card_export_test: 8 checks passed");
 };
 
 run().catch((error) => {

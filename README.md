@@ -103,13 +103,12 @@ eine beliebige To-do-Liste aus Home Assistant, zum Beispiel die
 Alexa-Einkaufsliste aus der Integration **Alexa Devices**. Bleibt das Feld leer,
 schreiben Button, Karte und Service wie bisher in die
 Home-Assistant-Einkaufsliste. Dort lässt sich außerdem ein **Zielordner für
-Sicherungen** als Rückfall angeben: ein Ordner im
-Home-Assistant-Konfigurationsordner, zum Beispiel `backups`. **Sichern** öffnet
-normalerweise den Speichern-Dialog des Browsers, in dem sich Name und Ort frei
-wählen lassen. Nur wo es weder diesen Dialog noch ein Teilen-Menü gibt, etwa
-in der Handy-App, legt die Integration die JSON-Datei in diesem Ordner ab und
-nennt den vollständigen Pfad. Bleibt das Feld leer, lädt der Browser in
-diesem Fall herunter.
+Sicherungen** angeben: ein Ordner im
+Home-Assistant-Konfigurationsordner, zum Beispiel `backups`. Er gilt für den
+Service `recipe_box.export_recipes` mit `write_backup: true`. Der Button
+**Sichern** in der Karte fragt stattdessen in einem Dialog, ob die JSON-Datei
+über den Speichern-Dialog des Browsers abgelegt, auf dem Handy geteilt oder
+heruntergeladen werden soll.
 
 ## Rezept importieren
 
@@ -245,13 +244,11 @@ die Liste füllt sich sofort, ohne Neustart), **Gruppen** (anlegen, sortieren,
 umbenennen, löschen, jeweils mit der Anzahl ihrer Rezepte), **Sicherung** sowie
 **Eigenes Rezept**. Der Tab **Daten** steht rechts neben **Wochenplan**.
 
-Unter **Sicherung** speichert **Sichern** die JSON-Datei. Chrome und Edge
-öffnen dafür einen **Speichern-Dialog**, in dem sich Dateiname und Ordner
-frei wählen lassen; Browser ohne diesen Dialog legen die Datei im
-Download-Ordner ab, in der Home-Assistant-App erscheint stattdessen das
-Teilen-Menü. Nur wenn weder Dialog noch Teilen-Menü verfügbar sind, schreibt
-die Integration die Datei in den optionalen **Zielordner** aus den Optionen
-und meldet den Pfad. **Laden** daneben liest eine solche Sicherung
+Unter **Sicherung** lädt **Sichern** die JSON-Datei und öffnet einen Dialog:
+**Speichern…** zeigt den Speichern-Dialog des Browsers, in dem sich Dateiname
+und Ordner frei wählen lassen, **Teilen…** öffnet auf dem Handy das
+Teilen-Menü, und **Herunterladen** legt die Datei im Download-Ordner ab.
+**Laden** daneben liest eine solche Sicherung
 wieder ein. Unter
 **Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
 und Tags. Über **Bearbeiten** in der Detailansicht eines gespeicherten Rezepts
@@ -520,8 +517,8 @@ Foto nicht mehr existiert; die Karte hängt dann beim Sichern einen Hinweis an.
 Mit `write_backup: true` schreibt der Service die Datei zusätzlich in den
 eingestellten Zielordner und liefert `path` (vollständiger Pfad) und
 `filename` mit. Der Button **Sichern** unter **Daten → Sicherung** nutzt
-denselben Service und setzt das Flag nur, wenn weder Speichern-Dialog noch
-Teilen-Menü verfügbar sind.
+denselben Service ohne dieses Flag und bietet danach Speichern, Teilen oder
+Herunterladen an.
 
 ### `recipe_box.import_recipes`
 
