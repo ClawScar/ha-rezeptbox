@@ -178,7 +178,23 @@ const run = async () => {
   assert.match(state.shared.files[0].parts[0].parts[0], /"title": "Testrezept"/);
   assert.deepEqual(state.notifications, ["Sicherung gespeichert."]);
 
-  // 5. A missing service response is reported, no empty backup is written.
+  // 5. A server-side target folder skips the browser save dialog entirely.
+  reset();
+  context.window.showSaveFilePicker = async () => {
+    throw new Error("must not open");
+  };
+  await makeCard({
+    ...RECIPES,
+    path: "/config/backups/rezeptbox-2026-11-25.json",
+    filename: "rezeptbox-2026-11-25.json",
+  })._export();
+  assert.equal(state.pickerOptions, null);
+  assert.equal(state.download, null, "the browser stores nothing");
+  assert.deepEqual(state.notifications, [
+    "Sicherung gespeichert: /config/backups/rezeptbox-2026-11-25.json",
+  ]);
+
+  // 6. A missing service response is reported, no empty backup is written.
   reset();
   await makeCard({})._export();
   assert.equal(state.download, null);
@@ -187,7 +203,7 @@ const run = async () => {
     /^Sichern fehlgeschlagen: .*Sicherungsdaten/
   );
 
-  console.log("card_export_test: 5 checks passed");
+  console.log("card_export_test: 6 checks passed");
 };
 
 run().catch((error) => {

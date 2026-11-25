@@ -17,11 +17,13 @@
         "description": "How often all recipes should be reloaded from their source pages.",
         "data": {
           "update_interval_hours": "Refresh interval (hours, 0 = never)",
-          "shopping_target": "Shopping list target (optional)"
+          "shopping_target": "Shopping list target (optional)",
+          "backup_path": "Backup target folder (optional)"
         },
         "data_description": {
           "update_interval_hours": "0 disables automatic refresh. Imported recipes stay available from the local cache.",
-          "shopping_target": "To-do list that receives the ingredients, for example the Alexa shopping list. Leave empty for the Home Assistant shopping list."
+          "shopping_target": "To-do list that receives the ingredients, for example the Alexa shopping list. Leave empty for the Home Assistant shopping list.",
+          "backup_path": "Folder inside the Home Assistant configuration directory where Save writes the JSON file, for example backups. Leave empty to save in the browser."
         }
       }
     }
@@ -127,7 +129,7 @@
     },
     "export_recipes": {
       "name": "Export recipes",
-      "description": "Returns all recipes and the meal plan as JSON."
+      "description": "Returns all recipes and the meal plan as JSON. With a target folder configured, the file is saved there and its path is returned."
     },
     "import_recipes": {
       "name": "Import recipes (backup)",

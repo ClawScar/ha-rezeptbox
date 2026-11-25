@@ -100,7 +100,12 @@ Das Aktualisierungsintervall für alle Rezepte lässt sich über
 eine beliebige To-do-Liste aus Home Assistant, zum Beispiel die
 Alexa-Einkaufsliste aus der Integration **Alexa Devices**. Bleibt das Feld leer,
 schreiben Button, Karte und Service wie bisher in die
-Home-Assistant-Einkaufsliste.
+Home-Assistant-Einkaufsliste. Dort lässt sich außerdem ein **Zielordner für
+Sicherungen** angeben: ein Ordner im Home-Assistant-Konfigurationsordner, zum
+Beispiel `backups`. **Sichern** legt die JSON-Datei dann direkt dort ab und
+nennt den vollständigen Pfad – das funktioniert auch in der Handy-App, wo
+Webviews keinen Download-Dialog haben. Bleibt das Feld leer, speichert der
+Browser wie bisher.
 
 ## Rezept importieren
 
@@ -236,10 +241,13 @@ die Liste füllt sich sofort, ohne Neustart), **Gruppen** (anlegen, sortieren,
 umbenennen, löschen, jeweils mit der Anzahl ihrer Rezepte), **Sicherung** sowie
 **Eigenes Rezept**. Der Tab **Daten** steht rechts neben **Wochenplan**.
 
-Unter **Sicherung** öffnet **Sichern** den Speichern-Dialog des Browsers
-(Chrome/Edge); Browser ohne diesen Dialog legen die JSON-Datei im
-Download-Ordner ab, in der Home-Assistant-App erscheint stattdessen das
-Teilen-Menü. **Laden** daneben liest eine solche Sicherung wieder ein. Unter
+Unter **Sicherung** speichert **Sichern** die JSON-Datei. Ist in den Optionen
+der Integration ein **Zielordner** eingestellt, schreibt die Integration die
+Datei dorthin und meldet den Pfad; ohne Zielordner öffnet sich der
+Speichern-Dialog des Browsers (Chrome/Edge), Browser ohne diesen Dialog legen
+die Datei im Download-Ordner ab, in der Home-Assistant-App erscheint
+stattdessen das Teilen-Menü. **Laden** daneben liest eine solche Sicherung
+wieder ein. Unter
 **Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
 und Tags. Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
 oder direkt mit der Handy-Kamera aufnehmen; es wird vor dem Hochladen auf
@@ -469,7 +477,9 @@ aktualisieren.
 Gibt `recipes`, `plan`, `groups`, `favorites` und `missing_images` als JSON zurück (für
 Sicherungen oder eigene Skripte). `missing_images` nennt Rezepte, deren eigenes
 Foto nicht mehr existiert; die Karte hängt dann beim Sichern einen Hinweis an.
-Der Button **Sichern** unter **Daten → Sicherung** nutzt denselben Service.
+Ist ein Zielordner eingestellt, schreibt der Service die Datei zusätzlich dort
+und liefert `path` (vollständiger Pfad) und `filename` mit. Der Button
+**Sichern** unter **Daten → Sicherung** nutzt denselben Service.
 
 ### `recipe_box.import_recipes`
 

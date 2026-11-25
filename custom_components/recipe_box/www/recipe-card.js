@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.8.0";
+const CARD_VERSION = "2.8.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -4148,6 +4148,19 @@ class RecipeBoxListCard extends HTMLElement {
         );
       }
 
+      // With a backup folder configured the integration already wrote the
+      // file on the server; browsers (and the mobile app) save nothing.
+      if (typeof data.path === "string" && data.path) {
+        notify(
+          this,
+          tr(
+            `Sicherung gespeichert: ${data.path}${missingImageWarning(data)}`,
+            `Backup saved: ${data.path}${missingImageWarning(data)}`
+          )
+        );
+        return;
+      }
+
       const text = JSON.stringify(data, null, 2);
       const filename = `rezeptbox-${isoDate(new Date())}.json`;
       const type = "application/json";
@@ -4225,11 +4238,24 @@ class RecipeBoxListCard extends HTMLElement {
       link.remove();
       // Revoking right after the click cancels the download in some browsers.
       setTimeout(() => URL.revokeObjectURL(url), 30000);
+      // Mobile webviews often have no download target; point at the reliable
+      // option without blocking the download that browsers do support.
+      const targetHint =
+        navigator.maxTouchPoints > 0
+          ? tr(
+              " Tipp: In den Optionen der Integration lässt sich ein Zielordner für Sicherungen festlegen.",
+              " Tip: set a backup target folder in the integration options."
+            )
+          : "";
       notify(
         this,
         tr(
-          `Sicherung heruntergeladen: ${filename}${missingImageWarning(data)}`,
-          `Backup downloaded: ${filename}${missingImageWarning(data)}`
+          `Sicherung heruntergeladen: ${filename}${missingImageWarning(
+            data
+          )}${targetHint}`,
+          `Backup downloaded: ${filename}${missingImageWarning(
+            data
+          )}${targetHint}`
         )
       );
     } catch (error) {

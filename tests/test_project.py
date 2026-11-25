@@ -414,3 +414,22 @@ class ShoppingTargetFilesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class BackupTargetFilesTest(unittest.TestCase):
+    def test_export_uses_a_configured_backup_folder(self) -> None:
+        module = (COMPONENT / "backup.py").read_text("utf-8")
+        for marker in ("configured_backup_path", "resolve_backup_dir", "write_backup"):
+            self.assertIn(marker, module)
+        init = (COMPONENT / "__init__.py").read_text("utf-8")
+        self.assertIn("write_backup", init)
+        self.assertIn('data["path"]', init)
+
+    def test_options_offer_a_backup_folder(self) -> None:
+        flow = (COMPONENT / "config_flow.py").read_text("utf-8")
+        self.assertIn("CONF_BACKUP_PATH", flow)
+        self.assertIn("TextSelector", flow)
+
+    def test_readme_explains_the_backup_target(self) -> None:
+        readme = (BASE / "README.md").read_text("utf-8")
+        self.assertIn("Zielordner für", readme)
+        self.assertIn("Konfigurationsordner", readme)

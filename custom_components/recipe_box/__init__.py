@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from functools import partial
@@ -23,6 +24,7 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import config_validation as cv
 
+from .backup import BackupPathError, configured_backup_path, write_backup
 from .const import (
     ATTR_DATE,
     ATTR_DIRECTION,
@@ -871,7 +873,7 @@ async def _async_export_recipes(
     hub = _get_hub(hass)
     if hub is None:
         raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
-    return {
+    data = {
         "recipes": [recipe.as_dict() for recipe in hub.recipes.values()],
         "plan": hub.plan,
         "groups": hub.groups,
@@ -880,6 +882,25 @@ async def _async_export_recipes(
         # warns while saving so a backup is not mistaken for a complete one.
         "missing_images": hub.missing_image_titles(),
     }
+
+    target = configured_backup_path(hass)
+    if target:
+        text = json.dumps(data, ensure_ascii=False, indent=2)
+        try:
+            path = await hass.async_add_executor_job(
+                partial(write_backup, hass, target, text)
+            )
+        except BackupPathError as err:
+            raise HomeAssistantError(str(err)) from err
+        except OSError as err:
+            raise HomeAssistantError(
+                f"Sicherung konnte nicht geschrieben werden: {err}"
+            ) from err
+        # The card stores this path instead of asking the browser to download
+        # the file, which does not work in the Home Assistant mobile app.
+        data["path"] = str(path)
+        data["filename"] = path.name
+    return data
 
 
 async def _async_import_recipes(

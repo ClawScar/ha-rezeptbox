@@ -14,9 +14,12 @@ from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    TextSelector,
+    TextSelectorConfig,
 )
 
 from .const import (
+    CONF_BACKUP_PATH,
     CONF_SHOPPING_TARGET,
     CONF_UPDATE_INTERVAL_HOURS,
     DEFAULT_UPDATE_INTERVAL_HOURS,
@@ -61,6 +64,9 @@ class RecipeBoxOptionsFlow(OptionsFlow):
             data[CONF_SHOPPING_TARGET] = str(
                 data.get(CONF_SHOPPING_TARGET) or ""
             ).strip()
+            data[CONF_BACKUP_PATH] = str(
+                data.get(CONF_BACKUP_PATH) or ""
+            ).strip()
             return self.async_create_entry(data=data)
 
         current = self.config_entry.options.get(
@@ -68,6 +74,9 @@ class RecipeBoxOptionsFlow(OptionsFlow):
         )
         target = str(
             self.config_entry.options.get(CONF_SHOPPING_TARGET) or ""
+        ).strip()
+        backup_path = str(
+            self.config_entry.options.get(CONF_BACKUP_PATH) or ""
         ).strip()
         return self.async_show_form(
             step_id="init",
@@ -88,6 +97,14 @@ class RecipeBoxOptionsFlow(OptionsFlow):
                         CONF_SHOPPING_TARGET,
                         description={"suggested_value": target} if target else {},
                     ): EntitySelector(EntitySelectorConfig(domain="todo")),
+                    vol.Optional(
+                        CONF_BACKUP_PATH,
+                        description={
+                            "suggested_value": backup_path
+                        }
+                        if backup_path
+                        else {},
+                    ): TextSelector(TextSelectorConfig()),
                 }
             ),
         )

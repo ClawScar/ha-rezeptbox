@@ -17,11 +17,13 @@
         "description": "Wie oft alle Rezepte von ihren Quellseiten neu geladen werden sollen.",
         "data": {
           "update_interval_hours": "Aktualisierungsintervall (Stunden, 0 = nie)",
-          "shopping_target": "Ziel-Einkaufsliste (optional)"
+          "shopping_target": "Ziel-Einkaufsliste (optional)",
+          "backup_path": "Zielordner für Sicherungen (optional)"
         },
         "data_description": {
           "update_interval_hours": "0 schaltet die automatische Aktualisierung ab. Importierte Rezepte bleiben aus dem lokalen Cache verfügbar.",
-          "shopping_target": "To-do-Liste, die die Zutaten aufnimmt, zum Beispiel die Alexa-Einkaufsliste. Leer lassen für die Home-Assistant-Einkaufsliste."
+          "shopping_target": "To-do-Liste, die die Zutaten aufnimmt, zum Beispiel die Alexa-Einkaufsliste. Leer lassen für die Home-Assistant-Einkaufsliste.",
+          "backup_path": "Ordner im Home-Assistant-Konfigurationsordner, in den Sichern die JSON-Datei schreibt, zum Beispiel backups. Leer lassen, dann speichert der Browser."
         }
       }
     }
@@ -127,7 +129,7 @@
     },
     "export_recipes": {
       "name": "Rezepte exportieren",
-      "description": "Gibt alle Rezepte und den Wochenplan als JSON zurück."
+      "description": "Gibt alle Rezepte und den Wochenplan als JSON zurück. Ist ein Zielordner eingestellt, wird die Datei dort gespeichert und der Pfad mitgeliefert."
     },
     "import_recipes": {
       "name": "Rezepte importieren (Sicherung)",

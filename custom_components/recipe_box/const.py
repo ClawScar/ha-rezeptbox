@@ -6,12 +6,13 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "2.8.0"
+VERSION = "2.8.1"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
 CONF_SHOPPING_TARGET = "shopping_target"
 DEFAULT_SHOPPING_TARGET = ""
+CONF_BACKUP_PATH = "backup_path"
 DEFAULT_UPDATE_INTERVAL_HOURS = 24
 
 DATA_HUB = "hub"
