@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.7";
+const CARD_VERSION = "2.9.0-beta.8";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1604,6 +1604,29 @@ const ocrThreshold = (pixels) => {
   return threshold;
 };
 
+const ocrBinarize = (context, canvas) => {
+  try {
+    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+    const threshold = ocrThreshold(image.data);
+    const pixels = image.data;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const grey =
+        pixels[index] * 0.299 +
+        pixels[index + 1] * 0.587 +
+        pixels[index + 2] * 0.114;
+      const value = grey <= threshold ? 0 : 255;
+      pixels[index] = value;
+      pixels[index + 1] = value;
+      pixels[index + 2] = value;
+      pixels[index + 3] = 255;
+    }
+    context.putImageData(image, 0, 0);
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
 const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE, binarize = true) => {
   if (
     typeof document === "undefined" ||
@@ -1636,27 +1659,9 @@ const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE, binarize = true) => {
     if (typeof bitmap.close === "function") bitmap.close();
 
     let type = binarize ? "image/png" : "image/jpeg";
-    if (binarize) {
-      try {
-        const image = context.getImageData(0, 0, canvas.width, canvas.height);
-        const threshold = ocrThreshold(image.data);
-        const pixels = image.data;
-        for (let index = 0; index < pixels.length; index += 4) {
-          const grey =
-            pixels[index] * 0.299 +
-            pixels[index + 1] * 0.587 +
-            pixels[index + 2] * 0.114;
-          const value = grey <= threshold ? 0 : 255;
-          pixels[index] = value;
-          pixels[index + 1] = value;
-          pixels[index + 2] = value;
-          pixels[index + 3] = 255;
-        }
-        context.putImageData(image, 0, 0);
-      } catch (error) {
-        /* Pages that cannot be read back stay grey; Tesseract handles them. */
-        type = "image/jpeg";
-      }
+    if (binarize && !ocrBinarize(context, canvas)) {
+      /* Pages that cannot be read back stay grey; Tesseract handles them. */
+      type = "image/jpeg";
     }
     const blob = await new Promise((resolve) =>
       canvas.toBlob(resolve, type, 0.95)
@@ -1672,6 +1677,72 @@ const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE, binarize = true) => {
  * empty. */
 const ocrPhotoGrey = (file, maxSide = OCR_MAX_SIDE) =>
   ocrPhoto(file, maxSide, false);
+
+/* A thin printed title can vanish while the rest of the card reads fine. When
+ * the page pass found no title, the upper part is read once more with a
+ * stronger enlargement and more contrast, so the title gets many more pixels
+ * per letter. */
+const OCR_TITLE_AREA = 0.45;
+const OCR_TITLE_SIDE = 2600;
+
+const ocrTitleCrop = async (file) => {
+  if (
+    typeof document === "undefined" ||
+    typeof createImageBitmap !== "function" ||
+    typeof document.createElement !== "function"
+  ) {
+    return null;
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const height = Math.max(1, Math.round(bitmap.height * OCR_TITLE_AREA));
+    const width = bitmap.width;
+    const scale = Math.min(3, OCR_TITLE_SIDE / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext && canvas.getContext("2d");
+    if (!context) {
+      if (typeof bitmap.close === "function") bitmap.close();
+      return null;
+    }
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    if ("filter" in context) {
+      context.filter = "grayscale(1) contrast(1.8)";
+    }
+    context.drawImage(
+      bitmap,
+      0,
+      0,
+      width,
+      height,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+    if (typeof bitmap.close === "function") bitmap.close();
+    const type =
+      "filter" in context && ocrBinarize(context, canvas)
+        ? "image/png"
+        : "image/jpeg";
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, type, 0.95)
+    );
+    return blob || null;
+  } catch (error) {
+    return null;
+  }
+};
+
+/* Uses the title from the crop pass only when the page pass found none. */
+const ocrWithTitle = (scanned, cropText) => {
+  if (scanned.title) return scanned;
+  const title = ocrRecipeFromPages([cropText || ""]).title;
+  if (title) scanned.title = title;
+  return scanned;
+};
 
 const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-section">
   <h3>${edit ? tr("Rezept bearbeiten", "Edit recipe") : tr("Eigenes Rezept", "Own recipe")}</h3>
@@ -4826,6 +4897,17 @@ class RecipeBoxListCard extends HTMLElement {
       }
 
       const scanned = ocrRecipeFromPages(texts);
+      if (!scanned.title) {
+        /* Read the title area of the first page once more, closer up. */
+        const crop = await ocrTitleCrop(pages[0]);
+        if (crop) {
+          this._scanStatus(
+            tr("Titel wird genauer gelesen …", "Reading the title closer …")
+          );
+          const { data } = await worker.recognize(crop);
+          ocrWithTitle(scanned, (data && data.text) || "");
+        }
+      }
       this._fillManualForm(scanned);
       this._scanStatus("");
       if (scanned.title && scanned.ingredients.length) {

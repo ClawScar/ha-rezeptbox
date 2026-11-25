@@ -49,8 +49,12 @@ const makeCanvas = () => {
         filter: "none",
         imageSmoothingEnabled: false,
         imageSmoothingQuality: "low",
-        drawImage(bitmap, x, y, width, height) {
-          state.scaled = { width, height };
+        drawImage(bitmap, ...args) {
+          /* Either (x, y, w, h) or the source rectangle plus (x, y, w, h). */
+          state.scaled =
+            args.length >= 8
+              ? { width: args[6], height: args[7] }
+              : { width: args[2], height: args[3] };
         },
         getImageData() {
           if (!state.readBack) throw new Error("tainted");
@@ -96,7 +100,7 @@ context.createImageBitmap = async () => ({
 });
 
 vm.runInContext(
-  `${source}\nthis.ocrPhoto = ocrPhoto;\nthis.ocrPhotoGrey = ocrPhotoGrey;`,
+  `${source}\nthis.ocrPhoto = ocrPhoto;\nthis.ocrPhotoGrey = ocrPhotoGrey;\nthis.ocrTitleCrop = ocrTitleCrop;\nthis.ocrWithTitle = ocrWithTitle;`,
   vm.createContext(context)
 );
 
@@ -187,7 +191,44 @@ const run = async () => {
   assert.equal(await context.ocrPhoto(file), file);
   context.createImageBitmap = originalBitmap;
 
-  console.log("card_ocr_photo_test: 7 checks passed");
+  // 6. The title pass reads only the upper 45 % of the page, at up to three
+  //    times the size, and keeps the stronger contrast.
+  reset(800, 1130);
+  const crop = await context.ocrTitleCrop(file);
+  assert.equal(state.canvas.width, 2400);
+  assert.equal(state.canvas.height, 1527);
+  assert.deepEqual(state.scaled, { width: 2400, height: 1527 });
+  assert.equal(state.context.filter, "grayscale(1) contrast(1.8)");
+  assert.equal(state.blobType, "image/png");
+  assert.equal(state.closed, true);
+  assert.equal(crop, state.blob);
+
+  // 7. A large page is capped at 2600 px on its long side.
+  reset(1200, 1700);
+  await context.ocrTitleCrop(file);
+  assert.equal(state.canvas.width, 2600);
+  assert.equal(state.canvas.height, Math.round(765 * (2600 / 1200)));
+
+  // 8. The crop title only fills a gap; a title from the page pass wins.
+  const kept = context.ocrWithTitle({ title: "Omas Käsespätzle" }, "Anderer Titel");
+  assert.equal(kept.title, "Omas Käsespätzle");
+  const filled = context.ocrWithTitle(
+    { title: "" },
+    "SCHNELLER HIMBEER-KOKOS-QUARK\nFür 1 Portion"
+  );
+  assert.equal(filled.title, "Schneller Himbeer-Kokos-Quark");
+  const stillEmpty = context.ocrWithTitle({ title: "" }, "Für 1 Portion");
+  assert.equal(stillEmpty.title, "");
+
+  // 9. A page that cannot be decoded leaves no crop to read.
+  reset(800, 1130);
+  context.createImageBitmap = async () => {
+    throw new Error("cannot decode");
+  };
+  assert.equal(await context.ocrTitleCrop(file), null);
+  context.createImageBitmap = originalBitmap;
+
+  console.log("card_ocr_photo_test: 9 checks passed");
 };
 
 run().catch((error) => {
