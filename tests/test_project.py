@@ -79,6 +79,15 @@ class FilesTest(unittest.TestCase):
         self.assertIn("remove_recipe", content)
         self.assertIn("urls", content)
 
+    def test_panel_toolbar_and_history(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        self.assertIn('"hass-toggle-menu"', card)
+        self.assertIn("viewFromPath", card)
+        self.assertIn("viewPath", card)
+        self.assertIn('"location-changed"', card)
+        self.assertIn("_canGoBack", card)
+        self.assertIn("from:", card)
+
     def test_services_yaml(self) -> None:
         content = (COMPONENT / "services.yaml").read_text("utf-8")
         self.assertIn("import_recipe", content)

@@ -130,6 +130,15 @@ und-Gabel-Symbol). Diese Seite wird von der Integration selbst registriert: Sie
 enthält Importfeld, Rezeptliste, Detailansicht und Löschen – ohne dass du ein
 Dashboard bearbeiten oder eine Karte hinzufügen musst.
 
+Auf dem Handy (und wenn die Seitenleiste dauerhaft versteckt ist) steht oben die
+Kopfzeile **Rezeptbox** mit dem Menü-Knopf, der die
+Home-Assistant-Seitenleiste öffnet – am Desktop übernimmt das die App selbst.
+Tab und geöffnetes Rezept stehen in der
+Adresse (`/rezeptbox/plan`, `/rezeptbox/recipe/sensor.lasagne`): Die
+Zurück-Taste des Handys geht dadurch erst einen Schritt in der Rezeptbox zurück
+und verlässt die Seite erst danach. Ein Lesezeichen auf einen dieser Pfade
+öffnet direkt den passenden Tab oder das Rezept.
+
 Die Karten bleiben trotzdem verfügbar, wenn du die Liste in ein bestehendes
 Dashboard einbauen willst.
 

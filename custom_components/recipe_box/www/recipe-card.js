@@ -971,6 +971,37 @@ const writeTab = (entities, tab) => {
   }
 };
 
+/* The sidebar panel maps its tab and the open recipe to the URL, so the
+ * browser and the phone's back button step through them. */
+const VIEW_TABS = new Set(TABS.map((tab) => tab.id));
+
+const viewFromPath = (path) => {
+  const parts = String(path || "")
+    .replace(/^\/+|\/+$/g, "")
+    .split("/")
+    .filter(Boolean);
+  if (parts[0] === "recipe" && parts[1]) {
+    let selected = parts[1];
+    try {
+      selected = decodeURIComponent(selected);
+    } catch (error) {
+      /* keep the raw entity id */
+    }
+    return { tab: "recipes", selected };
+  }
+  if (VIEW_TABS.has(parts[0])) return { tab: parts[0], selected: null };
+  return { tab: "recipes", selected: null };
+};
+
+const viewPath = (base, view) => {
+  const root = `/${String(base || "").replace(/^\/+|\/+$/g, "")}`;
+  const tab = view && VIEW_TABS.has(view.tab) ? view.tab : "recipes";
+  if (view && view.selected) {
+    return `${root}/recipe/${encodeURIComponent(view.selected)}`;
+  }
+  return tab === "recipes" ? root : `${root}/${tab}`;
+};
+
 /* The chosen group is remembered per card as well; "" is the "Alle" tab. */
 const readGroup = (entities) => {
   try {
@@ -2117,6 +2148,22 @@ class RecipeBoxListCard extends HTMLElement {
     writeGroup(this._config ? this._config.entities : null, group);
   }
 
+  /* The sidebar panel owns tab and selection through the URL. */
+  applyView(view) {
+    const tab = knownTab(view && view.tab) ? view.tab : "recipes";
+    const selected = view && view.selected ? String(view.selected) : null;
+    if (tab === this._tab && selected === this._selected) return;
+    this._tab = tab;
+    this._selected = selected;
+    this._signature = null;
+    if (this._config) this._render();
+  }
+
+  _viewChanged(view) {
+    const navigate = this._config && this._config.navigate;
+    if (typeof navigate === "function") navigate(view);
+  }
+
   _groupExists(group, entries) {
     if (!group) return false;
     if (groupRegistry(this._hass).includes(group)) return true;
@@ -2668,6 +2715,7 @@ class RecipeBoxListCard extends HTMLElement {
         this._rememberTab(next);
         this._signature = null;
         this._render();
+        this._viewChanged({ tab: next, selected: null });
       });
     });
 
@@ -2682,6 +2730,7 @@ class RecipeBoxListCard extends HTMLElement {
         this._selected = entityId;
         this._signature = null;
         this._render();
+        this._viewChanged({ tab: this._tab, selected: entityId });
       });
       button.addEventListener("pointerdown", (event) => {
         if (event.button && event.button !== 0) return;
@@ -2933,6 +2982,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._selected = pick.entityId;
     this._signature = null;
     this._render();
+    this._viewChanged({ tab: this._tab, selected: pick.entityId });
   }
 
   async _saveManual() {
@@ -3306,47 +3356,213 @@ class RecipeBoxListCard extends HTMLElement {
         this._rememberTab("recipes");
         this._signature = null;
         this._render();
+        const goBack = this._config && this._config.goBack;
+        if (typeof goBack === "function") goBack();
       });
     }
   }
 }
 
+const PANEL_MENU_ICON =
+  '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>';
+
+const PANEL_STYLES = `
+  :host {
+    display: block;
+    min-height: 100%;
+    background: var(--primary-background-color);
+    color: var(--primary-text-color);
+  }
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: var(--header-height, 56px);
+    padding: 0 8px;
+    box-sizing: border-box;
+    background: var(--app-header-background-color, var(--primary-background-color));
+    color: var(--app-header-text-color, var(--primary-text-color));
+  }
+  .menu {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+  }
+  .menu:active {
+    background: var(--secondary-background-color);
+  }
+  .title {
+    font-size: 20px;
+    letter-spacing: 0.0125em;
+    margin-inline-start: 4px;
+  }
+  .content {
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  recipe-box-list {
+    display: block;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+`;
+
+/* The sidebar page has no Home Assistant toolbar of its own, so it brings the
+ * menu button and title along and lets the URL own tab and open recipe. The
+ * phone's back button then walks back through the recipe box instead of
+ * leaving it. */
 class RecipeBoxPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this._card = null;
     this._hass = undefined;
+    this._route = undefined;
+    this._panel = undefined;
+    this._content = null;
+    this._titleNode = null;
+    this._shell = false;
+    this._view = { tab: "recipes", selected: null };
+  }
+
+  connectedCallback() {
+    this._renderShell();
+  }
+
+  _basePath() {
+    const urlPath = (this._panel && this._panel.url_path) || "rezeptbox";
+    return `/${String(urlPath).replace(/^\/+|\/+$/g, "")}`;
+  }
+
+  _renderShell() {
+    if (this._shell || !this.shadowRoot) return;
+    this._shell = true;
+    this.shadowRoot.innerHTML = `<style>${PANEL_STYLES}</style>
+      <div class="toolbar">
+        <button class="menu" type="button" aria-label="Menü">${PANEL_MENU_ICON}</button>
+        <span class="title">${escapeHtml((this._panel && this._panel.title) || "Rezeptbox")}</span>
+      </div>
+      <div class="content"></div>`;
+    const menu = this.shadowRoot.querySelector("button.menu");
+    if (menu) menu.addEventListener("click", () => this._toggleMenu());
+    this._toolbar = this.shadowRoot.querySelector(".toolbar");
+    this._content = this.shadowRoot.querySelector(".content");
+    this._titleNode = this.shadowRoot.querySelector(".title");
+    this._updateToolbar();
+  }
+
+  /* Like the Zigbee2MQTT page: the extra bar only appears where there is no
+   * sidebar toggle of the app next to it. */
+  _updateToolbar() {
+    if (!this._toolbar) return;
+    const narrow = this._narrow !== false;
+    const alwaysHidden = Boolean(
+      this._hass && this._hass.dockedSidebar === "always_hidden"
+    );
+    this._toolbar.hidden = !(narrow || alwaysHidden);
+  }
+
+  _toggleMenu() {
+    /* Bubbles out of the panel's shadow tree to home-assistant-main, which
+     * opens the sidebar. */
+    this.dispatchEvent(
+      new CustomEvent("hass-toggle-menu", { bubbles: true, composed: true })
+    );
+  }
+
+  _applyView() {
+    if (this._card && this._view) this._card.applyView(this._view);
+  }
+
+  _navigate(view, options) {
+    const path = viewPath(this._basePath(), view);
+    const replace = Boolean(options && options.replace);
+    if (typeof window === "undefined" || !window.history) return;
+    if (!replace && window.location && window.location.pathname === path) {
+      return;
+    }
+    /* Home Assistant stamps each entry with the page it came from; keeping
+     * that up to date is what lets the app go back a step. */
+    const state = replace
+      ? window.history.state
+      : {
+          ...(window.history.state || {}),
+          from: `${window.location.pathname}${window.location.search || ""}`,
+        };
+    try {
+      window.history[replace ? "replaceState" : "pushState"](state, "", path);
+    } catch (error) {
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent("location-changed", { detail: { replace } })
+    );
+  }
+
+  _canGoBack() {
+    const from = window.history && window.history.state
+      ? window.history.state.from
+      : undefined;
+    return typeof from === "string" && from.startsWith(this._basePath());
+  }
+
+  _goBack() {
+    if (this._canGoBack()) {
+      window.history.back();
+      return;
+    }
+    this._navigate({ tab: "recipes", selected: null }, { replace: true });
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (!this._card) {
-      this.shadowRoot.innerHTML = `<style>
-        :host { display: block; padding: 16px; box-sizing: border-box; }
-        recipe-box-list { display: block; max-width: 960px; margin: 0 auto; }
-      </style>`;
+    this._renderShell();
+    this._updateToolbar();
+    if (!this._card && this._content) {
       this._card = document.createElement(LIST_TYPE);
       this._card.setConfig({
         title: "Rezepte",
         show_import: true,
         show_delete: true,
+        navigate: (view, options) => this._navigate(view, options),
+        goBack: () => this._goBack(),
       });
-      this.shadowRoot.appendChild(this._card);
+      this._content.appendChild(this._card);
     }
-    this._card.hass = hass;
+    if (this._card) {
+      this._card.hass = hass;
+      this._applyView();
+    }
   }
 
   set narrow(value) {
     this._narrow = value;
+    this._updateToolbar();
   }
 
-  set route(value) {
-    this._route = value;
+  set route(route) {
+    this._route = route;
+    this._view = viewFromPath(route && route.path);
+    this._applyView();
   }
 
   set panel(value) {
     this._panel = value;
+    this._renderShell();
+    if (this._titleNode) {
+      this._titleNode.textContent = (value && value.title) || "Rezeptbox";
+    }
   }
 }
 
