@@ -1,7 +1,8 @@
 /* Layout tests for the meal plan tab in recipe-card.js.
  *
  * Covers the "today" marker, empty days rendered as "+ Rezept", the
- * "X von 7 Tagen geplant" summary and the planned/empty select classes.
+ * "X von 7 Tagen geplant" summary, the planned/empty select classes, the
+ * wide-screen day grid and the full-width week shopping button.
  *
  * Run with: node tests/card_plan_test.js
  */
@@ -199,4 +200,42 @@ assert.equal(count(two, 'class="plan-select plan-select-planned"'), 2);
 assert.equal(count(two, 'class="plan-select plan-select-empty"'), 5);
 assert.equal(count(two, 'class="plan-clear"'), 2);
 
-console.log("card_plan_test: 8 checks passed");
+// 9. Wide screens turn the seven stacked rows into an adaptive day grid.
+has(german, ".plan-body { display: grid;", "the plan body is a grid");
+has(german, "grid-template-columns: minmax(0, 1fr);", "phones keep one column");
+has(german, "@media (min-width: 700px)", "the grid starts on wide screens");
+has(
+  german,
+  "grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));",
+  "wide screens fill a row with day cards"
+);
+has(
+  german,
+  "flex-direction: column; align-items: stretch;",
+  "day cards stack label and select"
+);
+has(german, ".plan-row-clearable .plan-day { padding-right: 34px; }");
+
+// 10. Rows with a plan entry are flagged so a card can reserve room for the ✕.
+assert.equal(count(german, 'plan-row-clearable">'), 1);
+assert.equal(count(stale, 'plan-row-clearable">'), 2);
+assert.equal(
+  count(stale, 'plan-row-clearable">'),
+  count(stale, 'class="plan-clear"'),
+  "every clear button sits in a clearable row"
+);
+
+// 11. The week button fills the phone width and shrinks next to the grid.
+has(german, "button.week-shopping { grid-column: 1 / -1; width: 100%;");
+has(
+  german,
+  "button.week-shopping { width: auto; min-width: 260px; justify-self: start; }"
+);
+has(german, 'class="week-shopping" type="button"');
+has(
+  english,
+  'class="week-shopping" type="button"',
+  "English offers the week button as well"
+);
+
+console.log("card_plan_test: 11 checks passed");

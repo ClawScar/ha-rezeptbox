@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.7.0-beta.2";
+const CARD_VERSION = "2.7.0-beta.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1132,7 +1132,7 @@ const planHtml = (hass, entries) => {
         .join("");
       return `<div class="plan-row${day.isToday ? " plan-row-today" : ""}${
         plannedEntry ? " plan-row-planned" : " plan-row-empty"
-      }">
+      }${current ? " plan-row-clearable" : ""}">
         <span class="plan-day">
           <span class="plan-day-label">${escapeHtml(day.label)}</span>
           ${
@@ -2137,9 +2137,11 @@ const STYLES = `<style>
   button.dialog-confirm { background: var(--error-color, #db4437); border: none; color: #fff; font-weight: 600; }
   select.group-select { flex: 1 1 140px; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   .tab-hint { margin: 0; font-size: 0.82rem; color: var(--secondary-text-color); }
-  .manual-body, .plan-body { display: flex; flex-direction: column; gap: 6px; }
+  .manual-body { display: flex; flex-direction: column; gap: 6px; }
+  .plan-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
   .manual-body button, button.week-shopping { align-self: flex-start; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.88rem; cursor: pointer; }
+  button.week-shopping { grid-column: 1 / -1; width: 100%; min-height: 44px; border-radius: 10px; font-size: 0.9rem; font-weight: 600; }
   button.busy { cursor: progress; }
   button.busy::before { content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 6px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; vertical-align: -1px; animation: recipe-box-spin 0.8s linear infinite; }
   button.busy:disabled { opacity: 0.75; }
@@ -2166,6 +2168,16 @@ const STYLES = `<style>
   .plan-select-empty:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
   button.plan-clear { min-width: 36px; min-height: 36px; border-radius: 8px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.9rem; padding: 4px 6px; }
   button.plan-clear:hover { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); }
+  @media (min-width: 700px) {
+    .plan-body { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+    .plan-row { position: relative; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
+    .plan-row-today { border-color: var(--primary-color); box-shadow: none; }
+    .plan-day { flex-direction: row; align-items: center; justify-content: flex-start; gap: 8px; min-width: 0; }
+    .plan-row-clearable .plan-day { padding-right: 34px; }
+    button.plan-clear { position: absolute; top: 8px; right: 8px; }
+    .plan-select { min-height: 44px; }
+    button.week-shopping { width: auto; min-width: 260px; justify-self: start; }
+  }
   @media print {
     .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, .groups-editor, .selection-bar, .dialog-backdrop { display: none !important; }
     ha-card { box-shadow: none; }
