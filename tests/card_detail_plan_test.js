@@ -77,8 +77,7 @@ this.HELPERS = {
   detailPlanHtml,
   detailDayChipsHtml,
   pickRandomEntry,
-  toggleFavorite,
-  readFavorites,
+  favoritesFromEntries,
   readRandomHistory,
   rememberRandomPick,
   setUiLanguage,
@@ -186,21 +185,26 @@ has(english, "Search a day");
 has(english, "detail-day-taken");
 HELPERS.setUiLanguage({ language: "de" });
 
-// 6. Favorites are stored by source URL and toggle back off.
+// 6. Favorites come from the shared recipe entities, not from localStorage.
 storage.clear();
-assert.equal(HELPERS.readFavorites().has(lasagneUrl), false);
-assert.equal(HELPERS.toggleFavorite(lasagneUrl), true);
-assert.equal(HELPERS.readFavorites().has(lasagneUrl), true);
-assert.equal(HELPERS.toggleFavorite(lasagneUrl), false);
-assert.equal(HELPERS.readFavorites().has(lasagneUrl), false);
-assert.equal(HELPERS.toggleFavorite(""), false, "without a URL nothing is stored");
+const entriesOf = () => [
+  { entityId: "sensor.lasagne", state: lasagne },
+  { entityId: "sensor.curry", state: curry },
+];
+assert.equal(HELPERS.favoritesFromEntries(entriesOf()).size, 0);
+lasagne.attributes.favorite = true;
+assert.equal(
+  JSON.stringify([...HELPERS.favoritesFromEntries(entriesOf())]),
+  JSON.stringify([lasagneUrl])
+);
+assert.equal(storage.size, 0, "no favorite is written into the browser");
 
 // 7. A favorite turns the star in the detail view and in the recipe row.
-HELPERS.toggleFavorite(lasagneUrl);
 const favoriteCard = new RecipeBoxCard();
 favoriteCard.setConfig({ entity: "sensor.lasagne" });
 favoriteCard.hass = hass;
 has(favoriteCard.shadowRoot.innerHTML, "favorite-toggle active");
+has(favoriteCard.shadowRoot.innerHTML, 'data-favorite="true"');
 has(favoriteCard.shadowRoot.innerHTML, "mdi:star");
 
 const listCard = new RecipeBoxListCard();
@@ -210,6 +214,7 @@ const list = listCard.shadowRoot.innerHTML;
 assert.equal(count(list, 'class="recipe-favorite'), 2, "every recipe row has a star");
 assert.equal(count(list, "recipe-favorite active"), 1, "only the favorite is filled");
 has(list, "mdi:star-outline");
+lasagne.attributes.favorite = false;
 
 // 8. The random picker skips recent suggestions and prefers favorites.
 const pool = [

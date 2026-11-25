@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.8.0-beta.1";
+const CARD_VERSION = "2.8.0-beta.2";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -786,35 +786,19 @@ const upcomingPlanDates = (hass, sourceUrl, limit = 3) => {
   return labels;
 };
 
-const FAVORITE_KEY = "recipe_box:favorites";
 const RANDOM_HISTORY_KEY = "recipe_box:random";
 
-const readFavorites = () => {
-  try {
-    const raw = JSON.parse(window.localStorage.getItem(FAVORITE_KEY) || "[]");
-    return new Set(Array.isArray(raw) ? raw.map(String) : []);
-  } catch (error) {
-    return new Set();
-  }
-};
-
-const writeFavorites = (favorites) => {
-  try {
-    window.localStorage.setItem(FAVORITE_KEY, JSON.stringify([...favorites]));
-  } catch (error) {
-    /* private mode: favorites stay for this session only */
-  }
-};
-
-const toggleFavorite = (sourceUrl) => {
-  const key = String(sourceUrl || "");
-  if (!key) return false;
-  const favorites = readFavorites();
-  const next = !favorites.has(key);
-  if (next) favorites.add(key);
-  else favorites.delete(key);
-  writeFavorites(favorites);
-  return next;
+/* Favorites are stored by the integration, so every browser and user of this
+ * Home Assistant installation sees the same stars. */
+const favoritesFromEntries = (entries) => {
+  const favorites = new Set();
+  (entries || []).forEach(({ state }) => {
+    const attributes = (state && state.attributes) || {};
+    if (!attributes.favorite) return;
+    const url = String(attributes.source_url || "");
+    if (url) favorites.add(url);
+  });
+  return favorites;
 };
 
 const readRandomHistory = () => {
@@ -1951,6 +1935,8 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
           meta.favorite ? " active" : ""
         }" type="button" data-source="${escapeHtml(
           attributes.source_url || ""
+        )}" data-favorite="${Boolean(
+          meta.favorite
         )}" aria-pressed="${Boolean(
           meta.favorite
         )}" title="${
@@ -2452,15 +2438,31 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
 
   const favoriteButton = root.querySelector("button.favorite-toggle");
   if (favoriteButton) {
-    favoriteButton.addEventListener("click", () => {
-      const active = toggleFavorite(favoriteButton.getAttribute("data-source"));
-      notify(
-        dispatcher,
-        active
-          ? tr("Zu Favoriten hinzugefügt.", "Added to favorites.")
-          : tr("Aus Favoriten entfernt.", "Removed from favorites.")
-      );
-      if (typeof options.onFavorite === "function") options.onFavorite();
+    favoriteButton.addEventListener("click", async () => {
+      if (!hass) return;
+      const favorite =
+        favoriteButton.getAttribute("data-favorite") !== "true";
+      try {
+        await hass.callService("recipe_box", "set_favorite", {
+          entity_id: entityId,
+          favorite,
+        });
+        notify(
+          dispatcher,
+          favorite
+            ? tr("Zu Favoriten hinzugefügt.", "Added to favorites.")
+            : tr("Aus Favoriten entfernt.", "Removed from favorites.")
+        );
+        if (typeof options.onFavorite === "function") options.onFavorite();
+      } catch (error) {
+        notify(
+          dispatcher,
+          tr(
+            `Favorit: ${(error && (error.message || error.code)) || "Fehler"}`,
+            `Favorite: ${(error && (error.message || error.code)) || "error"}`
+          )
+        );
+      }
     });
   }
 
@@ -2791,9 +2793,7 @@ class RecipeBoxCard extends HTMLElement {
       <ha-card>${detailHtml(this._state, this._config, session.checked, servings, {
         entityId,
         hass: this._hass,
-        favorite: readFavorites().has(
-          String((this._state.attributes || {}).source_url || "")
-        ),
+        favorite: Boolean((this._state.attributes || {}).favorite),
         groups: knownGroups(this._hass, recipeEntities(this._hass, null)),
       })}</ha-card>`;
     bindDetail(
@@ -3472,7 +3472,7 @@ class RecipeBoxListCard extends HTMLElement {
         recipeTitle(state),
       ])
     );
-    const favorites = readFavorites();
+    const favorites = favoritesFromEntries(entries);
     const items = filtered.map(({ entityId, state }) => {
       const attributes = state.attributes || {};
       const sourceUrl = String(attributes.source_url || "");
@@ -3524,7 +3524,9 @@ class RecipeBoxListCard extends HTMLElement {
                 isFavorite ? " active" : ""
               }" type="button" data-source="${escapeHtml(
                 sourceUrl
-              )}" aria-pressed="${isFavorite}" title="${
+              )}" data-entity="${escapeHtml(
+                entityId
+              )}" data-favorite="${isFavorite}" aria-pressed="${isFavorite}" title="${
                 isFavorite
                   ? tr("Aus Favoriten entfernen", "Remove from favorites")
                   : tr("Zu Favoriten hinzufügen", "Add to favorites")
@@ -3717,15 +3719,29 @@ class RecipeBoxListCard extends HTMLElement {
     });
 
     this.shadowRoot.querySelectorAll("button.recipe-favorite").forEach((button) => {
-      button.addEventListener("click", (event) => {
+      button.addEventListener("click", async (event) => {
         event.stopPropagation();
-        const active = toggleFavorite(button.getAttribute("data-source"));
-        notify(
-          this,
-          active
-            ? tr("Zu Favoriten hinzugefügt.", "Added to favorites.")
-            : tr("Aus Favoriten entfernt.", "Removed from favorites.")
-        );
+        const next = button.getAttribute("data-favorite") !== "true";
+        try {
+          await this._hass.callService("recipe_box", "set_favorite", {
+            entity_id: button.getAttribute("data-entity"),
+            favorite: next,
+          });
+          notify(
+            this,
+            next
+              ? tr("Zu Favoriten hinzugefügt.", "Added to favorites.")
+              : tr("Aus Favoriten entfernt.", "Removed from favorites.")
+          );
+        } catch (error) {
+          notify(
+            this,
+            tr(
+              `Favorit: ${(error && (error.message || error.code)) || "Fehler"}`,
+              `Favorite: ${(error && (error.message || error.code)) || "error"}`
+            )
+          );
+        }
         this._signature = null;
         this._renderList(entries);
       });
@@ -4031,7 +4047,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
     const pick = pickRandomEntry(
       pool,
-      readFavorites(),
+      favoritesFromEntries(entries),
       readRandomHistory()
     );
     if (!pick) return;
@@ -4329,6 +4345,7 @@ class RecipeBoxListCard extends HTMLElement {
           recipes,
           plan: (data && data.plan) || {},
           groups: (data && data.groups) || [],
+          favorites: (data && data.favorites) || [],
         },
         undefined,
         false,
@@ -4446,9 +4463,7 @@ class RecipeBoxListCard extends HTMLElement {
         ${detailHtml(entry.state, this._config, session.checked, servings, {
           entityId: entry.entityId,
           hass: this._hass,
-          favorite: readFavorites().has(
-            String((entry.state.attributes || {}).source_url || "")
-          ),
+          favorite: Boolean((entry.state.attributes || {}).favorite),
           groups: knownGroups(this._hass, this._recipes()),
         })}
       </ha-card>${deleteDialogHtml(

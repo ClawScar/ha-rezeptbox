@@ -140,6 +140,10 @@
         "plan": {
           "name": "Wochenplan",
           "description": "Optionaler Wochenplan aus dem Export."
+        },
+        "favorites": {
+          "name": "Favoriten",
+          "description": "Optionale Liste der Rezept-URLs, die als Favorit markiert sind."
         }
       }
     },
@@ -176,6 +180,24 @@
         "date": {
           "name": "Datum",
           "description": "Tag, der geleert wird. Ohne Datum wird der ganze Plan geleert."
+        }
+      }
+    },
+    "set_favorite": {
+      "name": "Als Favorit markieren",
+      "description": "Markiert ein Rezept als Favorit. Favoriten liegen in Home Assistant, damit sie auf allen Geräten und für alle Benutzer gelten; „Was kochen?“ schlägt sie häufiger vor.",
+      "fields": {
+        "entity_id": {
+          "name": "Rezept",
+          "description": "Rezeptbox-Sensor des Rezepts."
+        },
+        "url": {
+          "name": "Rezept-URL",
+          "description": "Quelladresse (Alternative zum Sensor)."
+        },
+        "favorite": {
+          "name": "Favorit",
+          "description": "true markiert das Rezept, false entfernt die Markierung. Ohne dieses Feld wird der aktuelle Zustand umgeschaltet."
         }
       }
     },

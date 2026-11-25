@@ -160,6 +160,7 @@ class FilesTest(unittest.TestCase):
             "import_recipes",
             "plan_recipe",
             "clear_meal_plan",
+            "set_favorite",
         ):
             self.assertIn(name, strings["services"])
             self.assertIn(f"{name}:", services)
@@ -315,6 +316,49 @@ class FilesTest(unittest.TestCase):
 
         sensor = (COMPONENT / "sensor.py").read_text("utf-8")
         self.assertIn('"groups": self.coordinator.groups', sensor)
+
+    def test_favorites_are_shared(self) -> None:
+        const = (COMPONENT / "const.py").read_text("utf-8")
+        self.assertIn('SERVICE_SET_FAVORITE = "set_favorite"', const)
+        self.assertIn('ATTR_FAVORITE = "favorite"', const)
+
+        coordinator = (COMPONENT / "coordinator.py").read_text("utf-8")
+        for marker in (
+            "self.favorites: set[str] = set()",
+            "def is_favorite",
+            "async_set_favorite",
+            "async_import_favorites",
+            "self.favorites.discard(source_url)",
+            '"favorites": sorted(self.favorites)',
+        ):
+            self.assertIn(marker, coordinator)
+
+        sensor = (COMPONENT / "sensor.py").read_text("utf-8")
+        self.assertIn('"favorite": self.coordinator.is_favorite', sensor)
+        self.assertIn('"favorites": sorted(self.coordinator.favorites)', sensor)
+
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        self.assertIn('"set_favorite"', card)
+        self.assertIn("favoritesFromEntries", card)
+        self.assertNotIn("recipe_box:favorites", card)
+
+        services = (COMPONENT / "services.yaml").read_text("utf-8")
+        self.assertIn("set_favorite:", services)
+
+        for name in (
+            "strings.json",
+            "translations/de.json",
+            "translations/en.json",
+        ):
+            data = json.loads((COMPONENT / name).read_text("utf-8"))
+            self.assertIn("set_favorite", data["services"])
+            self.assertEqual(
+                set(data["services"]["set_favorite"]["fields"]),
+                {"entity_id", "url", "favorite"},
+            )
+            self.assertIn(
+                "favorites", data["services"]["import_recipes"]["fields"]
+            )
 
     def test_config_flow_has_no_url_step(self) -> None:
         content = (COMPONENT / "config_flow.py").read_text("utf-8")

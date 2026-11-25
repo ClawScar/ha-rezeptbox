@@ -193,7 +193,9 @@ gewählte Gruppe und startet nach einem Neuladen dort wieder.
 Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
 Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der
 aktuellen Auswahl. Favoriten (★ in der Zeile oder in der Detailansicht) werden
-dabei dreifach gewichtet, die letzten drei Vorschläge übersprungen. Unter den
+dabei dreifach gewichtet, die letzten drei Vorschläge übersprungen. Die
+Favoriten speichert die Integration, nicht der Browser: Sie gelten damit auf
+allen Geräten und für alle Benutzer der Installation. Unter den
 Angaben eines Rezepts steht, für welche Tage es schon eingeplant ist
 („Mi 26 · Fr 28“); das Kalender-Symbol trägt dann einen Punkt. Rechts neben
 jedem Eintrag entfernt der Papierkorb das Rezept – der erste Klick fragt mit
@@ -289,7 +291,9 @@ In der Detailansicht plant der Abschnitt **Einplanen** das offene Rezept: Ein
 Suchfeld filtert die nächsten drei Wochen nach Wochentag, Datum oder
 ISO-Datum, ein Tipp plant den Tag, ein Tipp auf den bereits geplanten Tag
 entfernt ihn wieder. Der Stern **Favorit** markiert das Rezept für „Was
-kochen?“.
+kochen?“. Die Markierung liegt im Speicher der Integration und ist damit auf
+allen Geräten und für alle Benutzer sichtbar; sie lässt sich auch per Service
+setzen.
 
 ### Einzelnes Rezept
 
@@ -327,7 +331,7 @@ importierte Rezept selbst bleibt unverändert.
 | --- | --- |
 | `sensor.<rezept>` | Gesamtzeit in Minuten (Device-Class `duration`) |
 | `sensor.<rezept>_portionen` | Anzahl der Portionen |
-| `sensor.rezeptbox_wochenplan` | Anzahl der geplanten Tage; Attribut `plan` mit Datum, Titel, Quelle und Portionen, Attribut `groups` mit allen angelegten Gruppen |
+| `sensor.rezeptbox_wochenplan` | Anzahl der geplanten Tage; Attribut `plan` mit Datum, Titel, Quelle und Portionen, Attribut `groups` mit allen angelegten Gruppen und `favorites` mit den Quell-URLs aller Favoriten |
 | `button.<rezept>_zutaten_auf_die_liste` | Fügt die Zutaten des Rezepts der Einkaufsliste hinzu |
 
 Der Haupt-Sensor trägt alle Rezeptdaten als Attribute:
@@ -346,6 +350,7 @@ Der Haupt-Sensor trägt alle Rezeptdaten als Attribute:
 | `tags`, `cuisine`, `category`, `difficulty` | Einordnung |
 | `rating`, `rating_count` | Bewertung |
 | `nutrition` | Nährwerte, falls vorhanden |
+| `favorite` | `true`, wenn das Rezept als Favorit markiert ist |
 | `updated_at`, `update_error` | Zeitpunkt des letzten erfolgreichen Abrufs und Fehlercode, falls der letzte Abruf scheiterte |
 
 Beispiel für eine Automation:
@@ -460,7 +465,7 @@ aktualisieren.
 
 ### `recipe_box.export_recipes`
 
-Gibt `recipes`, `plan`, `groups` und `missing_images` als JSON zurück (für
+Gibt `recipes`, `plan`, `groups`, `favorites` und `missing_images` als JSON zurück (für
 Sicherungen oder eigene Skripte). `missing_images` nennt Rezepte, deren eigenes
 Foto nicht mehr existiert; die Karte hängt dann beim Sichern einen Hinweis an.
 Der Button **Sichern** unter **Daten → Sicherung** nutzt denselben Service.
@@ -472,8 +477,11 @@ Der Button **Sichern** unter **Daten → Sicherung** nutzt denselben Service.
 | `recipes` | ja | Rezeptdaten aus einem Export |
 | `plan` | nein | Wochenplan aus einem Export |
 | `groups` | nein | Gruppen aus einem Export |
+| `favorites` | nein | Favoriten (Quell-URLs) aus einem Export |
 
 Liest eine Sicherung wieder ein und antwortet mit `imported` und `failed`.
+Favoriten aus der Sicherung werden nur übernommen, wenn das Rezept vorhanden
+ist.
 
 ### `recipe_box.plan_recipe` / `recipe_box.clear_meal_plan`
 
@@ -487,6 +495,19 @@ Liest eine Sicherung wieder ein und antwortet mit `imported` und `failed`.
 Der Plan liegt im Speicher der Integration und ist über
 `sensor.rezeptbox_wochenplan` verfügbar; die Karte zeigt sieben Tage ab heute
 und kann die sichtbare Woche auf die Einkaufsliste übernehmen.
+
+### `recipe_box.set_favorite`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `entity_id` oder `url` | eins von beiden | Rezept-Sensor oder Quelladresse |
+| `favorite` | nein | `true` markiert das Rezept, `false` entfernt die Markierung; ohne Feld wird umgeschaltet |
+
+Setzt oder entfernt die Favoritenmarkierung. Sie liegt im Speicher der
+Integration und gilt damit für alle Benutzer und Geräte; „Was kochen?“ gewichtet
+markierte Rezepte dreifach. Die Karte nutzt denselben Service für den Stern in
+der Rezeptzeile und in der Detailansicht. Die Antwort enthält `title`, `url`
+und den neuen Stand `favorite`.
 
 ### `recipe_box.set_groups`
 

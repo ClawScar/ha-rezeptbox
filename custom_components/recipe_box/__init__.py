@@ -27,6 +27,8 @@ from .const import (
     ATTR_DATE,
     ATTR_DIRECTION,
     ATTR_EXCLUDE,
+    ATTR_FAVORITES,
+    ATTR_FAVORITE,
     ATTR_GROUP,
     ATTR_GROUPS,
     ATTR_IMAGE_URL,
@@ -66,6 +68,7 @@ from .const import (
     SERVICE_RENAME_GROUP,
     SERVICE_SET_GROUPS,
     SERVICE_SET_RECIPE_IMAGE,
+    SERVICE_SET_FAVORITE,
     SERVICE_CLEANUP_RECIPE_IMAGES,
 )
 from .coordinator import RecipeHub, normalize_group_names
@@ -169,6 +172,17 @@ SET_RECIPE_IMAGE_SCHEMA = vol.All(
 
 CLEANUP_IMAGES_SCHEMA = vol.Schema({})
 
+SET_FAVORITE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional(ATTR_FAVORITE): cv.boolean,
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+)
+
 GROUP_SCHEMA = vol.Schema({vol.Required(ATTR_GROUP): cv.string})
 
 RENAME_GROUP_SCHEMA = vol.Schema(
@@ -189,6 +203,9 @@ IMPORT_RECIPES_SCHEMA = vol.Schema(
     {
         vol.Required(ATTR_RECIPES): vol.All(cv.ensure_list, [dict]),
         vol.Optional(ATTR_PLAN, default=dict): dict,
+        vol.Optional(ATTR_FAVORITES, default=list): vol.All(
+            cv.ensure_list, [cv.string]
+        ),
         vol.Optional(ATTR_GROUPS, default=list): vol.All(
             cv.ensure_list, [cv.string]
         ),
@@ -327,6 +344,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_CLEANUP_RECIPE_IMAGES,
             partial(_async_cleanup_recipe_images, hass),
             schema=CLEANUP_IMAGES_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_FAVORITE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_FAVORITE,
+            partial(_async_set_favorite, hass),
+            schema=SET_FAVORITE_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -781,6 +807,28 @@ async def _async_set_recipe_image(
     }
 
 
+async def _async_set_favorite(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Mark or unmark a recipe as a favorite for the whole installation."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
+    favorite = call.data.get(ATTR_FAVORITE)
+    if favorite is None:
+        # Without an explicit value the star simply flips.
+        favorite = not hub.is_favorite(source_url)
+    favorite = await hub.async_set_favorite(source_url, favorite)
+    _LOGGER.debug("Set favorite %s for %s", favorite, source_url)
+    return {
+        "title": recipe.title,
+        "url": source_url,
+        "favorite": favorite,
+    }
+
+
 async def _async_cleanup_recipe_images(
     hass: HomeAssistant, call: ServiceCall
 ) -> dict[str, Any]:
@@ -827,6 +875,7 @@ async def _async_export_recipes(
         "recipes": [recipe.as_dict() for recipe in hub.recipes.values()],
         "plan": hub.plan,
         "groups": hub.groups,
+        "favorites": sorted(hub.favorites),
         # Recipes whose photo was cleaned up still import fine, but the card
         # warns while saving so a backup is not mistaken for a complete one.
         "missing_images": hub.missing_image_titles(),
@@ -865,6 +914,10 @@ async def _async_import_recipes(
     groups = [str(item) for item in (call.data.get(ATTR_GROUPS) or [])]
     if groups:
         await hub.async_import_groups(groups)
+
+    favorites = [str(item) for item in (call.data.get(ATTR_FAVORITES) or [])]
+    if favorites:
+        await hub.async_import_favorites(favorites)
 
     _LOGGER.debug("Imported %s recipes, %s failed", imported, failed)
     return {"imported": imported, "failed": failed}

@@ -103,6 +103,7 @@ class RecipeSensor(RecipeSensorBase):
         return {
             "integration": DOMAIN,
             **self.recipe.as_attributes(),
+            "favorite": self.coordinator.is_favorite(self._source_url),
             "updated_at": status.get("updated_at"),
             "update_error": status.get("error"),
         }
@@ -144,6 +145,7 @@ class RecipePlanSensor(CoordinatorEntity[RecipeHub], SensorEntity):
         return {
             "plan": self.coordinator.plan_entries(),
             "groups": self.coordinator.groups,
+            "favorites": sorted(self.coordinator.favorites),
         }
 
 

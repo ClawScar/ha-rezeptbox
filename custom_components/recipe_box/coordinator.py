@@ -87,6 +87,8 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         self.plan: dict[str, dict[str, Any]] = {}
         self.status: dict[str, dict[str, Any]] = {}
         self.groups: list[str] = []
+        # Favorites belong to the installation, not to one browser.
+        self.favorites: set[str] = set()
         # Image ids Rezeptbox uploaded itself; only these are ever deleted.
         self.photos: list[str] = []
 
@@ -163,6 +165,17 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             names.extend(recipe.groups)
         self.groups = normalize_group_names(names, MAX_GROUPS)
 
+        saved_favorites = (
+            stored.get("favorites") if isinstance(stored, dict) else None
+        )
+        self.favorites = {
+            str(item)
+            for item in (
+                saved_favorites if isinstance(saved_favorites, list) else []
+            )
+            if isinstance(item, str) and item
+        }
+
         saved_photos = stored.get("photos") if isinstance(stored, dict) else None
         self.photos = [
             item
@@ -213,6 +226,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
             if entry.get("url") != source_url
         }
         self.status.pop(source_url, None)
+        self.favorites.discard(source_url)
         await self._async_save()
         self.async_update_listeners()
         await self._async_remove_entities(source_url)
@@ -378,6 +392,39 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         await self._async_save()
         self.async_update_listeners()
 
+    def is_favorite(self, source_url: str) -> bool:
+        """Return True when the recipe is marked as a favorite."""
+        return str(source_url or "") in self.favorites
+
+    async def async_set_favorite(self, source_url: str, favorite: bool) -> bool:
+        """Mark or unmark one recipe as a favorite, shared by all users."""
+        key = str(source_url or "")
+        if not key:
+            return False
+        state = bool(favorite)
+        if state:
+            self.favorites.add(key)
+        else:
+            self.favorites.discard(key)
+        await self._async_save()
+        self.async_update_listeners()
+        return state
+
+    async def async_import_favorites(self, favorites: list[Any]) -> None:
+        """Merge the favorites of a backup into the recipe box."""
+        known = set(self.recipes)
+        added = {
+            str(item)
+            for item in favorites
+            if isinstance(item, str) and str(item) in known
+        }
+        merged = self.favorites | added
+        if merged == self.favorites:
+            return
+        self.favorites = merged
+        await self._async_save()
+        self.async_update_listeners()
+
     async def async_rename_group(
         self, old_name: str, new_name: str
     ) -> list[str]:
@@ -515,6 +562,7 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
                 "plan": self.plan,
                 "status": self.status,
                 "groups": self.groups,
+                "favorites": sorted(self.favorites),
                 "photos": self.photos,
             }
         )

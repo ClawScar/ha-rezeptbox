@@ -160,6 +160,12 @@ import_recipes:
           servings: 8
       selector:
         object:
+    favorites:
+      example:
+        - https://example.com/omas-apfelkuchen
+      selector:
+        text:
+          multiple: true
 
 plan_recipe:
   fields:
@@ -198,6 +204,24 @@ clear_meal_plan:
       example: "2026-11-25"
       selector:
         date:
+
+set_favorite:
+  fields:
+    entity_id:
+      example: sensor.lasagne
+      selector:
+        entity:
+          integration: recipe_box
+          domain: sensor
+    url:
+      example: https://example.com/omas-apfelkuchen
+      selector:
+        text:
+          type: url
+    favorite:
+      example: true
+      selector:
+        boolean:
 
 set_groups:
   fields:

@@ -140,6 +140,10 @@
         "plan": {
           "name": "Meal plan",
           "description": "Optional meal plan from the export."
+        },
+        "favorites": {
+          "name": "Favorites",
+          "description": "Optional list of recipe URLs marked as favorites."
         }
       }
     },
@@ -176,6 +180,24 @@
         "date": {
           "name": "Date",
           "description": "Day to clear. Without a date the whole plan is cleared."
+        }
+      }
+    },
+    "set_favorite": {
+      "name": "Mark as favorite",
+      "description": "Marks a recipe as a favorite. Favorites are stored in Home Assistant, so every user and device sees them and \"What to cook?\" suggests them more often.",
+      "fields": {
+        "entity_id": {
+          "name": "Recipe",
+          "description": "Rezeptbox sensor of the recipe."
+        },
+        "url": {
+          "name": "Recipe URL",
+          "description": "Source URL (alternative to the sensor)."
+        },
+        "favorite": {
+          "name": "Favorite",
+          "description": "true marks the recipe, false removes the mark. Without this field the current state is toggled."
         }
       }
     },
