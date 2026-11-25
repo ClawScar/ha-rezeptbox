@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.9";
+const CARD_VERSION = "2.9.0-beta.10";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1509,10 +1509,17 @@ const ocrRecipeFromPages = (pages) => {
   };
 };
 
-const ocrPagesHtml = (pages) =>
+const ocrPagesHtml = (pages, thumbFor = null) =>
   (pages || [])
     .map(
       (file, index) => `<li class="ocr-page">
+        ${
+          thumbFor
+            ? `<img class="ocr-page-thumb" alt="" src="${escapeHtml(
+                thumbFor(index) || ""
+              )}">`
+            : ""
+        }
         <span class="ocr-page-no">${index + 1}</span>
         <span class="ocr-page-name">${escapeHtml(
           (file && file.name) || tr(`Seite ${index + 1}`, `Page ${index + 1}`)
@@ -3311,6 +3318,7 @@ const STYLES = `<style>
   .scan-hint { margin: 0; font-size: 0.78rem; color: var(--secondary-text-color); }
   .scan-status { margin: 0; font-size: 0.82rem; color: var(--secondary-text-color); min-height: 1em; }
   ol.ocr-pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .ocr-page-thumb { width: 46px; height: 46px; flex: none; border-radius: 6px; object-fit: cover; background: var(--divider-color, rgba(127, 127, 127, 0.2)); }
   li.ocr-page { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; padding: 4px 6px; border-radius: 6px; background: var(--card-background-color, transparent); }
   .ocr-page-no { min-width: 1.4em; font-weight: 600; }
   .ocr-page-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4332,6 +4340,7 @@ class RecipeBoxListCard extends HTMLElement {
         </div>
       </ha-card>${dialog}${backupDialogHtml(this._backup)}`;
 
+    if (this.shadowRoot.querySelector("ol.ocr-pages")) this._renderOcrPages();
     this.shadowRoot.querySelectorAll("button.tab").forEach((button) => {
       button.addEventListener("click", () => {
         const next = button.getAttribute("data-tab");
@@ -4839,7 +4848,15 @@ class RecipeBoxListCard extends HTMLElement {
         this._addPhotos(chosen);
         return;
       }
-      if (tries >= 40) this._stopPhotoPoll();
+      if (tries >= 40) {
+        this._stopPhotoPoll();
+        this._scanStatus(
+          tr(
+            "Die Fotoauswahl kam nicht an. Bitte „Fotos wählen“ erneut antippen.",
+            "The photo selection did not arrive. Please tap “Choose photos” again."
+          )
+        );
+      }
     }, 500);
   }
 
@@ -4857,12 +4874,40 @@ class RecipeBoxListCard extends HTMLElement {
     );
   }
 
+  /* Removes the object URLs of the page previews; the photos themselves stay
+   * in memory until the form is closed. */
+  _releasePageUrls() {
+    if (typeof URL === "undefined" || !URL.revokeObjectURL) return;
+    (this._pageUrls || []).forEach((url) => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        /* nothing to clean up */
+      }
+    });
+    this._pageUrls = [];
+  }
+
   _renderOcrPages() {
     const root = this.shadowRoot;
     if (!root) return;
     const pages = this._ocrPages || [];
+    this._releasePageUrls();
+    if (typeof URL !== "undefined" && URL.createObjectURL) {
+      this._pageUrls = pages.map((file) => {
+        try {
+          return URL.createObjectURL(file);
+        } catch (error) {
+          return "";
+        }
+      });
+    }
     const list = root.querySelector("ol.ocr-pages");
-    if (list) list.innerHTML = ocrPagesHtml(pages);
+    const thumbs =
+      this._pageUrls && this._pageUrls.length
+        ? (index) => this._pageUrls[index]
+        : null;
+    if (list) list.innerHTML = ocrPagesHtml(pages, thumbs);
     const run = root.querySelector("button.ocr-run");
     if (run) run.disabled = !pages.length || this._ocrBusy;
     const clear = root.querySelector("button.ocr-clear");

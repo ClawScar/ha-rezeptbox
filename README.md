@@ -173,14 +173,14 @@ nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
 Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js?v=2.9.0-beta.9
+url: /recipe_box/recipe-card.js?v=2.9.0-beta.10
 type: module
 ```
 
 Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
 Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
 und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
-aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.9“).
+aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.10“).
 
 ### Rezeptliste mit Detailansicht
 
@@ -264,8 +264,9 @@ aktualisieren** speichert die Korrektur über `recipe_box.update_recipe`.
 
 Für gedruckte Rezeptkarten gibt es im Formular den **Foto-Scanner**: mit
 **Fotos wählen** eine oder mehrere Seiten aufnehmen oder aus der Galerie
-holen (das Handy bietet dabei auch die Kamera an), mit **Text erkennen** der
-Reihe nach einlesen lassen und das Ergebnis prüfen. Abschnitte wie „Zutaten“
+holen (das Handy bietet dabei auch die Kamera an); die gewählten Seiten
+erscheinen mit Vorschaubild in der Liste. Mit **Text erkennen** werden sie der
+Reihe nach eingelesen und das Ergebnis im Formular geprüft. Abschnitte wie „Zutaten“
 und „Zubereitung“ dürfen sich auf späteren Seiten wiederholen; sie werden
 fortgesetzt statt neu begonnen. Das erste Foto wird das Rezeptfoto. Die
 Texterkennung läuft mit Tesseract und dem deutschen Sprachmodell direkt im

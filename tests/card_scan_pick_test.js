@@ -31,6 +31,7 @@ const state = {
   preview: undefined,
   status: "",
   inputs: [],
+  revoked: [],
 };
 
 const makeInput = () => {
@@ -90,6 +91,10 @@ const context = {
     return state.timerId;
   },
   clearInterval: (id) => state.timers.delete(id),
+  URL: {
+    createObjectURL: (file) => `blob:${file && file.name}`,
+    revokeObjectURL: (url) => state.revoked.push(url),
+  },
   setTimeout: () => 0,
   clearTimeout: () => {},
   window: { customCards: [], addEventListener() {}, removeEventListener() {} },
@@ -129,6 +134,7 @@ const reset = () => {
   state.preview = undefined;
   state.status = "";
   state.inputs = [];
+  state.revoked = [];
 };
 
 const run = () => {
@@ -178,6 +184,30 @@ const run = () => {
   assert.equal(card._ocrPages[1], second);
   assert.equal(state.preview, first);
 
+  // 4b. The chosen pages are shown with a thumbnail preview; replacing the
+  //     list releases the old preview URLs.
+  reset();
+  const thumbsCard = new context.RecipeBoxListCard();
+  const list = { innerHTML: "" };
+  thumbsCard.shadowRoot = {
+    querySelector: (selector) => (selector === "ol.ocr-pages" ? list : null),
+    querySelectorAll: () => [],
+  };
+  thumbsCard._addPhotos([{ name: "seite1.jpg", type: "image/jpeg" }]);
+  assert.match(list.innerHTML, /class="ocr-page-thumb"/);
+  assert.match(list.innerHTML, /src="blob:seite1.jpg"/);
+  thumbsCard._addPhotos([{ name: "seite2.jpg", type: "image/jpeg" }]);
+  assert.match(list.innerHTML, /src="blob:seite2.jpg"/);
+  assert.deepEqual(state.revoked, ["blob:seite1.jpg"]);
+  thumbsCard._ocrPages = [];
+  thumbsCard._renderOcrPages();
+  assert.deepEqual(state.revoked, [
+    "blob:seite1.jpg",
+    "blob:seite1.jpg",
+    "blob:seite2.jpg",
+  ]);
+  assert.doesNotMatch(list.innerHTML, /ocr-page-thumb/);
+
   // 5. Webviews without a change event: the polling fallback reads the files.
   reset();
   const polling = makeCard();
@@ -192,15 +222,17 @@ const run = () => {
   assert.equal(polling._ocrPages[0], third);
   assert.equal(state.timers.size, 0, "polling stops after the selection");
 
-  // 6. The fallback gives up after a while instead of polling forever.
+  // 6. The fallback gives up after a while instead of polling forever and
+  //    says so, instead of leaving the user without feedback.
   reset();
   const idle = makeCard();
   idle._pickPhotos();
   tick(41);
   assert.equal(state.timers.size, 0);
   assert.equal(idle._ocrPages.length, 0);
+  assert.match(state.status, /kam nicht an/);
 
-  console.log("card_scan_pick_test: 6 checks passed");
+  console.log("card_scan_pick_test: 8 checks passed");
 };
 
 run();
