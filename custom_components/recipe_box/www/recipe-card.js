@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.7";
+const CARD_VERSION = "2.4.8";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -740,6 +740,16 @@ const photoErrorMessage = (error, file) => {
   }
   return raw || "Upload fehlgeschlagen";
 };
+
+/* Home Assistant wraps the answer of a service that supports responses in
+ * { context, response }. Older versions and tests may hand over the bare
+ * payload, so accept both. */
+const serviceResponse = (result) =>
+  result &&
+  typeof result === "object" &&
+  Object.prototype.hasOwnProperty.call(result, "response")
+    ? result.response
+    : result;
 
 /* A backup stays importable when photos were cleaned up, but recipes whose
  * own photo is gone would restore with a broken image. */
@@ -3123,13 +3133,15 @@ class RecipeBoxListCard extends HTMLElement {
     if (!this._hass) return;
     if (button) button.disabled = true;
     try {
-      const result = await this._hass.callService(
-        "recipe_box",
-        "cleanup_recipe_images",
-        {},
-        undefined,
-        false,
-        true
+      const result = serviceResponse(
+        await this._hass.callService(
+          "recipe_box",
+          "cleanup_recipe_images",
+          {},
+          undefined,
+          false,
+          true
+        )
       );
       if (result && result.available === false) {
         notify(this, "Der Foto-Upload ist in Home Assistant nicht verfügbar.");
@@ -3220,13 +3232,15 @@ class RecipeBoxListCard extends HTMLElement {
 
     if (uploadOk) {
       try {
-        const result = await this._hass.callService(
-          "recipe_box",
-          "cleanup_recipe_images",
-          {},
-          undefined,
-          false,
-          true
+        const result = serviceResponse(
+          await this._hass.callService(
+            "recipe_box",
+            "cleanup_recipe_images",
+            {},
+            undefined,
+            false,
+            true
+          )
         );
         const removed = Number(result && result.removed) || 0;
         lines.push({

@@ -462,7 +462,10 @@ const run = async () => {
   };
   tested._hass.callService = async (domain, service) => {
     state.calls.push({ domain, service });
-    return { removed: 1, kept: 0, available: true };
+    return {
+      context: { id: "abc" },
+      response: { removed: 1, kept: 0, available: true },
+    };
   };
   await tested._runPhotoTest();
   const report = photoTestHtml(
@@ -473,6 +476,7 @@ const run = async () => {
   assert.match(report, /image_upload vorhanden, 2 Bilder/);
   assert.match(report, /Upload über \/api\/image\/upload erfolgreich/);
   assert.match(report, /Foto-Upload funktioniert/);
+  assert.match(report, /1 Foto aufgeräumt, darunter das Testbild/);
   assert.equal(tested._photoTest.running, false);
   assert.ok(
     testRenders >= 4,
@@ -523,7 +527,28 @@ const run = async () => {
   assert.match(allFailReport, /Server: image_upload fehlt oder antwortet nicht/);
   assert.match(allFailReport, /Home Assistant nimmt keine Fotos an/);
 
-  console.log("card_photo_test: 22 checks passed");
+  // 23. Home Assistant wraps service answers in { context, response }; the
+  //     cleanup reports the numbers from the wrapped response.
+  const cleanupCard = makeCard();
+  const cleanupButton = { disabled: false };
+  cleanupCard._hass.callService = async () => ({
+    context: { id: "abc" },
+    response: { removed: 2, kept: 1, available: true },
+  });
+  await cleanupCard._cleanupPhotos(cleanupButton);
+  assert.deepEqual(state.notifications, ["2 Fotos aufgeräumt."]);
+  assert.equal(cleanupButton.disabled, false);
+
+  // 24. A missing image_upload is reported instead of "nothing to clean up".
+  const noUpload = makeCard();
+  noUpload._hass.callService = async () => ({
+    context: { id: "abc" },
+    response: { removed: 0, kept: 0, available: false },
+  });
+  await noUpload._cleanupPhotos(null);
+  assert.match(state.notifications[0], /nicht verfügbar/);
+
+  console.log("card_photo_test: 24 checks passed");
 };
 
 run().catch((error) => {
