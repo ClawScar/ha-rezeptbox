@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.11";
+const CARD_VERSION = "2.9.0-beta.12";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -3710,6 +3710,14 @@ class RecipeBoxListCard extends HTMLElement {
 
   _render(recipes) {
     if (!this.shadowRoot) return;
+    /* Android webviews drop the chosen files when the card replaces its DOM
+     * while the photo picker is open, so the card holds still until the
+     * selection arrives. The picker normally closes within a few seconds; the
+     * timeout only keeps a cancelled picker from freezing the card. */
+    if (this._picking && Date.now() - this._picking < 90000) {
+      this._renderPending = true;
+      return;
+    }
     const entries = recipes || this._recipes();
 
     if (this._selected) {
@@ -4803,11 +4811,48 @@ class RecipeBoxListCard extends HTMLElement {
   _attachScanInput(input) {
     if (!input || input._rezeptboxScan) return;
     input._rezeptboxScan = true;
+    const done = () => {
+      this._picking = 0;
+      if (this._pickTimer && typeof clearTimeout === "function") {
+        clearTimeout(this._pickTimer);
+      }
+      this._pickTimer = null;
+      this._flushPendingRender();
+    };
+    input.addEventListener("click", () => {
+      this._picking = Date.now();
+      this._scanStatus(tr("Foto-Dialog geöffnet …", "Photo dialog opened …"));
+      if (typeof setTimeout !== "function") return;
+      if (this._pickTimer) clearTimeout(this._pickTimer);
+      this._pickTimer = setTimeout(() => {
+        if (this._picking) done();
+      }, 90000);
+    });
+    input.addEventListener("cancel", done);
     input.addEventListener("change", () => {
       const chosen = Array.from(input.files || []);
       input.value = "";
-      if (chosen.length) this._addPhotos(chosen);
+      done();
+      if (chosen.length) {
+        this._addPhotos(chosen);
+      } else {
+        /* Worth knowing: the dialog closed but handed nothing over. */
+        this._scanStatus(
+          tr(
+            "Der Foto-Dialog hat keine Dateien geliefert. Bitte erneut versuchen.",
+            "The photo dialog did not deliver any files. Please try again."
+          )
+        );
+      }
     });
+  }
+
+  /* Applies the render that was skipped while the picker was open. */
+  _flushPendingRender() {
+    if (!this._renderPending) return;
+    this._renderPending = false;
+    this._signature = null;
+    this._render();
   }
 
   _addPhotos(chosen) {

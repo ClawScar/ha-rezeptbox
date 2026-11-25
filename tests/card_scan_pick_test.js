@@ -28,6 +28,7 @@ const state = {
   preview: undefined,
   status: "",
   revoked: [],
+  flushes: 0,
 };
 
 const makeInput = () => ({
@@ -94,6 +95,7 @@ const reset = () => {
   state.preview = undefined;
   state.status = "";
   state.revoked = [];
+  state.flushes = 0;
 };
 
 const run = () => {
@@ -167,7 +169,42 @@ const run = () => {
   ]);
   assert.doesNotMatch(list.innerHTML, /ocr-page-thumb/);
 
-  console.log("card_scan_pick_test: 6 checks passed");
+  // 7. While the picker is open the card does not replace its DOM, so the
+  //    Android webview keeps the chosen files attached to the input.
+  reset();
+  const holdCard = makeCard();
+  holdCard.shadowRoot = {};
+  const input2 = makeInput();
+  holdCard._attachScanInput(input2);
+  input2.fire("click");
+  assert.ok(holdCard._picking > 0, "the picker is marked open");
+  holdCard._render();
+  assert.equal(holdCard._renderPending, true, "the render is postponed");
+  assert.equal(holdCard.shadowRoot.innerHTML, undefined, "no DOM was replaced");
+
+  // 8. When the files arrive, the postponed render runs and the photos are in
+  //    the form.
+  holdCard._render = () => {
+    state.flushes += 1;
+  };
+  const arrival = { name: "seite1.jpg", type: "image/jpeg" };
+  input2.files = [arrival];
+  input2.fire("change");
+  assert.equal(holdCard._picking, 0);
+  assert.equal(holdCard._renderPending, false);
+  assert.equal(state.flushes, 1, "the skipped render is applied");
+  assert.equal(holdCard._ocrPages.length, 1);
+
+  // 9. A dialog that closes without files says so.
+  reset();
+  const emptyCard = makeCard();
+  const input3 = makeInput();
+  emptyCard._attachScanInput(input3);
+  input3.files = [];
+  input3.fire("change");
+  assert.match(state.status, /keine Dateien geliefert/);
+
+  console.log("card_scan_pick_test: 9 checks passed");
 };
 
 run();
