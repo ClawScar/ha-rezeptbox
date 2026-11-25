@@ -209,4 +209,41 @@ assert.deepEqual(toPlain(ocrRecipeFromPages([undefined, ""])), {
   instructions: [],
 });
 
-console.log("card_ocr_test: 9 checks passed");
+// 10. A printed breakfast card ("Schneller Himbeer-Kokos-Quark"): the
+//     collection name above the title, the time label, the servings line and
+//     the printed checkbox row are not ingredients; the longest real header
+//     line becomes the title; "GEWÜRZE:" is a label and the optional note is
+//     dropped.
+const CARD_ONE = `GESAMTZEIT
+2-3 Minuten
+FRÜHSTÜCKS-
+IDEEN
+FÜR DIE WOCHE
+SCHNELLER HIMBEER-KOKOS-QUARK
+Für 1 Portion
+ZUTATEN
+• 20 g TK-Himbeeren
+• 120 g Skyr
+• 15 g Kokosraspeln
+GEWÜRZE:
+OPTIONAL: ETWAS SÜSSE (Z.B. HONIG)
+Ja X Nein`;
+const CARD_TWO = `ZUBEREITUNG
+1. Himbeeren in eine Schüssel geben, auftauen lassen oder kurz in
+die Mikrowelle geben.
+2. Mit Skyr, Kokosraspeln und optional etwas Süße vermischen.
+TIPP: DER QUARK SCHMECKT AUCH SUPER LECKER IN DEM MÜSLI-CUPS-REZEPT.`;
+const breakfast = ocrRecipeFromPages([CARD_ONE, CARD_TWO]);
+assert.equal(breakfast.title, "Schneller Himbeer-Kokos-Quark");
+assert.equal(breakfast.servings, 1);
+assert.deepEqual(toPlain(breakfast.ingredients), [
+  "20 g TK-Himbeeren",
+  "120 g Skyr",
+  "15 g Kokosraspeln",
+]);
+assert.deepEqual(toPlain(breakfast.instructions), [
+  "Himbeeren in eine Schüssel geben, auftauen lassen oder kurz in die Mikrowelle geben.",
+  "Mit Skyr, Kokosraspeln und optional etwas Süße vermischen.",
+]);
+
+console.log("card_ocr_test: 10 checks passed");

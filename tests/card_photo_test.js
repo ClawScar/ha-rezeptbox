@@ -230,6 +230,12 @@ const run = async () => {
   const withPhoto = detailHtml(withPhotoState, detailOptions, new Set(), 2, meta);
   assert.match(withPhoto, /Foto ändern/);
   assert.match(withPhoto, /class="photo-remove"/);
+  assert.match(
+    withPhoto,
+    /class="photo-remove" type="button">Foto entfernen<\/button>/,
+    "the remove button shows its label instead of the template source"
+  );
+  assert.doesNotMatch(withPhoto, /\$\{tr\(/);
 
   const imported = detailHtml(
     {

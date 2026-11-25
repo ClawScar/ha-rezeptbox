@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.2";
+const CARD_VERSION = "2.9.0-beta.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1164,7 +1164,7 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
 const OCR_BASE = "/recipe_box/ocr/";
 const OCR_MAX_SIDE = 2200;
 const OCR_INGREDIENT_HEADING =
-  /^(zutaten|zutatenliste|ingredients|you need|f\u00fcr die)\b/i;
+  /^(zutaten(?:liste)?|ingredients|you need|f\u00fcr die zutaten(?:liste)?)\b/i;
 const OCR_STEP_HEADING =
   /^(zubereitung|anleitung|schritte|zubereitungsschritte|instructions|directions|preparation|method|steps)\b/i;
 const OCR_SKIP_HEADING =
@@ -1177,6 +1177,17 @@ const OCR_NUMBERED_STEP = /^\d{1,2}\s*[.)]\s*/;
  * swallowed the "Zutaten" heading. Steps start with a number and a dot. */
 const OCR_INGREDIENT_START =
   /^\s*(?:[\u2022*+\u00b0\u00ab\u00bb\u2039\u203a~^=]|[-\u2013\u2014]\s|\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l|el|tl|prise|prisen|bund|p\u00e4ckchen|packung|packungen|dose|dosen|st\u00fcck|stk)\b)/i;
+
+/* The small lines above the title: a time label with its value, a time range
+ * or a printed checkbox row. None of that belongs in the recipe. */
+const OCR_TIME_LABEL =
+  /^(?:gesamtzeit|kochzeit|backzeit|garzeit|arbeitszeit|zubereitungszeit|ruhezeit|zeit|dauer|menge|portion|portionen|personen)$/i;
+const OCR_TIME_LINE =
+  /^\d+(?:\s*[-\u2013]\s*\d+)?\s*(?:min(?:uten)?|std\.?|stunden?|h|sek(?:unden)?)\b/i;
+const OCR_LABEL_LINE = /^[\p{Lu}\p{N}\s&/()+-]{3,24}:$/u;
+/* A printed label whose colon the scan dropped, e.g. a "GEWÜRZE" field. */
+const OCR_SECTION_LABEL = /^(?:gew(?:\u00fc|ue)rze|gewuerze|topping|garnitur)$/i;
+const OCR_OPTIONAL_LINE = /^optional\b[:\s]/i;
 
 const ocrClean = (line) =>
   String(line || "")
@@ -1243,8 +1254,66 @@ const ocrIsNoise = (line, title) => {
   return false;
 };
 
+const OCR_CHECKBOX_TOKEN = /^(?:ja|nein|x|\u2713|\u2610|\u25a1)$/i;
+const ocrIsCheckboxRow = (line) => {
+  const text = ocrClean(line);
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 4 || text.length > 24) return false;
+  if (!words.every((word) => OCR_CHECKBOX_TOKEN.test(word))) return false;
+  return words.some((word) => /^(?:ja|nein)$/i.test(word));
+};
+
+/* A line can start the ingredient list without a "Zutaten" heading: either
+ * it has a bullet or an amount, or it is "2 Zwiebeln" without a unit. */
+const ocrLooksLikeIngredient = (line) => {
+  const text = ocrClean(line);
+  if (OCR_INGREDIENT_START.test(text)) return true;
+  if (!/^\d+(?:[.,]\d+)?\s+\p{L}/u.test(text)) return false;
+  if (OCR_SERVINGS.test(text) || OCR_FOR_SERVINGS.test(text)) return false;
+  if (OCR_TIME_LINE.test(text)) return false;
+  return true;
+};
+
+/* Section labels such as a printed "GEWÜRZE:" field are not ingredients. */
+const ocrSectionSkip = (line) => {
+  const text = ocrClean(line);
+  if (!text) return true;
+  if (OCR_LABEL_LINE.test(text)) return true;
+  if (OCR_SECTION_LABEL.test(text.replace(/[:\s]+$/, ""))) return true;
+  if (ocrIsCheckboxRow(text)) return true;
+  if (OCR_TIME_LINE.test(text) && !OCR_INGREDIENT_START.test(text)) return true;
+  return false;
+};
+
+/* The title is the longest meaningful line of the header block. That beats
+ * a collection name, the time label and the servings line above it. */
+const ocrTitleScore = (line) => {
+  const text = ocrClean(line);
+  if (!text) return 0;
+  const plain = text.replace(/[:\s]+$/, "");
+  if (OCR_TIME_LABEL.test(plain)) return 0;
+  if (OCR_TIME_LINE.test(text)) return 0;
+  if (OCR_SERVINGS.test(text) || OCR_FOR_SERVINGS.test(text)) return 0;
+  if (ocrIsCheckboxRow(text)) return 0;
+  if (OCR_LABEL_LINE.test(text)) return 0;
+  return text.length;
+};
+
+/* Printed cards often use capitals; the form looks better with a normal
+ * title. Mixed-case lines stay exactly as recognised. */
+const ocrTitleCase = (value) => {
+  const text = ocrClean(value);
+  if (!text || /\p{Ll}/u.test(text)) return text;
+  return text
+    .toLowerCase()
+    .replace(
+      /(^|[\s\-\u2013/])(\p{L})/gu,
+      (_match, lead, letter) => `${lead}${letter.toUpperCase()}`
+    );
+};
+
 const ocrServings = (lines) => {
-  for (const line of (lines || []).slice(0, 5)) {
+  for (const line of (lines || []).slice(0, 15)) {
     const match = OCR_SERVINGS.exec(line) || OCR_FOR_SERVINGS.exec(line);
     if (!match) continue;
     const value = Number(match[1]);
@@ -1295,19 +1364,47 @@ const ocrRecipeFromPages = (pages) => {
   let section = "";
   let sawHeading = false;
 
+  const headerLines = [];
+  let titleDone = false;
+  const flushTitle = () => {
+    if (titleDone) return;
+    titleDone = true;
+    let best = "";
+    let bestScore = 0;
+    for (const line of headerLines) {
+      const score = ocrTitleScore(line);
+      if (score > bestScore) {
+        best = line;
+        bestScore = score;
+      }
+    }
+    if (!best) return;
+    result.title = ocrTitleCase(
+      best.replace(/^(rezept|recipe)\s*[:\-]\s*/i, "").trim()
+    );
+    result.servings = result.servings || ocrServings(headerLines);
+  };
+
   sources.forEach((page, pageIndex) => {
     const raw = page.split(/\r?\n/).map(ocrClean);
     const lines = [];
     for (let index = 0; index < raw.length; index += 1) {
       let line = raw[index];
       if (!line) continue;
-      /* A hyphen at the line end belongs to the word on the next line. */
+      /* A hyphen at the line end joins the next line. Before a lowercase
+       * word it is a word break ("Spätz- le"), before a capitalised word it
+       * separates a compound ("Himbeer-Kokos-" + "Quark"). */
       while (/[a-z\u00e4\u00f6\u00fc\u00df]-$/i.test(line) && raw[index + 1]) {
-        line = `${line.slice(0, -1)}${raw[index + 1].replace(/^\s+/, "")}`;
+        const next = raw[index + 1].replace(/^\s+/, "");
+        line = /^\p{Lu}/u.test(next)
+          ? `${line}${next}`
+          : `${line.slice(0, -1)}${next}`;
         index += 1;
       }
       lines.push(line);
     }
+
+    if (pageIndex > 0) flushTitle();
 
     for (const line of lines) {
       for (const part of ocrSplitColumns(line)) {
@@ -1316,6 +1413,7 @@ const ocrRecipeFromPages = (pages) => {
 
         const heading = ocrHeading(text);
         if (heading) {
+          flushTitle();
           section = heading;
           sawHeading = true;
           continue;
@@ -1324,40 +1422,37 @@ const ocrRecipeFromPages = (pages) => {
         if (section === "skip") continue;
 
         if (!section) {
-          if (pageIndex === 0 && !result.title) {
-            result.title = text
-              .replace(/^(rezept|recipe)\s*[:\-]\s*/i, "")
-              .trim();
-            result.servings = result.servings || ocrServings(lines);
+          if (sawHeading) continue;
+          /* A numbered line or a real ingredient line starts the recipe even
+           * without a printed heading. */
+          if (OCR_NUMBERED_STEP.test(text)) {
+            flushTitle();
+            section = "instructions";
+            ocrMergeStep(result.instructions, text);
             continue;
           }
-          if (!sawHeading) {
-            /* A short line without an amount between the title and the
-             * ingredients is a subtitle like "Hauptgericht · 4 Portionen". */
-            if (
-              pageIndex === 0 &&
-              (OCR_SERVINGS.test(text) ||
-                OCR_FOR_SERVINGS.test(text) ||
-                /^\d+\s*(?:min|std|stunden?|minutes?)\b/i.test(text) ||
-                (/^[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]/.test(text) &&
-                  text.length <= 60))
-            ) {
-              continue;
-            }
-            section = OCR_NUMBERED_STEP.test(text)
-              ? "instructions"
-              : "ingredients";
-          } else {
+          if (ocrLooksLikeIngredient(text)) {
+            flushTitle();
+            section = "ingredients";
+            ocrMergeIngredient(result.ingredients, text);
             continue;
           }
+          /* Everything above the first real section is the title block:
+           * title, collection name, time, servings and checkbox rows. The
+           * best line becomes the title, the rest is dropped. */
+          headerLines.push(text);
+          continue;
         }
+
+        if (ocrSectionSkip(text)) continue;
 
         if (section === "ingredients") {
           /* A numbered line starts the steps, even without a heading. */
           if (OCR_NUMBERED_STEP.test(text)) {
             section = "instructions";
             ocrMergeStep(result.instructions, text);
-          } else {
+          } else if (!OCR_OPTIONAL_LINE.test(text)) {
+            /* "OPTIONAL: ETWAS SÜSSE" is a note, not an ingredient. */
             ocrMergeIngredient(result.ingredients, text);
           }
         } else if (section === "instructions") {
@@ -1372,6 +1467,9 @@ const ocrRecipeFromPages = (pages) => {
         }
       }
     }
+
+    flushTitle();
+    if (!result.servings) result.servings = ocrServings(lines);
   });
 
   if (!result.servings && sources[0]) {
@@ -2236,7 +2334,7 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
     !forPrint && meta.entityId && isManualSource(attributes.source_url)
       ? `<div class="photo-edit">
           <label class="photo-edit-label">${attributes.image_url ? tr("Foto ändern", "Change photo") : tr("Foto hinzufügen", "Add photo")}<input class="photo-edit-input" type="file" accept="image/*"></label>
-          ${attributes.image_url ? '<button class="photo-remove" type="button">${tr("Foto entfernen", "Remove photo")}</button>' : ""}
+          ${attributes.image_url ? `<button class="photo-remove" type="button">${tr("Foto entfernen", "Remove photo")}</button>` : ""}
         </div>`
       : "";
   const footer = forPrint
