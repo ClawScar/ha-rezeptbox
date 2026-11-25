@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.8.0-beta.3";
+const CARD_VERSION = "2.8.0-beta.4";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1308,110 +1308,6 @@ const shortDayLabel = (iso) => {
   });
 };
 
-/* The day picker in the detail view: three weeks, searchable by weekday,
- * date or ISO value, so planning does not need a trip back to the list. */
-const DETAIL_PLAN_DAYS = 21;
-
-const detailDayChipsHtml = (hass, state, query = "") => {
-  const sourceUrl = String(
-    ((state && state.attributes) || {}).source_url || ""
-  );
-  const plannedByDate = new Map(
-    mealPlanEntries(hass).map((entry) => [String(entry.date), entry])
-  );
-  const needle = String(query || "")
-    .trim()
-    .toLowerCase();
-  const days = weekDays(DETAIL_PLAN_DAYS).filter((day) => {
-    const text = `${shortDayLabel(day.iso)} ${dayChipLabel(
-      day.iso
-    )} ${day.iso}`.toLowerCase();
-    return !needle || text.includes(needle);
-  });
-  if (!days.length) {
-    return `<p class="tab-hint detail-plan-empty">${tr(
-      "Kein Tag passt zur Suche.",
-      "No day matches the search."
-    )}</p>`;
-  }
-  return days
-    .map((day) => {
-      const entry = plannedByDate.get(day.iso);
-      const entryUrl = String((entry && entry.source_url) || "");
-      const mine = Boolean(entryUrl) && entryUrl === sourceUrl;
-      const plannedTitle = entry ? planEntryLabel(entry) : "";
-      const replaces = !mine && plannedTitle ? plannedTitle : "";
-      const label = shortDayLabel(day.iso);
-      const action = mine
-        ? tr(
-            `Bereits für ${label} eingeplant – zum Entfernen antippen`,
-            `Already planned for ${label} – tap to remove`
-          )
-        : replaces
-          ? tr(
-              `Für ${label} einplanen – ersetzt ${replaces}`,
-              `Plan for ${label} – replaces ${replaces}`
-            )
-          : tr(`Für ${label} einplanen`, `Plan for ${label}`);
-      return `<button class="detail-day-chip${
-        mine ? " detail-day-current" : ""
-      }${entry && !mine ? " detail-day-taken" : ""}" type="button" data-date="${
-        day.iso
-      }" data-replaces="${escapeHtml(
-        replaces
-      )}" aria-pressed="${mine}" title="${escapeHtml(
-        action
-      )}" aria-label="${escapeHtml(action)}">${escapeHtml(label)}${
-        mine ? '<ha-icon icon="mdi:check"></ha-icon>' : ""
-      }</button>`;
-    })
-    .join("");
-};
-
-const detailPlanHtml = (state, hass, meta = {}) => {
-  if (!meta.entityId || !hass) return "";
-  return `<div class="section detail-plan">
-    <h3>${tr("Einplanen", "Plan it")}</h3>
-    <input class="detail-day-search" type="search" placeholder="${tr(
-      "Tag suchen – z. B. Fr oder 28.11.",
-      "Search a day – e.g. Fri or 28/11"
-    )}" aria-label="${tr("Tag suchen", "Search a day")}">
-    <div class="detail-day-list" role="group" aria-label="${tr(
-      "Tage",
-      "Days"
-    )}">${detailDayChipsHtml(hass, state)}</div>
-  </div>`;
-};
-
-const bindDetailDayPicker = (root, card, state) => {
-  const list = root.querySelector(".detail-day-list");
-  if (!list) return;
-  const entityId =
-    card._detailEntityId ||
-    (card._config && card._config.entity) ||
-    card._selected;
-  const bindChips = () => {
-    list.querySelectorAll("button.detail-day-chip").forEach((button) => {
-      button.addEventListener("click", () => {
-        const date = button.getAttribute("data-date");
-        const replaces = button.getAttribute("data-replaces") || "";
-        if (button.getAttribute("aria-pressed") === "true") {
-          card._plan(date, "");
-          return;
-        }
-        card._plan(date, entityId, { replaces });
-      });
-    });
-  };
-  bindChips();
-  const search = root.querySelector("input.detail-day-search");
-  if (!search) return;
-  search.addEventListener("input", () => {
-    list.innerHTML = detailDayChipsHtml(card._hass, state, search.value);
-    bindChips();
-  });
-};
-
 /* The strip under a recipe in the list: one tap plans it for that day. Days
  * that already have a recipe say so, so replacing is a visible choice, and
  * the recipe's own days stay filled. */
@@ -1962,7 +1858,6 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
           meta.favorite ? "mdi:star" : "mdi:star-outline"
         }"></ha-icon>${tr("Favorit", "Favorite")}</button>`
       : "";
-  const detailPlan = forPrint ? "" : detailPlanHtml(state, meta.hass, meta);
   const shopping =
     Array.isArray(attributes.ingredients) && attributes.ingredients.length
       ? `<div class="shopping-row">
@@ -1995,7 +1890,6 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       ${tagsHtml(attributes)}
       ${photoEdit}
       ${groupsEditorHtml(attributes, meta, Array.isArray(meta.groups) ? meta.groups : [])}
-      ${detailPlan}
       ${updateHintHtml(attributes)}
       ${ingredients ? `<div class="section"><h3>${tr("Zutaten", "Ingredients")}</h3>${servingsControl}${ingredients}</div>` : ""}
       ${nutritionHtml(attributes)}
@@ -2573,15 +2467,6 @@ const STYLES = `<style>
   button.favorite-toggle { display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; --mdc-icon-size: 18px; }
   button.favorite-toggle:hover { border-color: var(--primary-color); }
   button.favorite-toggle.active { color: var(--warning-color, #ffa600); border-color: currentColor; }
-  .detail-plan { gap: 6px; }
-  input.detail-day-search { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
-  .detail-day-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px; }
-  button.detail-day-chip { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 40px; padding: 6px 8px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; background: none; color: var(--primary-text-color); font-family: inherit; font-size: 0.82rem; cursor: pointer; }
-  button.detail-day-chip:hover { border-color: var(--primary-color); }
-  button.detail-day-chip.detail-day-taken { border-style: dashed; color: var(--secondary-text-color); }
-  button.detail-day-chip.detail-day-current { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
-  button.detail-day-chip ha-icon { --mdc-icon-size: 16px; }
-  .detail-plan-empty { grid-column: 1 / -1; }
   .day-strip { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 10px; }
   button.day-chip { position: relative; flex: 1 1 44px; min-width: 44px; min-height: 40px; padding: 4px 2px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; background: none; color: var(--primary-text-color); font-family: inherit; font-size: 0.78rem; cursor: pointer; }
   button.day-chip:hover { border-color: var(--primary-color); }
@@ -2832,8 +2717,6 @@ class RecipeBoxCard extends HTMLElement {
       }
     );
 
-    this._detailEntityId = entityId;
-    bindDetailDayPicker(this.shadowRoot, this, this._state);
   }
 
   async _plan(date, entityId, context = {}) {
@@ -2891,7 +2774,6 @@ class RecipeBoxListCard extends HTMLElement {
     this._restoreFocus = false;
     this._planPicker = null;
     this._planOffset = 0;
-    this._detailEntityId = null;
   }
 
   static getStubConfig() {
@@ -4534,9 +4416,6 @@ class RecipeBoxListCard extends HTMLElement {
         },
       }
     );
-
-    this._detailEntityId = entry.entityId;
-    bindDetailDayPicker(this.shadowRoot, this, entry.state);
 
     this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
       button.addEventListener("click", () => {

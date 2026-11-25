@@ -1,7 +1,8 @@
-/* Tests for planning from the detail view, favorites and the random picker.
+/* Tests for planning from the list, favorites and the random picker.
  *
- * Covers the searchable day picker, the favorite star in row and detail,
- * the "Was kochen?" weighting and its short history.
+ * Covers the compact day strip in the recipe list, the favorite star in row
+ * and detail, the "Was kochen?" weighting and its short history, and that the
+ * recipe detail stays free of its own planning block.
  *
  * Run with: node tests/card_detail_plan_test.js
  */
@@ -74,8 +75,6 @@ this.RecipeBoxListCard = RecipeBoxListCard;
 this.RecipeBoxCard = RecipeBoxCard;
 this.HELPERS = {
   detailHtml,
-  detailPlanHtml,
-  detailDayChipsHtml,
   pickRandomEntry,
   favoritesFromEntries,
   readRandomHistory,
@@ -136,36 +135,9 @@ const hassFor = (entries = plan) => ({
   },
 });
 
-// 1. The detail day picker offers three weeks with the recipe's own day filled.
+// 1. The recipe detail no longer carries its own day picker: the recipe
+//    itself stays the focus, planning happens in the list and the plan tab.
 const hass = hassFor();
-const chips = HELPERS.detailDayChipsHtml(hass, lasagne);
-assert.equal(count(chips, 'class="detail-day-chip'), 21, "three weeks of days");
-assert.equal(count(chips, "detail-day-current"), 1, "the recipe's day is filled");
-assert.equal(count(chips, 'aria-pressed="true"'), 1);
-assert.equal(count(chips, "detail-day-taken"), 1, "a day with another recipe is marked");
-has(chips, 'data-replaces="Curry"');
-has(chips, 'data-date="' + todayIso + '"');
-hasNot(chips, 'data-replaces="Lasagne"', "the recipe does not replace itself");
-
-// 2. Typing into the day search narrows the list to matching days.
-const day = inDays(5);
-const searched = HELPERS.detailDayChipsHtml(hass, lasagne, day);
-assert.equal(count(searched, 'class="detail-day-chip'), 1);
-has(searched, `data-date="${day}"`);
-has(
-  HELPERS.detailDayChipsHtml(hass, lasagne, "zzz"),
-  "Kein Tag passt zur Suche."
-);
-
-// 3. The section is only added where a recipe entity can be planned.
-const section = HELPERS.detailPlanHtml(lasagne, hass, { entityId: "sensor.lasagne" });
-has(section, "Einplanen");
-has(section, 'class="detail-day-search"');
-has(section, 'class="detail-day-list"');
-assert.equal(HELPERS.detailPlanHtml(lasagne, hass, {}), "");
-assert.equal(HELPERS.detailPlanHtml(lasagne, undefined, { entityId: "sensor.lasagne" }), "");
-
-// 4. The detail view offers the favorite toggle and the day picker.
 HELPERS.setUiLanguage({ language: "de" });
 const detailCard = new RecipeBoxCard();
 detailCard.setConfig({ entity: "sensor.lasagne" });
@@ -173,19 +145,28 @@ detailCard.hass = hass;
 const detail = detailCard.shadowRoot.innerHTML;
 has(detail, 'class="favorite-toggle');
 has(detail, ">Favorit<");
-has(detail, 'class="detail-day-chip');
-has(detail, "Einplanen");
-has(detail, "detail-day-current");
+hasNot(detail, "Einplanen");
+hasNot(detail, 'class="detail-day-search"');
+hasNot(detail, 'class="detail-day-list"');
+hasNot(detail, 'class="detail-day-chip');
+has(detail, "Zutaten", "ingredients follow the recipe without a picker");
 
-// 5. English gets English labels for the picker and the favorite.
+const listPlan = new RecipeBoxListCard();
+listPlan.setConfig({});
+listPlan.hass = hass;
+has(listPlan.shadowRoot.innerHTML, 'class="plan-add', "planning stays in the list");
+
+// 2. English labels the favorite without any planning block.
 HELPERS.setUiLanguage({ language: "en" });
-const english = HELPERS.detailPlanHtml(curry, hass, { entityId: "sensor.curry" });
-has(english, "Plan it");
-has(english, "Search a day");
-has(english, "detail-day-taken");
+const englishCard = new RecipeBoxCard();
+englishCard.setConfig({ entity: "sensor.curry" });
+englishCard.hass = hass;
+const english = englishCard.shadowRoot.innerHTML;
+has(english, "Favorite");
+hasNot(english, "Plan it");
 HELPERS.setUiLanguage({ language: "de" });
 
-// 6. Favorites come from the shared recipe entities, not from localStorage.
+// 3. Favorites come from the shared recipe entities, not from localStorage.
 storage.clear();
 const entriesOf = () => [
   { entityId: "sensor.lasagne", state: lasagne },
@@ -199,7 +180,7 @@ assert.equal(
 );
 assert.equal(storage.size, 0, "no favorite is written into the browser");
 
-// 7. A favorite turns the star in the detail view and in the recipe row.
+// 4. A favorite turns the star in the detail view and in the recipe row.
 const favoriteCard = new RecipeBoxCard();
 favoriteCard.setConfig({ entity: "sensor.lasagne" });
 favoriteCard.hass = hass;
@@ -217,7 +198,7 @@ has(list, "mdi:star-outline");
 has(list, 'class="filter-favorites');
 has(list, 'class="filter-favorites" type="button" aria-pressed="false"');
 
-// 8. The recipe tab filters the collection down to favorites.
+// 5. The recipe tab filters the collection down to favorites.
 const favoritesCard = new RecipeBoxListCard();
 favoritesCard.setConfig({});
 favoritesCard.hass = hass;
@@ -245,7 +226,7 @@ has(
   "Keine Favoriten in der aktuellen Auswahl."
 );
 
-// 9. The random picker skips recent suggestions and prefers favorites.
+// 6. The random picker skips recent suggestions and prefers favorites.
 const pool = [
   { entityId: "sensor.lasagne", state: lasagne },
   { entityId: "sensor.curry", state: curry },
@@ -272,7 +253,7 @@ assert.equal(
   "when every recipe is recent the pool is used again"
 );
 
-// 10. The history keeps the newest pick first and stays short.
+// 7. The history keeps the newest pick first and stays short.
 storage.clear();
 HELPERS.rememberRandomPick(lasagneUrl);
 HELPERS.rememberRandomPick(curryUrl);
@@ -291,7 +272,7 @@ for (let index = 0; index < 25; index += 1) {
 assert.equal(HELPERS.readRandomHistory().length, 20);
 
 const main = async () => {
-  // 11. "Was kochen?" skips the last suggestion and remembers the new one.
+  // 8. "Was kochen?" skips the last suggestion and remembers the new one.
   storage.clear();
   HELPERS.rememberRandomPick(curryUrl);
   const randomCard = new RecipeBoxListCard();
@@ -308,7 +289,7 @@ const main = async () => {
   assert.ok(messages.some((message) => message.includes("Vorschlag: Lasagne")));
   assert.equal(HELPERS.readRandomHistory()[0], lasagneUrl);
 
-  // 12. A free-text day goes through plan_recipe with a label, not an entity.
+  // 9. A free-text day goes through plan_recipe with a label, not an entity.
   const calls = [];
   const planCard = new RecipeBoxListCard();
   planCard.setConfig({});
@@ -326,7 +307,7 @@ const main = async () => {
   assert.equal(calls[0].data.entity_id, undefined);
   assert.match(planMessages[0], /Auswärts eingetragen\.$/);
 
-  console.log("card_detail_plan_test: 12 checks passed");
+  console.log("card_detail_plan_test: 9 checks passed");
 };
 
 main().catch((error) => {

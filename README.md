@@ -289,13 +289,12 @@ klappt die nächsten sieben Tage auf. Ein Tipp plant das Rezept für diesen Tag;
 Tage, an denen schon ein Rezept steht, sind markiert und nennen beim Antippen,
 was ersetzt wird. Tage mit diesem Rezept sind gefüllt.
 
-In der Detailansicht plant der Abschnitt **Einplanen** das offene Rezept: Ein
-Suchfeld filtert die nächsten drei Wochen nach Wochentag, Datum oder
-ISO-Datum, ein Tipp plant den Tag, ein Tipp auf den bereits geplanten Tag
-entfernt ihn wieder. Der Stern **Favorit** markiert das Rezept für „Was
-kochen?“. Die Markierung liegt im Speicher der Integration und ist damit auf
-allen Geräten und für alle Benutzer sichtbar; sie lässt sich auch per Service
-setzen.
+Die Detailansicht bleibt beim Rezept: Zutaten, Zubereitung und der Stern
+**Favorit** stehen dort ohne eigenen Einplanen-Block, damit das Rezept den Platz
+behält. Geplant wird über das Kalender-Symbol in der Rezeptliste oder im Tab
+**Wochenplan**. Der Stern markiert das Rezept für „Was kochen?“. Die Markierung
+liegt im Speicher der Integration und ist damit auf allen Geräten und für alle
+Benutzer sichtbar; sie lässt sich auch per Service setzen.
 
 ### Einzelnes Rezept
 
