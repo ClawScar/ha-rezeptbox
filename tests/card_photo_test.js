@@ -166,7 +166,7 @@ const run = async () => {
   assert.equal(state.calls.length, 0, "no recipe without its photo");
   assert.match(
     state.notifications[0],
-    /Foto hochladen fehlgeschlagen \(Rezeptbox [\d.]+\): Dieses Bildformat wird nicht unterstützt/
+    /Foto hochladen fehlgeschlagen \(Rezeptbox [0-9A-Za-z.-]+\): Dieses Bildformat wird nicht unterstützt/
   );
   assert.equal(failing.shadowRoot.querySelector("button.manual-save").disabled, false);
 
