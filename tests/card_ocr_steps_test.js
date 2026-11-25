@@ -24,7 +24,11 @@ const source = fs.readFileSync(CARD, "utf8");
 
 const context = {
   console: { info() {} },
-  HTMLElement: class {},
+  HTMLElement: class {
+    attachShadow() {
+      return {};
+    }
+  },
   customElements: { get: () => undefined, define: () => {} },
   document: { createElement: () => ({}) },
   window: { customCards: [] },
@@ -35,7 +39,8 @@ vm.runInContext(
    this.ocrSplitSteps = ocrSplitSteps;
    this.ocrSplitSentences = ocrSplitSentences;
    this.ocrSplitNumbered = ocrSplitNumbered;
-   this.ocrRecipeFromPages = ocrRecipeFromPages;`,
+   this.ocrRecipeFromPages = ocrRecipeFromPages;
+   this.RecipeBoxListCard = RecipeBoxListCard;`,
   vm.createContext(context)
 );
 
@@ -116,7 +121,33 @@ const run = () => {
     "mit Skyr verrühren.",
   ]);
 
-  console.log("card_ocr_steps_test: 7 checks passed");
+  // 8. In the form each step is its own paragraph; ingredients stay single
+  //    lines. Saving drops the empty lines again.
+  const card = new context.RecipeBoxListCard();
+  const written = {};
+  card.shadowRoot = {
+    querySelector: (selector) => ({
+      set value(value) {
+        written[selector] = value;
+      },
+    }),
+  };
+  card._fillManualForm({
+    title: "Schneller Himbeer-Kokos-Quark",
+    servings: 1,
+    ingredients: ["20 g TK-Himbeeren", "120 g Skyr"],
+    instructions: ["Himbeeren auftauen.", "Mit Skyr verrühren."],
+  });
+  assert.equal(
+    written["textarea.manual-instructions"],
+    "Himbeeren auftauen.\n\nMit Skyr verrühren."
+  );
+  assert.equal(
+    written["textarea.manual-ingredients"],
+    "20 g TK-Himbeeren\n120 g Skyr"
+  );
+
+  console.log("card_ocr_steps_test: 8 checks passed");
 };
 
 run();

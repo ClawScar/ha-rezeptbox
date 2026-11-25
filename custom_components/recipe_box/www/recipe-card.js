@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.17";
+const CARD_VERSION = "2.9.0-beta.18";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -2149,8 +2149,8 @@ const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-sec
         `Changes apply to “${edit.title}”.`
       )
     : tr(
-        "Zutaten und Zubereitung je eine Zeile.",
-        "One ingredient and one step per line."
+        "Zutaten je eine Zeile, Zubereitung ein Schritt pro Absatz.",
+        "One ingredient per line, one step per paragraph."
       )}</p>
   <div class="scan">
     <div class="scan-bar">
@@ -5471,7 +5471,9 @@ class RecipeBoxListCard extends HTMLElement {
       scanned.servings ? String(scanned.servings) : ""
     );
     fill("textarea.manual-ingredients", scanned.ingredients.join("\n"));
-    fill("textarea.manual-instructions", scanned.instructions.join("\n"));
+    /* One step per paragraph, so the steps stay apart while checking them.
+     * Saving drops the empty lines and stores each step on its own. */
+    fill("textarea.manual-instructions", scanned.instructions.join("\n\n"));
   }
 
   _startEdit(sourceUrl) {
