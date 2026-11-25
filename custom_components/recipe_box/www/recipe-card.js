@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.8.2";
+const CARD_VERSION = "2.8.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -2598,7 +2598,8 @@ const STYLES = `<style>
   button.plan-clear { grid-area: clear; min-width: 36px; min-height: 36px; border-radius: 8px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.9rem; padding: 4px 6px; }
   button.plan-clear:hover { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); }
   @media (min-width: 700px) {
-    .plan-body { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+    /* The seven days stay stacked, also on wide screens. */
+    .plan-body { grid-template-columns: minmax(0, 1fr); gap: 10px; }
     .plan-row { position: relative; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); grid-template-columns: minmax(0, 1fr); grid-template-areas: "day" "select"; }
     .plan-row-picture { grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "day day" "thumb select"; align-items: center; }
     .plan-thumb { width: 56px; height: 56px; }

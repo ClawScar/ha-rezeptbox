@@ -286,7 +286,7 @@ mit ‹ und › eine Woche vor und zurück (höchstens bis zum ältesten geplant
 und **Heute** zurück zur aktuellen Woche. Die Kopfzeile nennt den Zeitraum und
 wie viele der sieben Tage geplant sind. Jede Zeile zeigt das Foto des geplanten
 Rezepts; ohne Foto steht dort ein Platzhalter, leere Tage bleiben gestrichelt.
-Auf breiten Bildschirmen werden die sieben Tage zu einem Raster.
+Die sieben Tage stehen immer untereinander – auch auf breiten Bildschirmen, wo jede Zeile nur einen Rahmen bekommt.
 
 Im Auswahlfeld eines Tages stehen neben den Rezepten auch **Reste** und
 **Auswärts** für Tage ohne Rezept. Sie zählen als geplant, tauchen aber nicht

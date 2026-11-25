@@ -204,15 +204,16 @@ assert.equal(count(two, 'class="plan-select plan-select-planned"'), 2);
 assert.equal(count(two, 'class="plan-select plan-select-empty"'), 5);
 assert.equal(count(two, 'class="plan-clear"'), 2);
 
-// 9. Wide screens turn the seven stacked rows into an adaptive day grid.
+// 9. Wide screens keep the seven day rows stacked in one column.
 has(german, ".plan-body { display: grid;", "the plan body is a grid");
 has(german, "grid-template-columns: minmax(0, 1fr);", "phones keep one column");
-has(german, "@media (min-width: 700px)", "the grid starts on wide screens");
+has(german, "@media (min-width: 700px)", "the day cards get their border on wide screens");
 has(
   german,
-  "grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));",
-  "wide screens fill a row with day cards"
+  "grid-template-columns: minmax(0, 1fr); gap: 10px;",
+  "wide screens keep one column as well"
 );
+hasNot(german, "repeat(auto-fit", "no day cards side by side");
 has(
   german,
   'grid-template-areas: "day day clear" "thumb select select";',
