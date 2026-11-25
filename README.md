@@ -173,14 +173,14 @@ nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
 Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js?v=2.9.0-beta.13
+url: /recipe_box/recipe-card.js?v=2.9.0-beta.14
 type: module
 ```
 
 Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
 Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
 und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
-aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.13“).
+aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.14“).
 
 ### Rezeptliste mit Detailansicht
 
@@ -279,7 +279,12 @@ dabei ohne Text (etwa bei harten Schatten), liest der Scanner sie zusätzlich in
 Graustufen und nimmt das bessere Ergebnis. Findet der Durchlauf keinen Titel oder
 nur Buchstabensalat (etwa „DEE u EEE ER“), wird der obere Bereich des ersten
 Fotos noch einmal mit stärkerer Vergrößerung und Schwarz-Weiß gelesen;
-übernommen wird der besser lesbare der beiden Titel. Handschrift erkennt der
+übernommen wird der besser lesbare der beiden Titel. Zutaten und Zubereitung
+liest der Scanner anschließend als eigene Zonen: Die gedruckten Überschriften
+werden in den Wortkästen gesucht, und nur der Bereich dazwischen wird noch
+einmal größer gelesen; Zeilen, bei denen sich die Erkennung unsicher ist,
+bleiben dabei draußen. So landen Illustration und Nachbarabschnitt nicht in den
+Zutaten. Handschrift erkennt der
 Scanner nicht; bei Reflexen oder schräger Aufnahme steigt die Fehlerquote, ein
 gerades, gut beleuchtetes Foto liefert die besten Ergebnisse. Bei älteren
 Browsern ohne WebAssembly-SIMD erscheint eine Fehlermeldung.

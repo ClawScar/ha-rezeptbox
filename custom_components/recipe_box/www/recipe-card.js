@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.13";
+const CARD_VERSION = "2.9.0-beta.14";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1743,6 +1743,72 @@ const ocrTitleCrop = async (file) => {
   }
 };
 
+/* Reads only a horizontal band of the page, enlarged like the title. */
+const ocrAreaCrop = async (file, top, bottom, targetSide = 2600) => {
+  if (
+    typeof document === "undefined" ||
+    typeof createImageBitmap !== "function" ||
+    typeof document.createElement !== "function"
+  ) {
+    return null;
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const from = Math.max(0, Math.min(0.98, Number(top) || 0));
+    const to = Math.max(from + 0.01, Math.min(1, Number(bottom) || 1));
+    const y = Math.round(bitmap.height * from);
+    const height = Math.max(1, Math.round(bitmap.height * (to - from)));
+    const width = bitmap.width;
+    const scale = Math.min(3, targetSide / Math.max(width, height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext && canvas.getContext("2d");
+    if (!context) {
+      if (typeof bitmap.close === "function") bitmap.close();
+      return null;
+    }
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    if ("filter" in context) {
+      context.filter = "grayscale(1) contrast(1.8)";
+    }
+    context.drawImage(
+      bitmap,
+      0,
+      y,
+      width,
+      height,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+    if (typeof bitmap.close === "function") bitmap.close();
+    const type =
+      "filter" in context && ocrBinarize(context, canvas)
+        ? "image/png"
+        : "image/jpeg";
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, type, 0.95)
+    );
+    return blob || null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const ocrImageHeight = async (image) => {
+  try {
+    const bitmap = await createImageBitmap(image);
+    const height = bitmap.height;
+    if (typeof bitmap.close === "function") bitmap.close();
+    return height;
+  } catch (error) {
+    return 0;
+  }
+};
+
 /* A word worth keeping: at least two letters, a vowel and a consonant, and
  * no endless repetition. OCR rubbish such as "DEE u EEE EEE ER" fails this. */
 const OCR_WORD_VOWEL = /[aeiou\u00e4\u00f6\u00fc]/i;
@@ -1794,6 +1860,129 @@ const ocrWithTitle = (scanned, cropText) => {
     scanned.title = title;
   }
   return scanned;
+};
+
+/* Recipes are printed cards: title on top, then the ingredients, then the
+ * preparation. Reading the whole page also catches the illustration, the
+ * neighbouring section and stray marks, so the printed headings are located in
+ * the word boxes of the first pass and only the zones between them are read
+ * again - larger, and without the lines the engine is unsure about. */
+const OCR_HEADING_WORDS = {
+  ingredients: ["ZUTATEN", "GEWURZE", "GEWÜRZE", "ZUTAT"],
+  steps: ["ZUBEREITUNG", "ZUBEREITEN", "ANLEITUNG", "ZUBEREITUNGSTEXT"],
+};
+
+const ocrLevenshtein = (a, b) => {
+  if (a === b) return 0;
+  const rows = [];
+  for (let index = 0; index <= a.length; index += 1) {
+    rows.push([index]);
+  }
+  for (let column = 1; column <= b.length; column += 1) {
+    rows[0][column] = column;
+  }
+  for (let row = 1; row <= a.length; row += 1) {
+    for (let column = 1; column <= b.length; column += 1) {
+      const same = a[row - 1] === b[column - 1] ? 0 : 1;
+      rows[row][column] = Math.min(
+        rows[row - 1][column] + 1,
+        rows[row][column - 1] + 1,
+        rows[row - 1][column - 1] + same
+      );
+    }
+  }
+  return rows[a.length][b.length];
+};
+
+/* A heading word somewhere in a line, allowing two misread letters:
+ * "GEWÜRLE" counts as "GEWÜRZE", "3 N ZUBEREITUNG EI" as "ZUBEREITUNG". */
+const ocrNearWord = (letters, word, maxDistance = 2) => {
+  if (letters.length < word.length) return false;
+  for (let start = 0; start + word.length <= letters.length; start += 1) {
+    if (ocrLevenshtein(letters.slice(start, start + word.length), word) <= maxDistance) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/* Says whether a recognised line is the ingredients heading, the preparation
+ * heading, or neither. */
+const ocrHeadingKind = (text) => {
+  const letters = String(text || "")
+    .toUpperCase()
+    .replace(/[^A-ZÄÖÜ]/g, "");
+  if (letters.length < 5 || letters.length > 24) return "";
+  if (OCR_HEADING_WORDS.steps.some((word) => ocrNearWord(letters, word))) {
+    return "steps";
+  }
+  if (OCR_HEADING_WORDS.ingredients.some((word) => ocrNearWord(letters, word))) {
+    return "ingredients";
+  }
+  return "";
+};
+
+/* All text lines with their boxes from the JavaScript (blocks) output. */
+const ocrDataLines = (data) => {
+  const blocks = (data && data.blocks) || [];
+  const lines = [];
+  blocks.forEach((block) => {
+    ((block && block.paragraphs) || []).forEach((paragraph) => {
+      ((paragraph && paragraph.lines) || []).forEach((line) => {
+        if (line && line.bbox) lines.push(line);
+      });
+    });
+  });
+  return lines;
+};
+
+/* Turns the boxes of the first pass into the two zones, as fractions of the
+ * page height so the original photo can be cropped at full quality. */
+const ocrZoneBands = (lines, height) => {
+  if (!lines.length || !(height > 0)) return null;
+  const cut = (line) => {
+    const box = (line && line.bbox) || {};
+    return {
+      top: Math.max(0, Math.min(1, (Number(box.y0) || 0) / height)),
+      bottom: Math.max(0, Math.min(1, (Number(box.y1) || 0) / height)),
+    };
+  };
+  let ingredients = null;
+  let steps = null;
+  lines.forEach((line) => {
+    const kind = ocrHeadingKind(line.text);
+    if (kind === "ingredients" && !ingredients) ingredients = cut(line);
+    if (kind === "steps" && !steps) steps = cut(line);
+  });
+  if (!ingredients && !steps) return null;
+  const bands = {};
+  const top = ingredients ? Math.min(1, ingredients.bottom + 0.004) : 0.12;
+  if (steps) {
+    const bottom = Math.max(top, steps.top - 0.004);
+    if (bottom - top > 0.02) bands.ingredients = { top, bottom };
+  } else if (1 - top > 0.02) {
+    bands.ingredients = { top, bottom: 0.96 };
+  }
+  if (steps) {
+    const start = Math.min(1, steps.bottom + 0.004);
+    if (1 - start > 0.02) bands.steps = { top: start, bottom: 1 };
+  }
+  return Object.keys(bands).length ? bands : null;
+};
+
+/* Lines the engine was unsure about are the usual source of letter salad
+ * ("„EEE Z --- an. 7 ER BE"), so the zone text keeps only firm lines. */
+const ocrZoneText = (data, minConfidence = 45) => {
+  const lines = ocrDataLines(data);
+  if (!lines.length) return (data && data.text) || "";
+  return lines
+    .filter(
+      (line) =>
+        String(line.text || "").trim() &&
+        (!(line.confidence >= 0) || line.confidence >= minConfidence)
+    )
+    .map((line) => String(line.text).trim())
+    .join("\n");
 };
 
 const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-section">
@@ -4929,6 +5118,56 @@ class RecipeBoxListCard extends HTMLElement {
     });
   }
 
+  /* Reads the ingredients and the preparation a second time, each as its own
+   * zone of the page. The whole page mixes the illustration and the next
+   * section into the ingredients; the zones keep only printed lines the engine
+   * is sure about. */
+  async _readZones(worker, pages, pageScans) {
+    const zoneTexts = [];
+    let found = false;
+    for (let index = 0; index < pageScans.length; index += 1) {
+      const scan = pageScans[index];
+      const height = await ocrImageHeight(scan.image);
+      const bands = ocrZoneBands(ocrDataLines(scan.data), height);
+      if (!bands) {
+        zoneTexts.push("");
+        continue;
+      }
+      found = true;
+      const parts = [];
+      const kinds = Object.keys(bands);
+      for (let position = 0; position < kinds.length; position += 1) {
+        const kind = kinds[position];
+        this._scanStatus(
+          tr(
+            `Zutaten und Zubereitung werden genauer gelesen (${position + 1}/${
+              kinds.length
+            }) …`,
+            `Reading ingredients and steps closer (${position + 1}/${
+              kinds.length
+            }) …`
+          )
+        );
+        const crop = await ocrAreaCrop(
+          pages[index],
+          bands[kind].top,
+          bands[kind].bottom
+        );
+        if (!crop) continue;
+        const { data } = await worker.recognize(crop, {}, {
+          blocks: true,
+          text: true,
+        });
+        const heading = kind === "ingredients" ? "ZUTATEN" : "ZUBEREITUNG";
+        parts.push(`${heading}\n${ocrZoneText(data)}`);
+      }
+      zoneTexts.push(parts.join("\n"));
+    }
+    if (!found) return null;
+    const zoned = ocrRecipeFromPages(zoneTexts);
+    return zoned.ingredients.length || zoned.instructions.length ? zoned : null;
+  }
+
   /* Runs Tesseract for every photographed page and drops the text into the
    * form. Nothing is saved until the user has checked the result. */
   async _scanPages() {
@@ -4964,6 +5203,7 @@ class RecipeBoxListCard extends HTMLElement {
       });
 
       const texts = [];
+      const pageScans = [];
       for (let index = 0; index < pages.length; index += 1) {
         currentPage = index + 1;
         this._scanStatus(
@@ -4973,18 +5213,35 @@ class RecipeBoxListCard extends HTMLElement {
           )
         );
         const image = await ocrPhoto(pages[index]);
-        let { data } = await worker.recognize(image);
+        /* The boxes of every line are needed to find the headings. */
+        let { data } = await worker.recognize(image, {}, {
+          blocks: true,
+          text: true,
+        });
         const text = (data && data.text) || "";
         if (text.trim().length < 40) {
           const grey = await ocrPhotoGrey(pages[index]);
-          const second = await worker.recognize(grey);
+          const second = await worker.recognize(grey, {}, {
+            blocks: true,
+            text: true,
+          });
           const more = (second.data && second.data.text) || "";
           if (more.trim().length > text.trim().length) data = second.data;
         }
         texts.push((data && data.text) || "");
+        pageScans.push({ image, data });
       }
 
-      const scanned = ocrRecipeFromPages(texts);
+      let scanned = ocrRecipeFromPages(texts);
+      const zoned = await this._readZones(worker, pages, pageScans);
+      if (zoned) {
+        if (zoned.ingredients.length) {
+          scanned.ingredients = zoned.ingredients;
+        }
+        if (zoned.instructions.length) {
+          scanned.instructions = zoned.instructions;
+        }
+      }
       if (!scanned.title || ocrTitleLooksGarbled(scanned.title)) {
         /* Read the title area of the first page once more, closer up. */
         const crop = await ocrTitleCrop(pages[0]);
