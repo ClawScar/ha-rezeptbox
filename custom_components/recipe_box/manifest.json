@@ -1,6 +1,7 @@
 {
   "domain": "recipe_box",
   "name": "Rezeptbox",
+  "categories": ["productivity_information"],
   "codeowners": ["@ClawScar"],
   "config_flow": true,
   "dependencies": ["http"],
