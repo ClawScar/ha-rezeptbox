@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.8";
+const CARD_VERSION = "2.9.0-beta.9";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1736,11 +1736,56 @@ const ocrTitleCrop = async (file) => {
   }
 };
 
-/* Uses the title from the crop pass only when the page pass found none. */
+/* A word worth keeping: at least two letters, a vowel and a consonant, and
+ * no endless repetition. OCR rubbish such as "DEE u EEE EEE ER" fails this. */
+const OCR_WORD_VOWEL = /[aeiou\u00e4\u00f6\u00fc]/i;
+const OCR_WORD_CONSONANT = /[bcdfghjklmnpqrstvwxyz\u00df]/i;
+const ocrIsWordish = (token) => {
+  const letters = token.replace(/[^\p{L}]/gu, "");
+  return (
+    letters.length >= 2 &&
+    letters.length <= 24 &&
+    OCR_WORD_VOWEL.test(letters) &&
+    OCR_WORD_CONSONANT.test(letters) &&
+    !/^(\p{L})\1{2,}$/u.test(letters)
+  );
+};
+
+/* Numbers and symbols say nothing about OCR quality, so only tokens with
+ * letters count. */
+const ocrTitleTokens = (title) =>
+  ocrClean(title)
+    .split(/\s+/)
+    .filter((token) => /\p{L}/u.test(token));
+
+const ocrTitleQuality = (title) => {
+  const tokens = ocrTitleTokens(title);
+  if (!tokens.length) return 0;
+  const words = tokens.filter(ocrIsWordish).length;
+  return words / tokens.length + Math.min(tokens.length, 6) * 0.01;
+};
+
+/* A title full of letter salad ("FRleSslmik: Race Ba DEE u EEE EEE ER EEE")
+ * is worse than no title: the title area is read once more in that case. */
+const ocrTitleLooksGarbled = (title) => {
+  const tokens = ocrTitleTokens(title);
+  if (!tokens.length) return false;
+  const words = tokens.filter(ocrIsWordish).length;
+  return words / tokens.length < 0.7;
+};
+
+/* Takes the title from the crop pass when the page has none or only rubbish,
+ * and keeps whichever of the two reads better. */
 const ocrWithTitle = (scanned, cropText) => {
-  if (scanned.title) return scanned;
   const title = ocrRecipeFromPages([cropText || ""]).title;
-  if (title) scanned.title = title;
+  if (!title) return scanned;
+  if (!scanned.title) {
+    scanned.title = title;
+    return scanned;
+  }
+  if (ocrTitleQuality(title) > ocrTitleQuality(scanned.title)) {
+    scanned.title = title;
+  }
   return scanned;
 };
 
@@ -4897,7 +4942,7 @@ class RecipeBoxListCard extends HTMLElement {
       }
 
       const scanned = ocrRecipeFromPages(texts);
-      if (!scanned.title) {
+      if (!scanned.title || ocrTitleLooksGarbled(scanned.title)) {
         /* Read the title area of the first page once more, closer up. */
         const crop = await ocrTitleCrop(pages[0]);
         if (crop) {

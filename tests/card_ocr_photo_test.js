@@ -100,7 +100,7 @@ context.createImageBitmap = async () => ({
 });
 
 vm.runInContext(
-  `${source}\nthis.ocrPhoto = ocrPhoto;\nthis.ocrPhotoGrey = ocrPhotoGrey;\nthis.ocrTitleCrop = ocrTitleCrop;\nthis.ocrWithTitle = ocrWithTitle;`,
+  `${source}\nthis.ocrPhoto = ocrPhoto;\nthis.ocrPhotoGrey = ocrPhotoGrey;\nthis.ocrTitleCrop = ocrTitleCrop;\nthis.ocrWithTitle = ocrWithTitle;\nthis.ocrTitleLooksGarbled = ocrTitleLooksGarbled;`,
   vm.createContext(context)
 );
 
@@ -228,7 +228,38 @@ const run = async () => {
   assert.equal(await context.ocrTitleCrop(file), null);
   context.createImageBitmap = originalBitmap;
 
-  console.log("card_ocr_photo_test: 9 checks passed");
+  // 10. Letter salad from the page pass is recognised, a real title is not.
+  assert.equal(
+    context.ocrTitleLooksGarbled("FRleSslmik: Race Ba DEE u EEE EEE ER EEE"),
+    true
+  );
+  assert.equal(context.ocrTitleLooksGarbled("Zchrilleu Owellik Öko Sl Rn"), true);
+  assert.equal(
+    context.ocrTitleLooksGarbled("Schneller Himbeer-Kokos-Quark"),
+    false
+  );
+  assert.equal(context.ocrTitleLooksGarbled("Omas Käsespätzle"), false);
+  assert.equal(context.ocrTitleLooksGarbled("Fruhstucks-Ideen Fur Die Woche"), false);
+  assert.equal(context.ocrTitleLooksGarbled(""), false);
+
+  // 11. The crop title replaces letter salad, but never a readable title.
+  const repaired = context.ocrWithTitle(
+    { title: "FRleSslmik: Race Ba DEE u EEE EEE ER EEE" },
+    "SCHNELLER HIMBEER-KOKOS-QUARK\nFür 1 Portion"
+  );
+  assert.equal(repaired.title, "Schneller Himbeer-Kokos-Quark");
+  const unchanged = context.ocrWithTitle(
+    { title: "Omas Käsespätzle" },
+    "SCHNELLER HIMBEER-KOKOS-QUARK\nFür 1 Portion"
+  );
+  assert.equal(unchanged.title, "Omas Käsespätzle");
+  const stillGarbled = context.ocrWithTitle(
+    { title: "FRleSslmik: Race Ba DEE u EEE EEE ER EEE" },
+    "Für 1 Portion"
+  );
+  assert.equal(stillGarbled.title, "FRleSslmik: Race Ba DEE u EEE EEE ER EEE");
+
+  console.log("card_ocr_photo_test: 11 checks passed");
 };
 
 run().catch((error) => {
