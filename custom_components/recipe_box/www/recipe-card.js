@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.16";
+const CARD_VERSION = "2.9.0-beta.17";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1344,18 +1344,89 @@ const ocrServings = (lines) => {
   return null;
 };
 
-const ocrMergeIngredient = (list, line, allowWrap = true) => {
-  const text = ocrTidy(ocrStripBullet(line));
-  if (!text) return;
-  const previous = list[list.length - 1];
-  /* A line at the start of a page never continues the previous page. */
-  const wrapped =
-    allowWrap && (/^[a-z\u00e4\u00f6\u00fc\u00df]/.test(text) || /,$/.test(text));
-  if (previous && wrapped) {
-    list[list.length - 1] = `${previous} ${text}`;
-    return;
+/* Stray single capitals from the drawing sit between words:
+ * "kurz in E die Mikrowelle" is "kurz in die Mikrowelle". A lowercase single
+ * letter is a unit ("500 g Spätzle") and stays. */
+const ocrDropStrayLetters = (text) =>
+  String(text || "")
+    .replace(/(^|\s)\p{Lu}(?=\s)/gu, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+/* Symbols and one-letter fragments at the edges of a line are leftovers of
+ * the printed decoration: "20 g TK-Himbeeren a «" is "20 g TK-Himbeeren". */
+const ocrTrimJunk = (text) => {
+  const tokens = String(text || "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const junk = (token) => {
+    const letters = token.replace(/[^\p{L}]/gu, "");
+    return !letters || letters.length === 1;
+  };
+  /* Only the end is trimmed: an amount at the start ("500 g Spätzle") must
+   * stay, and a closing full stop belongs to the sentence. */
+  while (tokens.length > 1 && junk(tokens[tokens.length - 1])) tokens.pop();
+  return tokens
+    .join(" ")
+    .replace(/^[\s;:_|~^=*+«»‹›°]+|[\s;:_|~^=*+«»‹›°]+$/gu, "")
+    .trim();
+};
+
+/* A line without an amount that is only a fragment ("Er=>") is not an
+ * ingredient. */
+const ocrIsIngredientJunk = (text) => {
+  const value = String(text || "");
+  const letters = (value.match(/\p{L}/gu) || []).length;
+  return letters < 4 && !/\d/.test(value);
+};
+
+const OCR_AMOUNT =
+  /\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l|el|tl|prise|prisen|bund|p\u00e4ckchen|packung|packungen|dose|dosen|st\u00fcck|stk|zehe|zehen|cm)\b/gi;
+
+/* Two ingredients read as one line ("20 g TK-Himbeeren a « 120 g Skyr") are
+ * split at the second amount, and junk before the first amount is dropped. */
+const ocrIngredientParts = (line) => {
+  let text = ocrDropStrayLetters(ocrTidy(ocrStripBullet(line)));
+  if (!text) return [];
+  const amounts = [...text.matchAll(OCR_AMOUNT)];
+  if (amounts.length) {
+    const start = amounts[0].index;
+    if (start > 0 && text.slice(0, start).replace(/[^\p{L}]/gu, "").length <= 2) {
+      text = text.slice(start);
+    }
   }
-  list.push(text);
+  const cuts = [...text.matchAll(OCR_AMOUNT)]
+    .map((match) => match.index)
+    .filter((index) => index > 3);
+  const parts = [];
+  let from = 0;
+  cuts.forEach((cut) => {
+    if (cut - from > 3) {
+      parts.push(text.slice(from, cut));
+      from = cut;
+    }
+  });
+  parts.push(text.slice(from));
+  return parts
+    .map((part) => ocrTrimJunk(part))
+    .filter((part) => part && !ocrIsIngredientJunk(part));
+};
+
+const ocrMergeIngredient = (list, line, allowWrap = true) => {
+  ocrIngredientParts(line).forEach((text, part) => {
+    const previous = list[list.length - 1];
+    /* Only the first part of a line may continue the line before it, and a
+     * line at the start of a page never continues the previous page. */
+    const wrapped =
+      part === 0 &&
+      allowWrap &&
+      (/^[a-z\u00e4\u00f6\u00fc\u00df]/.test(text) || /,$/.test(text));
+    if (previous && wrapped) {
+      list[list.length - 1] = `${previous} ${text}`;
+      return;
+    }
+    list.push(text);
+  });
 };
 
 const ocrMergeStep = (list, line, allowWrap = true) => {
@@ -1430,9 +1501,9 @@ const ocrSplitNumbered = (text) => {
 const ocrIsStepNoise = (text) => {
   const value = String(text || "").trim();
   if (!value) return true;
+  /* "um rt 1." has four letters; a real step ("Kalt stellen.") has more. */
   const letters = (value.match(/\p{L}/gu) || []).length;
-  const words = value.split(/\s+/).filter((word) => /\p{L}{2,}/u.test(word));
-  return letters < 6 && words.length < 2;
+  return letters < 6;
 };
 
 const ocrSplitSteps = (list) => {
@@ -1443,7 +1514,7 @@ const ocrSplitSteps = (list) => {
       if (!value) return;
       const pieces = ocrSplitSentences(value);
       pieces.forEach((piece) => {
-        const clean = ocrTidy(piece);
+        const clean = ocrTrimJunk(ocrDropStrayLetters(ocrTidy(piece)));
         if (!clean || ocrIsStepNoise(clean)) return;
         steps.push(clean);
       });
@@ -1479,7 +1550,10 @@ const ocrRecipeFromPages = (pages) => {
     }
     if (!best) return;
     result.title = ocrTitleCase(
-      best.replace(/^(rezept|recipe)\s*[:\-]\s*/i, "").trim()
+      best
+        .replace(/^(rezept|recipe)\s*[:\-]\s*/i, "")
+        .replace(/\s+\d{1,2}$/, "")
+        .trim()
     );
     result.servings = result.servings || ocrServings(headerLines);
   };
