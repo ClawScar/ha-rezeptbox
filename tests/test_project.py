@@ -372,6 +372,11 @@ class FilesTest(unittest.TestCase):
         self.assertIn("async_register_built_in_panel", frontend)
         self.assertIn("PANEL_COMPONENT", frontend)
         self.assertIn('PANEL_COMPONENT = "recipe-box-panel"', const)
+        # The module URL carries the version, so a HACS update replaces the
+        # cached card without clearing the browser cache by hand.
+        self.assertIn('CARD_MODULE_URL = f"{CARD_URL}?v={VERSION}"', const)
+        self.assertIn("add_extra_js_url(hass, CARD_MODULE_URL)", frontend)
+        self.assertIn('"module_url": CARD_MODULE_URL', frontend)
 
     def test_brand_icon(self) -> None:
         icon = COMPONENT / "brand" / "icon.png"

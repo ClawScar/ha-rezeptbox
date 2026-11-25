@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.3";
+const CARD_VERSION = "2.9.0-beta.4";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1184,10 +1184,10 @@ const OCR_TIME_LABEL =
   /^(?:gesamtzeit|kochzeit|backzeit|garzeit|arbeitszeit|zubereitungszeit|ruhezeit|zeit|dauer|menge|portion|portionen|personen)$/i;
 const OCR_TIME_LINE =
   /^\d+(?:\s*[-\u2013]\s*\d+)?\s*(?:min(?:uten)?|std\.?|stunden?|h|sek(?:unden)?)\b/i;
-const OCR_LABEL_LINE = /^[\p{Lu}\p{N}\s&/()+-]{3,24}:$/u;
+const OCR_LABEL_LINE = /^[\p{Lu}\p{N}\s&/()+=.-]{3,24}:[\s=]*$/u;
 /* A printed label whose colon the scan dropped, e.g. a "GEWÜRZE" field. */
 const OCR_SECTION_LABEL = /^(?:gew(?:\u00fc|ue)rze|gewuerze|topping|garnitur)$/i;
-const OCR_OPTIONAL_LINE = /^optional\b[:\s]/i;
+const OCR_OPTIONAL_LINE = /^(?:\d{1,2}\s+)?optional\b[:\s]/i;
 
 const ocrClean = (line) =>
   String(line || "")
@@ -1195,6 +1195,17 @@ const ocrClean = (line) =>
     .replace(/\|/g, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
+
+/* Tesseract leaves the card's decorative marks behind: "\u2026 Skyr E",
+ * "\u2026 3", "\u2026 Kokosraspeln -", "\u2026 geben. =". Those trailing
+ * single letters, digits and symbols are not part of the text. */
+const OCR_STRAY_TOKEN = /^(?:[A-Za-z\u00c0-\u00ff]|\d{1,2}|[-\u2013\u2014=+*\u00b7\u2022\u00ab\u00bb%|]+)$/u;
+
+const ocrTidy = (line) => {
+  const parts = ocrClean(line).replace(/\s+=\s+/g, " ").split(" ").filter(Boolean);
+  while (parts.length && OCR_STRAY_TOKEN.test(parts[parts.length - 1])) parts.pop();
+  return parts.join(" ").replace(/[\s,;:=\-\u2013\u2014]+$/, "");
+};
 
 const ocrHeading = (line) => {
   const text = ocrClean(line).replace(/[:.!,;]+$/, "");
@@ -1242,6 +1253,14 @@ const ocrIsNoise = (line, title) => {
   if (!/[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]/.test(text)) return true;
   if (/^\d{1,3}(\s*\/\s*\d{1,3})?$/.test(text)) return true;
   if (/^(seite|page)\s*\d+/i.test(text)) return true;
+  if (/^\p{Lu}-\p{L}{1,2}$/u.test(text)) return true;
+  /* Lines made of short letter fragments without any number, e.g.
+   * "Ge Ge RL —FFE DE mn ZZ Ge ee FF EEE GE", come from the drawings. */
+  const tokens = text.split(/\s+/).filter((token) => /[\p{L}\p{N}]/u.test(token));
+  const letters = tokens.map((token) => (token.match(/\p{L}/gu) || []).length);
+  const longest = letters.length ? Math.max(...letters) : 0;
+  if (!/\d/.test(text) && tokens.length >= 4 && longest <= 4) return true;
+  if (!/\d/.test(text) && tokens.length >= 3 && longest <= 2) return true;
   if (title) {
     const shorten = (value) =>
       value
@@ -1257,6 +1276,10 @@ const ocrIsNoise = (line, title) => {
 const OCR_CHECKBOX_TOKEN = /^(?:ja|nein|x|\u2713|\u2610|\u25a1)$/i;
 const ocrIsCheckboxRow = (line) => {
   const text = ocrClean(line);
+  /* Tesseract often keeps stray marks: "% Ja RI Nein 5". */
+  if (/\bja\b/i.test(text) && /\bnein\b/i.test(text) && text.length <= 24) {
+    return true;
+  }
   const words = text.split(/\s+/).filter(Boolean);
   if (!words.length || words.length > 4 || text.length > 24) return false;
   if (!words.every((word) => OCR_CHECKBOX_TOKEN.test(word))) return false;
@@ -1290,7 +1313,7 @@ const ocrSectionSkip = (line) => {
 const ocrTitleScore = (line) => {
   const text = ocrClean(line);
   if (!text) return 0;
-  const plain = text.replace(/[:\s]+$/, "");
+  const plain = text.replace(/[:\s'\u2019]+$/, "");
   if (OCR_TIME_LABEL.test(plain)) return 0;
   if (OCR_TIME_LINE.test(text)) return 0;
   if (OCR_SERVINGS.test(text) || OCR_FOR_SERVINGS.test(text)) return 0;
@@ -1323,7 +1346,7 @@ const ocrServings = (lines) => {
 };
 
 const ocrMergeIngredient = (list, line) => {
-  const text = ocrStripBullet(line);
+  const text = ocrTidy(ocrStripBullet(line));
   if (!text) return;
   const previous = list[list.length - 1];
   const wrapped = /^[a-z\u00e4\u00f6\u00fc\u00df]/.test(text) || /,$/.test(text);
@@ -1335,7 +1358,7 @@ const ocrMergeIngredient = (list, line) => {
 };
 
 const ocrMergeStep = (list, line) => {
-  const text = ocrClean(line);
+  const text = ocrTidy(line);
   if (!text) return;
   const numbered = OCR_NUMBERED_STEP.test(text);
   const value = numbered ? text.replace(OCR_NUMBERED_STEP, "") : text;
@@ -1410,59 +1433,61 @@ const ocrRecipeFromPages = (pages) => {
       for (const part of ocrSplitColumns(line)) {
         const text = ocrClean(part);
         if (!text) continue;
+        const bare = ocrStripBullet(text);
+        if (!bare) continue;
 
-        const heading = ocrHeading(text);
+        const heading = ocrHeading(bare);
         if (heading) {
           flushTitle();
           section = heading;
           sawHeading = true;
           continue;
         }
-        if (ocrIsNoise(text, result.title)) continue;
+        if (ocrIsNoise(bare, result.title)) continue;
         if (section === "skip") continue;
 
         if (!section) {
           if (sawHeading) continue;
           /* A numbered line or a real ingredient line starts the recipe even
            * without a printed heading. */
-          if (OCR_NUMBERED_STEP.test(text)) {
+          if (OCR_NUMBERED_STEP.test(bare)) {
             flushTitle();
             section = "instructions";
-            ocrMergeStep(result.instructions, text);
+            ocrMergeStep(result.instructions, bare);
             continue;
           }
-          if (ocrLooksLikeIngredient(text)) {
+          if (ocrLooksLikeIngredient(bare)) {
             flushTitle();
             section = "ingredients";
-            ocrMergeIngredient(result.ingredients, text);
+            ocrMergeIngredient(result.ingredients, bare);
             continue;
           }
           /* Everything above the first real section is the title block:
            * title, collection name, time, servings and checkbox rows. The
            * best line becomes the title, the rest is dropped. */
-          headerLines.push(text);
+          headerLines.push(bare);
           continue;
         }
 
-        if (ocrSectionSkip(text)) continue;
+        if (ocrSectionSkip(bare)) continue;
 
         if (section === "ingredients") {
           /* A numbered line starts the steps, even without a heading. */
-          if (OCR_NUMBERED_STEP.test(text)) {
+          if (OCR_NUMBERED_STEP.test(bare)) {
             section = "instructions";
-            ocrMergeStep(result.instructions, text);
-          } else if (!OCR_OPTIONAL_LINE.test(text)) {
+            ocrMergeStep(result.instructions, bare);
+          } else if (!OCR_OPTIONAL_LINE.test(bare)) {
             /* "OPTIONAL: ETWAS SÜSSE" is a note, not an ingredient. */
-            ocrMergeIngredient(result.ingredients, text);
+            ocrMergeIngredient(result.ingredients, bare);
           }
         } else if (section === "instructions") {
           /* A new page may continue the ingredients without repeating the
            * heading; bullets and amounts give that away. */
-          if (OCR_INGREDIENT_START.test(text)) {
+          if (OCR_INGREDIENT_START.test(bare)) {
             section = "ingredients";
-            ocrMergeIngredient(result.ingredients, text);
+            ocrMergeIngredient(result.ingredients, bare);
           } else {
-            ocrMergeStep(result.instructions, text);
+            ocrMergeStep(result.instructions, bare);
           }
         }
       }
@@ -3300,6 +3325,8 @@ class RecipeBoxListCard extends HTMLElement {
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
     this._backup = null;
+    this._scanInput = null;
+    this._photoPoll = null;
     this._renamingGroup = null;
     this._filter = {
       query: "",
@@ -4030,12 +4057,12 @@ class RecipeBoxListCard extends HTMLElement {
           "Alle Rezepte, der Wochenplan und die Gruppen als JSON-Datei.",
           "All recipes, the meal plan and the groups as a JSON file."
         )}</p>
-        <div class="tools">
+                <div class="tools">
           <button class="export" type="button">${tr("Sichern", "Save")}</button>
           <label class="import-file-label">${tr("Laden", "Load")}<input class="import-file" type="file" accept="application/json"></label>
         </div>
-      </div>
-`
+        <p class="tab-hint card-version">${tr("Karte", "Card")} ${CARD_VERSION}</p>
+      </div>`
       : "";
 
     const filterBar = entries.length > 1 ? filterBarHtml(entries, this._filter) : "";
@@ -4557,13 +4584,14 @@ class RecipeBoxListCard extends HTMLElement {
     if (status) status.textContent = message || "";
   }
 
-  /* Home Assistant re-renders the card while the native photo picker is
-   * open, and a file input inside the card's shadow tree loses its files
-   * then (typical in the mobile app). The input therefore lives outside the
-   * card and is removed as soon as the selection is read. */
-  _pickPhotos() {
-    if (typeof document === "undefined" || !document.createElement) return;
-    if (!document.body) return;
+  /* The file input lives outside the card: Home Assistant re-renders the
+   * card while the native picker is open, and an input inside the shadow
+   * tree loses its files then (typical in the mobile app). The input is
+   * created once and kept, so the change listener always stays attached. */
+  _photoInput() {
+    if (this._scanInput && this._scanInput.parentNode) return this._scanInput;
+    if (typeof document === "undefined" || !document.createElement) return null;
+    if (!document.body) return null;
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
@@ -4573,46 +4601,45 @@ class RecipeBoxListCard extends HTMLElement {
     input.style.top = "0";
     input.style.left = "-10000px";
     input.style.opacity = "0";
+    input.addEventListener("change", () => {
+      const chosen = Array.from(input.files || []);
+      input.value = "";
+      this._stopPhotoPoll();
+      if (chosen.length) this._addPhotos(chosen);
+    });
     document.body.appendChild(input);
+    this._scanInput = input;
+    return input;
+  }
 
-    let handled = false;
-    let retries = 0;
-    const cleanup = () => {
-      if (typeof window !== "undefined") {
-        window.removeEventListener("focus", onWindowFocus);
-      }
-      if (input.parentNode) input.parentNode.removeChild(input);
-    };
-    const take = () => {
-      if (handled) return true;
-      let chosen = [];
-      try {
-        chosen = Array.from(input.files || []);
-      } catch (error) {
-        chosen = [];
-      }
-      if (!chosen.length) return false;
-      handled = true;
-      cleanup();
-      this._addPhotos(chosen);
-      return true;
-    };
-    /* Some app webviews close the picker without a change event. After the
-     * window returns, the files are read from the input a few times. */
-    const retry = () => {
-      if (take()) return;
-      retries += 1;
-      if (retries < 12) setTimeout(retry, 250);
-      else cleanup();
-    };
-    const onWindowFocus = () => setTimeout(retry, 300);
-
-    input.addEventListener("change", take);
-    input.addEventListener("cancel", cleanup);
-    if (typeof window !== "undefined") {
-      window.addEventListener("focus", onWindowFocus);
+  _stopPhotoPoll() {
+    if (this._photoPoll && typeof clearInterval === "function") {
+      clearInterval(this._photoPoll);
     }
+    this._photoPoll = null;
+  }
+
+  _pickPhotos() {
+    const input = this._photoInput();
+    if (!input) return;
+    input.value = "";
     input.click();
+    /* Some app webviews close the picker without a change event. The files
+     * are then read from the input for a few seconds. */
+    if (typeof setInterval !== "function") return;
+    this._stopPhotoPoll();
+    let tries = 0;
+    this._photoPoll = setInterval(() => {
+      tries += 1;
+      const chosen = Array.from(input.files || []);
+      if (chosen.length) {
+        input.value = "";
+        this._stopPhotoPoll();
+        this._addPhotos(chosen);
+        return;
+      }
+      if (tries >= 40) this._stopPhotoPoll();
+    }, 500);
   }
 
   _addPhotos(chosen) {

@@ -9,6 +9,7 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CARD_MODULE_URL,
     CARD_URL,
     CARD_URL_PATH,
     DATA_PANEL,
@@ -49,8 +50,8 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
     try:
         from homeassistant.components.frontend import add_extra_js_url
 
-        add_extra_js_url(hass, CARD_URL)
-        _LOGGER.debug("Loaded recipe card module %s", CARD_URL)
+        add_extra_js_url(hass, CARD_MODULE_URL)
+        _LOGGER.debug("Loaded recipe card module %s", CARD_MODULE_URL)
     except (KeyError, RuntimeError):
         _LOGGER.info(
             "Could not load the recipe card automatically; add %s as a "
@@ -80,7 +81,7 @@ def async_register_panel(hass: HomeAssistant) -> None:
             config={
                 "_panel_custom": {
                     "name": PANEL_COMPONENT,
-                    "module_url": CARD_URL,
+                    "module_url": CARD_MODULE_URL,
                     "embed_iframe": False,
                     "trust_external": False,
                 }

@@ -246,4 +246,40 @@ assert.deepEqual(toPlain(breakfast.instructions), [
   "Mit Skyr, Kokosraspeln und optional etwas Süße vermischen.",
 ]);
 
-console.log("card_ocr_test: 10 checks passed");
+// 11. The same card as the photo Tesseract actually returned on Android:
+//     bullets in front of the headings and step numbers ("« ZUTATEN"), a
+//     misread "CEMÜRZE:" label, "3 OPTIONAL:", the checkbox row with stray
+//     marks and the drawings' letter fragments. Everything must still end up
+//     in the right field and the fragments must not become ingredients.
+const NOISY_ONE = `Gesamtzeit'
+Für 1 Portion =
+« ZUTATEN, ä
+CEMÜRZE: =
+« 20 g TK-Himbeeren 3
+7 * 120 g Skyr E « 15 g Kokosraspeln -
+E-Be
+3 OPTIONAL: ETWAS SÜSSE (7.B. HONIG) E
+% Ja RI Nein 5
+--: BE Tu RR ET Te GGG EEE ze
+Ge Ge RL —FFE DE mn ZZ Ge ee FF EEE GE
+Fe —e GE
+EEE DT re R a -
+Fre de BEE, - EF Ss u -`;
+const NOISY_TWO = `« 1. Himbeeren in eine Schüssel geben, auftauen lassen oder kurz in = die Mikrowelle geben. =
+« 2. Mit Skyr, Kokosraspeln und optional etwas Süße vermischen. =
+TIPP: DER QUARK SCHMECKT AUCH SUPER LECKER IN DEM MÜSLI-CUPS-REZEPT Ss
+E E mn EEe zn ERBE IE EEE EEE en 66 —`;
+const noisy = ocrRecipeFromPages([NOISY_ONE, NOISY_TWO]);
+assert.equal(noisy.title, "", "no title line was recognised");
+assert.equal(noisy.servings, 1);
+assert.deepEqual(toPlain(noisy.ingredients), [
+  "20 g TK-Himbeeren",
+  "120 g Skyr",
+  "15 g Kokosraspeln",
+]);
+assert.deepEqual(toPlain(noisy.instructions), [
+  "Himbeeren in eine Schüssel geben, auftauen lassen oder kurz in die Mikrowelle geben.",
+  "Mit Skyr, Kokosraspeln und optional etwas Süße vermischen.",
+]);
+
+console.log("card_ocr_test: 11 checks passed");

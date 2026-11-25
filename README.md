@@ -166,14 +166,21 @@ Dashboard einbauen willst.
 
 ## Dashboard-Karten
 
-Die Karten werden beim Start automatisch als JavaScript-Modul geladen. Falls sie
-in deiner Installation nicht auftauchen, trage die Ressource einmal manuell unter
-**Einstellungen → Dashboards → Ressourcen** ein:
+Die Karten werden beim Start automatisch als JavaScript-Modul geladen, mit der
+Version in der URL (`/recipe_box/recipe-card.js?v=…`). So holt der Browser nach
+einem Update sicher die neue Datei. Falls die Karten in deiner Installation
+nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
+Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js
+url: /recipe_box/recipe-card.js?v=2.9.0-beta.4
 type: module
 ```
+
+Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
+Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
+und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
+aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.4“).
 
 ### Rezeptliste mit Detailansicht
 

@@ -1,7 +1,8 @@
 /* Tests for choosing scan photos (Fotos wählen).
  *
- * The file input lives outside the card, so a re-render while the native
- * picker is open cannot drop the selection.
+ * The file input lives outside the card and is reused, so a re-render while
+ * the native picker is open cannot drop the selection. Webviews that close
+ * the picker without a change event are covered by a polling fallback.
  *
  * Run with: node tests/card_scan_pick_test.js
  */
@@ -23,10 +24,9 @@ const source = fs.readFileSync(CARD, "utf8");
 
 const state = {
   appended: 0,
-  removed: 0,
   clicked: 0,
-  timers: [],
-  focusListeners: [],
+  timers: new Map(),
+  timerId: 0,
   rendered: 0,
   preview: undefined,
   status: "",
@@ -38,6 +38,7 @@ const makeInput = () => {
     type: "",
     accept: "",
     multiple: false,
+    value: "",
     style: {},
     files: [],
     parentNode: null,
@@ -81,28 +82,17 @@ const context = {
         element.parentNode = context.document.body;
         state.appended += 1;
       },
-      removeChild: (element) => {
-        element.parentNode = null;
-        state.removed += 1;
-      },
     },
   },
-  setTimeout: (fn) => {
-    state.timers.push(fn);
-    return state.timers.length;
+  setInterval: (fn) => {
+    state.timerId += 1;
+    state.timers.set(state.timerId, fn);
+    return state.timerId;
   },
+  clearInterval: (id) => state.timers.delete(id),
+  setTimeout: () => 0,
   clearTimeout: () => {},
-  window: {
-    customCards: [],
-    addEventListener: (type, handler) => {
-      if (type === "focus") state.focusListeners.push(handler);
-    },
-    removeEventListener: (type, handler) => {
-      state.focusListeners = state.focusListeners.filter(
-        (item) => item !== handler
-      );
-    },
-  },
+  window: { customCards: [], addEventListener() {}, removeEventListener() {} },
 };
 
 vm.runInContext(
@@ -110,10 +100,10 @@ vm.runInContext(
   vm.createContext(context)
 );
 
-const flushTimers = () => {
-  const pending = state.timers;
-  state.timers = [];
-  pending.forEach((fn) => fn());
+const tick = (times = 1) => {
+  for (let index = 0; index < times; index += 1) {
+    [...state.timers.values()].forEach((fn) => fn());
+  }
 };
 
 const makeCard = () => {
@@ -132,10 +122,9 @@ const makeCard = () => {
 
 const reset = () => {
   state.appended = 0;
-  state.removed = 0;
   state.clicked = 0;
-  state.timers = [];
-  state.focusListeners = [];
+  state.timers = new Map();
+  state.timerId = 0;
   state.rendered = 0;
   state.preview = undefined;
   state.status = "";
@@ -150,9 +139,10 @@ const run = () => {
   assert.doesNotMatch(form, /input class="ocr-input"/);
   assert.match(form, /<button class="ocr-run" type="button" disabled>/);
 
-  // 2. The picker input is created outside the card and opens the dialog.
+  // 2. The picker input is created outside the card, reused and opens the
+  //    dialog from the click.
   reset();
-  let card = makeCard();
+  const card = makeCard();
   card._pickPhotos();
   assert.equal(state.appended, 1, "the input is attached to the document");
   assert.equal(state.clicked, 1, "the picker opens from the click");
@@ -161,10 +151,13 @@ const run = () => {
   assert.equal(input.accept, "image/*");
   assert.equal(input.multiple, true);
   assert.equal(input.attributes["aria-hidden"], "true");
-  assert.equal(state.focusListeners.length, 1, "a focus fallback is registered");
+  card._pickPhotos();
+  assert.equal(state.appended, 1, "the input is reused, not recreated");
+  assert.equal(state.inputs.length, 1);
+  assert.equal(state.clicked, 2);
 
-  // 3. A change event hands the chosen photos to the list and removes the
-  //    temporary input again.
+  // 3. A change event hands the chosen photos to the list; the input stays
+  //    in place, so the next selection works the same way.
   const first = { name: "seite1.jpg", type: "image/jpeg" };
   input.files = [first];
   input.fire("change");
@@ -173,43 +166,39 @@ const run = () => {
   assert.equal(state.rendered, 1);
   assert.equal(state.preview, first);
   assert.match(state.status, /Fotos bereit\. „Text erkennen“/);
-  assert.equal(state.removed, 1, "the temporary input is gone");
-  assert.equal(state.focusListeners.length, 0);
+  assert.equal(input.value, "");
+  assert.equal(input.parentNode, context.document.body);
 
-  // 4. Choosing more photos appends them to the existing pages.
-  reset();
-  card = makeCard();
-  card._ocrPages = [first];
-  card._pickPhotos();
+  // 4. Choosing more photos appends them; the first one stays the photo.
   const second = { name: "seite2.jpg", type: "image/jpeg" };
-  state.inputs[0].files = [second];
-  state.inputs[0].fire("change");
+  card._pickPhotos();
+  input.files = [second];
+  input.fire("change");
   assert.equal(card._ocrPages.length, 2);
-  assert.equal(card._ocrPages[0], first);
   assert.equal(card._ocrPages[1], second);
-  assert.equal(state.preview, first, "the first photo stays the recipe photo");
+  assert.equal(state.preview, first);
 
-  // 5. Cancelling the picker adds nothing and cleans up.
+  // 5. Webviews without a change event: the polling fallback reads the files.
   reset();
-  card = makeCard();
-  card._pickPhotos();
-  state.inputs[0].fire("cancel");
-  assert.equal(card._ocrPages.length, 0);
-  assert.equal(state.rendered, 0);
-  assert.equal(state.removed, 1);
-
-  // 6. Webviews without a change event: the files are read when the window
-  //    comes back.
-  reset();
-  card = makeCard();
-  card._pickPhotos();
+  const polling = makeCard();
+  polling._pickPhotos();
+  const pollInput = state.inputs[0];
+  tick(2);
+  assert.equal(polling._ocrPages.length, 0, "nothing before a selection");
   const third = { name: "seite3.jpg", type: "image/jpeg" };
-  state.inputs[0].files = [third];
-  state.focusListeners[0]();
-  flushTimers();
-  assert.equal(card._ocrPages.length, 1);
-  assert.equal(card._ocrPages[0], third);
-  assert.equal(state.rendered, 1);
+  pollInput.files = [third];
+  tick();
+  assert.equal(polling._ocrPages.length, 1);
+  assert.equal(polling._ocrPages[0], third);
+  assert.equal(state.timers.size, 0, "polling stops after the selection");
+
+  // 6. The fallback gives up after a while instead of polling forever.
+  reset();
+  const idle = makeCard();
+  idle._pickPhotos();
+  tick(41);
+  assert.equal(state.timers.size, 0);
+  assert.equal(idle._ocrPages.length, 0);
 
   console.log("card_scan_pick_test: 6 checks passed");
 };

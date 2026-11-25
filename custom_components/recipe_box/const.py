@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "2.9.0-beta.3"
+VERSION = "2.9.0-beta.4"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
@@ -23,6 +23,10 @@ PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BUTTON]
 CARD_URL_PATH = f"/{DOMAIN}"
 CARD_FILENAME = "recipe-card.js"
 CARD_URL = f"{CARD_URL_PATH}/{CARD_FILENAME}"
+# Browser and the Home Assistant app cache the module aggressively, so a
+# HACS update alone does not replace it. The version in the URL makes every
+# release load a fresh file without clearing the cache by hand.
+CARD_MODULE_URL = f"{CARD_URL}?v={VERSION}"
 
 # Automatic sidebar page
 PANEL_URL_PATH = "rezeptbox"
