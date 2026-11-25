@@ -186,6 +186,7 @@ class FilesTest(unittest.TestCase):
         self.assertIn("photo-test", card)
         self.assertIn("Foto-Test", card)
         self.assertIn("image/list", card)
+        self.assertIn("_photoTest", card)
         self.assertIn("rezeptbox-", card)
         self.assertIn("missingImageWarning", card)
         self.assertIn("HEIC", card)

@@ -232,8 +232,9 @@ Integrationen bleiben unangetastet. Fotos aus Versionen vor 2.4.2, deren
 Rezept längst gelöscht wurde, lassen sich nicht sicher zuordnen und bleiben
 deshalb liegen. Daneben prüft **Foto-Test starten**, ob Home Assistant die
 Bildablage bereitstellt (`image/list`) und ob der Browser ein winziges Testbild
-über `/api/image/upload` hochladen kann; das Ergebnis steht direkt darunter, das
-Testbild wird anschließend aufgeräumt.
+über `/api/image/upload` hochladen kann. Die drei Zeilen und die Gesamtaussage
+stehen direkt unter dem Knopf (und die Gesamtaussage zusätzlich als Meldung),
+das Testbild wird anschließend aufgeräumt.
 
 Sicherungen bleiben nach dem Aufräumen einlesbar. Fotos von Rezepten, die beim
 Sichern noch existieren, werden nie gelöscht; nur Sicherungen von zuvor

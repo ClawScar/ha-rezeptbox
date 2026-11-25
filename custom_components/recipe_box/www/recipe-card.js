@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.6";
+const CARD_VERSION = "2.4.7";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -2077,6 +2077,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
     this._renamingGroup = null;
+    this._photoTest = null;
     this._filter = { query: "", tag: "", group: "", maxTime: "", sort: "title" };
     this._tab = "recipes";
     this._restoreFocus = false;
@@ -2635,6 +2636,16 @@ class RecipeBoxListCard extends HTMLElement {
         </div>`
       : "";
 
+    const photoTestButton =
+      this._photoTest && this._photoTest.running
+        ? '<button class="photo-test" type="button" disabled>Test läuft …</button>'
+        : '<button class="photo-test" type="button">Foto-Test starten</button>';
+    const photoTestReport = this._photoTest
+      ? this._photoTest.verdict
+        ? photoTestHtml(this._photoTest.lines, this._photoTest.verdict)
+        : '<p class="photo-test-verdict">Test läuft …</p>'
+      : "";
+
     const tools = this._config.show_tools
       ? `<div class="data-section">
         <h3>Sicherung</h3>
@@ -2655,9 +2666,9 @@ class RecipeBoxListCard extends HTMLElement {
         <h3>Foto-Test</h3>
         <p class="tab-hint">Prüft, ob Home Assistant die Bildablage (image_upload) bereitstellt und ob dieser Browser ein Foto über /api/image/upload hochladen kann. Das Testbild wird danach wieder aufgeräumt.</p>
         <div class="tools">
-          <button class="photo-test" type="button">Foto-Test starten</button>
+          ${photoTestButton}
         </div>
-        <div class="photo-test-result" hidden></div>
+        <div class="photo-test-result"${this._photoTest ? "" : " hidden"}>${photoTestReport}</div>
       </div>`
       : "";
 
@@ -2882,9 +2893,7 @@ class RecipeBoxListCard extends HTMLElement {
 
     const photoTest = this.shadowRoot.querySelector("button.photo-test");
     if (photoTest) {
-      photoTest.addEventListener("click", () =>
-        this._runPhotoTest(photoTest)
-      );
+      photoTest.addEventListener("click", () => this._runPhotoTest());
     }
 
     const file = this.shadowRoot.querySelector("input.import-file");
@@ -3147,17 +3156,16 @@ class RecipeBoxListCard extends HTMLElement {
 
   /* Diagnostic for the photo upload: ask Home Assistant for its stored images,
    * then upload a tiny picture through the same code path a real photo uses and
-   * remove it again. That tells a server problem apart from a browser one. */
-  async _runPhotoTest(button) {
+   * remove it again. That tells a server problem apart from a browser one. The
+   * report lives on the card, so a re-render during the test cannot wipe it. */
+  async _runPhotoTest() {
     if (!this._hass) return;
-    const root = this.shadowRoot;
-    const box = root && root.querySelector(".photo-test-result");
-    if (!box) return;
-    if (button) button.disabled = true;
-    box.hidden = false;
-    box.innerHTML = '<p class="photo-test-verdict">Test läuft …</p>';
+    if (this._photoTest && this._photoTest.running) return;
+    const test = { running: true, lines: [], verdict: null };
+    this._photoTest = test;
+    this._render();
 
-    const lines = [];
+    const lines = test.lines;
     let serverOk = false;
     try {
       const images = await this._hass.callWS({ type: "image/list" });
@@ -3184,6 +3192,8 @@ class RecipeBoxListCard extends HTMLElement {
       );
     }
 
+    this._render();
+
     let uploadOk = false;
     try {
       const imageUrl = await uploadPhoto(this._hass, testPhotoFile());
@@ -3205,6 +3215,8 @@ class RecipeBoxListCard extends HTMLElement {
         )}`,
       });
     }
+
+    this._render();
 
     if (uploadOk) {
       try {
@@ -3246,8 +3258,10 @@ class RecipeBoxListCard extends HTMLElement {
             ok: false,
             text: "Home Assistant nimmt keine Fotos an. Bitte die Integration 'image_upload' aktivieren (in default_config enthalten).",
           };
-    box.innerHTML = photoTestHtml(lines, verdict);
-    if (button) button.disabled = false;
+    test.verdict = verdict;
+    test.running = false;
+    this._render();
+    notify(this, verdict.text);
   }
 
   async _export() {

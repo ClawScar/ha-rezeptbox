@@ -68,6 +68,7 @@ this.PHOTO_HELPERS = {
   photoErrorMessage,
   bindDetail,
   missingImageWarning,
+  photoTestHtml,
 };`,
   vm.createContext(context)
 );
@@ -78,6 +79,7 @@ const {
   photoErrorMessage,
   bindDetail,
   missingImageWarning,
+  photoTestHtml,
 } = context.PHOTO_HELPERS;
 
 // 1. The manual form offers a photo picker with a preview and a remove button.
@@ -447,17 +449,12 @@ const run = async () => {
   assert.equal(savePicker.value, "");
 
   // 20. The photo test checks the server, uploads a real test picture through
-  //     the normal path and cleans it up again.
+  //     the normal path, cleans it up and keeps the report on the card so a
+  //     re-render cannot hide it.
   const tested = makeCard();
-  const testBox = { hidden: true, innerHTML: "" };
-  const testButton = { disabled: false };
-  tested.shadowRoot = {
-    querySelector: (selector) =>
-      selector === ".photo-test-result"
-        ? testBox
-        : selector === "button.photo-test"
-          ? testButton
-          : null,
+  let testRenders = 0;
+  tested._render = () => {
+    testRenders += 1;
   };
   tested._hass.callWS = async (message) => {
     state.ws.push(message);
@@ -467,13 +464,20 @@ const run = async () => {
     state.calls.push({ domain, service });
     return { removed: 1, kept: 0, available: true };
   };
-  await tested._runPhotoTest(testButton);
+  await tested._runPhotoTest();
+  const report = photoTestHtml(
+    tested._photoTest.lines,
+    tested._photoTest.verdict
+  );
   assert.equal(state.ws[0].type, "image/list");
-  assert.match(testBox.innerHTML, /image_upload vorhanden, 2 Bilder/);
-  assert.match(testBox.innerHTML, /Upload über \/api\/image\/upload erfolgreich/);
-  assert.match(testBox.innerHTML, /Foto-Upload funktioniert/);
-  assert.equal(testBox.hidden, false);
-  assert.equal(testButton.disabled, false);
+  assert.match(report, /image_upload vorhanden, 2 Bilder/);
+  assert.match(report, /Upload über \/api\/image\/upload erfolgreich/);
+  assert.match(report, /Foto-Upload funktioniert/);
+  assert.equal(tested._photoTest.running, false);
+  assert.ok(
+    testRenders >= 4,
+    "the report is rendered before, during and after the test"
+  );
   assert.equal(state.uploads.length, 1, "the test uploads one picture");
   assert.equal(
     state.uploads[0].form.entries[0][2].startsWith("rezeptbox-foto-test"),
@@ -490,15 +494,14 @@ const run = async () => {
     statusText: "Bad Request",
     text: async () => "Only jpeg, png, and gif images are allowed",
   });
-  const failBox = { hidden: true, innerHTML: "" };
-  browserFail.shadowRoot = {
-    querySelector: (selector) =>
-      selector === ".photo-test-result" ? failBox : null,
-  };
-  await browserFail._runPhotoTest(null);
-  assert.match(failBox.innerHTML, /Server: image_upload vorhanden/);
-  assert.match(failBox.innerHTML, /Browser: Upload fehlgeschlagen – Dieses Bildformat/);
-  assert.match(failBox.innerHTML, /Der Server ist bereit/);
+  await browserFail._runPhotoTest();
+  const failReport = photoTestHtml(
+    browserFail._photoTest.lines,
+    browserFail._photoTest.verdict
+  );
+  assert.match(failReport, /Server: image_upload vorhanden/);
+  assert.match(failReport, /Browser: Upload fehlgeschlagen – Dieses Bildformat/);
+  assert.match(failReport, /Der Server ist bereit/);
   assert.equal(state.calls.length, 0, "nothing to clean up after a failed upload");
 
   // 22. Without image_upload the test blames the server, not the browser.
@@ -512,14 +515,13 @@ const run = async () => {
     statusText: "Not Found",
     text: async () => "",
   });
-  const allFailBox = { hidden: true, innerHTML: "" };
-  allFail.shadowRoot = {
-    querySelector: (selector) =>
-      selector === ".photo-test-result" ? allFailBox : null,
-  };
-  await allFail._runPhotoTest(null);
-  assert.match(allFailBox.innerHTML, /Server: image_upload fehlt oder antwortet nicht/);
-  assert.match(allFailBox.innerHTML, /Home Assistant nimmt keine Fotos an/);
+  await allFail._runPhotoTest();
+  const allFailReport = photoTestHtml(
+    allFail._photoTest.lines,
+    allFail._photoTest.verdict
+  );
+  assert.match(allFailReport, /Server: image_upload fehlt oder antwortet nicht/);
+  assert.match(allFailReport, /Home Assistant nimmt keine Fotos an/);
 
   console.log("card_photo_test: 22 checks passed");
 };
