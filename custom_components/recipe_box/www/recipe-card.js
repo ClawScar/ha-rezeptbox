@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.7.0";
+const CARD_VERSION = "2.7.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -2241,12 +2241,13 @@ const STYLES = `<style>
   button.photo-remove { background: none; border: none; padding: 0; font-size: 0.82rem; color: var(--secondary-text-color); text-decoration: underline; cursor: pointer; }
   .plan-summary { font-weight: 600; color: var(--primary-text-color); }
   .plan-row { display: grid; align-items: center; gap: 4px 10px; padding: 6px 8px; border-radius: 10px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "day clear" "select select"; }
-  .plan-row-picture { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "thumb day clear" "thumb select select"; }
+  .plan-row-picture { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "day day clear" "thumb select select"; }
   .plan-thumb { grid-area: thumb; display: block; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
+  .plan-row-picture .plan-select { min-height: 44px; }
   .plan-thumb-placeholder { display: flex; align-items: center; justify-content: center; background: var(--secondary-background-color, rgba(127, 127, 127, 0.15)); color: var(--secondary-text-color); --mdc-icon-size: 22px; }
   .plan-thumb-empty { background: transparent; border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); opacity: 0.7; }
   .plan-row-today { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); box-shadow: inset 3px 0 0 var(--primary-color); padding-left: 10px; }
-  .plan-day { grid-area: day; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; font-size: 0.82rem; color: var(--secondary-text-color); }
+  .plan-day { grid-area: day; display: flex; flex-direction: row; align-items: center; gap: 6px; min-width: 0; font-size: 0.82rem; color: var(--secondary-text-color); }
   .plan-today { padding: 1px 7px; border-radius: 999px; background: var(--primary-color); color: var(--text-primary-color, #fff); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; }
   .plan-select { grid-area: select; min-width: 0; min-height: 40px; padding: 8px 32px 8px 12px; border: 1px solid transparent; border-radius: 10px; background-color: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); font-family: inherit; font-size: 0.9rem; text-overflow: ellipsis; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23727a80' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 18px; }
   .plan-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
@@ -2258,8 +2259,9 @@ const STYLES = `<style>
   @media (min-width: 700px) {
     .plan-body { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
     .plan-row { position: relative; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); grid-template-columns: minmax(0, 1fr); grid-template-areas: "day" "select"; }
-    .plan-row-picture { grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "thumb day" "thumb select"; align-items: center; }
+    .plan-row-picture { grid-template-columns: 56px minmax(0, 1fr); grid-template-areas: "day day" "thumb select"; align-items: center; }
     .plan-thumb { width: 56px; height: 56px; }
+    .plan-row-picture .plan-select { min-height: 56px; }
     .plan-row-today { border-color: var(--primary-color); box-shadow: none; }
     .day-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
     button.day-chip { min-width: 0; }

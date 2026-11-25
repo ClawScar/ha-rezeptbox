@@ -215,9 +215,15 @@ has(
 );
 has(
   german,
-  'grid-template-areas: "thumb day" "thumb select";',
-  "wide cards put the photo beside the day"
+  'grid-template-areas: "day day clear" "thumb select select";',
+  "phones put the photo beside the recipe field"
 );
+has(
+  german,
+  'grid-template-areas: "day day" "thumb select";',
+  "wide cards put the photo beside the recipe field as well"
+);
+has(german, ".plan-row-picture .plan-select { min-height: 44px; }");
 has(german, ".plan-row-clearable .plan-day { padding-right: 34px; }");
 
 // 10. Rows with a plan entry are flagged so a card can reserve room for the ✕.
