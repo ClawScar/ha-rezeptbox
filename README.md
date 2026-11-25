@@ -191,8 +191,10 @@ Die Karte merkt sich im Browser den zuletzt geöffneten Tab und die zuletzt
 gewählte Gruppe und startet nach einem Neuladen dort wieder.
 
 Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
-Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der
-aktuellen Auswahl. Favoriten (★ in der Zeile oder in der Detailansicht) werden
+Sortierung filtern sie; **Nur Favoriten** blendet alle Rezepte aus, die nicht
+mit dem Stern markiert sind, und macht die Favoriten so zur eigenen Sammlung –
+auch „Was kochen?“ zieht dann nur aus dieser Auswahl. **Was kochen?** öffnet ein
+zufälliges Rezept aus der aktuellen Auswahl. Favoriten (★ in der Zeile oder in der Detailansicht) werden
 dabei dreifach gewichtet, die letzten drei Vorschläge übersprungen. Die
 Favoriten speichert die Integration, nicht der Browser: Sie gelten damit auf
 allen Geräten und für alle Benutzer der Installation. Unter den

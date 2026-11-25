@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.8.0-beta.2";
+const CARD_VERSION = "2.8.0-beta.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -867,6 +867,17 @@ const filterBarHtml = (entries, filter) => {
     <input class="filter-search" type="search" placeholder="${tr("Rezepte durchsuchen", "Search recipes")}" value="${escapeHtml(
       filter.query
     )}">
+    <button class="filter-favorites${
+      filter.onlyFavorites ? " active" : ""
+    }" type="button" aria-pressed="${Boolean(
+      filter.onlyFavorites
+    )}" title="${
+      filter.onlyFavorites
+        ? tr("Alle Rezepte anzeigen", "Show all recipes")
+        : tr("Nur Favoriten anzeigen", "Show favorites only")
+    }"><ha-icon icon="${
+      filter.onlyFavorites ? "mdi:star" : "mdi:star-outline"
+    }"></ha-icon>${tr("Nur Favoriten", "Favorites only")}</button>
     ${
       tags.length
         ? `<select class="filter-tag"><option value="">${tr("Alle Tags", "All tags")}</option>${tagOptions}</select>`
@@ -2602,6 +2613,9 @@ const STYLES = `<style>
   .filter-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .filter-bar input, .filter-bar select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   .filter-bar input.filter-search { flex: 1 1 150px; min-width: 0; }
+  button.filter-favorites { display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 999px; padding: 5px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; white-space: nowrap; --mdc-icon-size: 16px; }
+  button.filter-favorites:hover { border-color: var(--primary-color); }
+  button.filter-favorites.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
   .group-chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .group-chip { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 999px; padding: 2px 4px 2px 9px; font-size: 0.8rem; }
   button.group-remove { background: none; border: none; color: inherit; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 4px; }
@@ -2865,7 +2879,14 @@ class RecipeBoxListCard extends HTMLElement {
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
     this._renamingGroup = null;
-    this._filter = { query: "", tag: "", group: "", maxTime: "", sort: "title" };
+    this._filter = {
+      query: "",
+      tag: "",
+      group: "",
+      maxTime: "",
+      sort: "title",
+      onlyFavorites: false,
+    };
     this._tab = "recipes";
     this._restoreFocus = false;
     this._planPicker = null;
@@ -2971,7 +2992,7 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _filtered(entries) {
-    const { query, tag, group, maxTime, sort } = this._filter;
+    const { query, tag, group, maxTime, sort, onlyFavorites } = this._filter;
     let list = entries;
     const needle = query.trim().toLowerCase();
     if (needle) {
@@ -2994,6 +3015,11 @@ class RecipeBoxListCard extends HTMLElement {
         ((state.attributes || {}).tags || []).some(
           (value) => String(value) === String(tag)
         )
+      );
+    }
+    if (onlyFavorites) {
+      list = list.filter(({ state }) =>
+        Boolean((state.attributes || {}).favorite)
       );
     }
     if (group) {
@@ -3596,15 +3622,20 @@ class RecipeBoxListCard extends HTMLElement {
           "Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch.",
           "No recipes yet. Add one or more recipe URLs above – from Chefkoch, for example."
         )
-      : this._filter.group
+      : this._filter.onlyFavorites
         ? tr(
-            `Keine Rezepte in der Gruppe „${this._filter.group}“.`,
-            `No recipes in the group “${this._filter.group}”.`
+            "Keine Favoriten in der aktuellen Auswahl.",
+            "No favorites in the current selection."
           )
-        : tr(
-            "Keine Rezepte passen zu Suche oder Filter.",
-            "No recipes match the search or filter."
-          );
+        : this._filter.group
+          ? tr(
+              `Keine Rezepte in der Gruppe „${this._filter.group}“.`,
+              `No recipes in the group “${this._filter.group}”.`
+            )
+          : tr(
+              "Keine Rezepte passen zu Suche oder Filter.",
+              "No recipes match the search or filter."
+            );
     const body = filtered.length
       ? `<ul class="recipe-list">${items.join("")}</ul>`
       : `<p class="empty">${emptyText}</p>`;
@@ -3835,6 +3866,15 @@ class RecipeBoxListCard extends HTMLElement {
         this._renderList(entries);
       });
     });
+    const favoritesOnly = this.shadowRoot.querySelector(
+      "button.filter-favorites"
+    );
+    if (favoritesOnly) {
+      favoritesOnly.addEventListener("click", () => {
+        this._filter.onlyFavorites = !this._filter.onlyFavorites;
+        this._renderList(entries);
+      });
+    }
     const tag = this.shadowRoot.querySelector("select.filter-tag");
     if (tag) {
       tag.addEventListener("change", () => {

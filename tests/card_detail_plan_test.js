@@ -214,9 +214,38 @@ const list = listCard.shadowRoot.innerHTML;
 assert.equal(count(list, 'class="recipe-favorite'), 2, "every recipe row has a star");
 assert.equal(count(list, "recipe-favorite active"), 1, "only the favorite is filled");
 has(list, "mdi:star-outline");
-lasagne.attributes.favorite = false;
+has(list, 'class="filter-favorites');
+has(list, 'class="filter-favorites" type="button" aria-pressed="false"');
 
-// 8. The random picker skips recent suggestions and prefers favorites.
+// 8. The recipe tab filters the collection down to favorites.
+const favoritesCard = new RecipeBoxListCard();
+favoritesCard.setConfig({});
+favoritesCard.hass = hass;
+favoritesCard._filter.onlyFavorites = true;
+favoritesCard._renderList(favoritesCard._recipes());
+const favoritesList = favoritesCard.shadowRoot.innerHTML;
+has(favoritesList, 'class="filter-favorites active"');
+has(favoritesList, 'aria-pressed="true"');
+has(favoritesList, ">Nur Favoriten<");
+assert.equal(
+  count(favoritesList, 'class="recipe-item"'),
+  1,
+  "only the favorite stays in the list"
+);
+has(favoritesList, 'class="item-title">Lasagne<');
+
+lasagne.attributes.favorite = false;
+const emptyFavorites = new RecipeBoxListCard();
+emptyFavorites.setConfig({});
+emptyFavorites.hass = hass;
+emptyFavorites._filter.onlyFavorites = true;
+emptyFavorites._renderList(emptyFavorites._recipes());
+has(
+  emptyFavorites.shadowRoot.innerHTML,
+  "Keine Favoriten in der aktuellen Auswahl."
+);
+
+// 9. The random picker skips recent suggestions and prefers favorites.
 const pool = [
   { entityId: "sensor.lasagne", state: lasagne },
   { entityId: "sensor.curry", state: curry },
@@ -243,7 +272,7 @@ assert.equal(
   "when every recipe is recent the pool is used again"
 );
 
-// 9. The history keeps the newest pick first and stays short.
+// 10. The history keeps the newest pick first and stays short.
 storage.clear();
 HELPERS.rememberRandomPick(lasagneUrl);
 HELPERS.rememberRandomPick(curryUrl);
@@ -262,7 +291,7 @@ for (let index = 0; index < 25; index += 1) {
 assert.equal(HELPERS.readRandomHistory().length, 20);
 
 const main = async () => {
-  // 10. "Was kochen?" skips the last suggestion and remembers the new one.
+  // 11. "Was kochen?" skips the last suggestion and remembers the new one.
   storage.clear();
   HELPERS.rememberRandomPick(curryUrl);
   const randomCard = new RecipeBoxListCard();
@@ -279,7 +308,7 @@ const main = async () => {
   assert.ok(messages.some((message) => message.includes("Vorschlag: Lasagne")));
   assert.equal(HELPERS.readRandomHistory()[0], lasagneUrl);
 
-  // 11. A free-text day goes through plan_recipe with a label, not an entity.
+  // 12. A free-text day goes through plan_recipe with a label, not an entity.
   const calls = [];
   const planCard = new RecipeBoxListCard();
   planCard.setConfig({});
@@ -297,7 +326,7 @@ const main = async () => {
   assert.equal(calls[0].data.entity_id, undefined);
   assert.match(planMessages[0], /Auswärts eingetragen\.$/);
 
-  console.log("card_detail_plan_test: 11 checks passed");
+  console.log("card_detail_plan_test: 12 checks passed");
 };
 
 main().catch((error) => {
