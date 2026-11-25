@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.5";
+const CARD_VERSION = "2.9.0-beta.6";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1162,7 +1162,6 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
  * text is only a suggestion that the form below shows for correction.
  * ------------------------------------------------------------------------ */
 const OCR_BASE = "/recipe_box/ocr/";
-const OCR_MAX_SIDE = 2200;
 const OCR_INGREDIENT_HEADING =
   /^(zutaten(?:liste)?|ingredients|you need|f\u00fcr die zutaten(?:liste)?)\b/i;
 const OCR_STEP_HEADING =
@@ -1561,8 +1560,13 @@ const loadTesseract = () => {
   return ocrLoader;
 };
 
-/* Phone photos are far larger than OCR needs; shrinking keeps the scan fast
- * and the webview memory calm. */
+/* Tesseract needs enough pixels per letter: the thin print on a recipe card
+ * fades away when a phone shrinks the photo. Every page is therefore rendered
+ * at about 2000 px on its long side, small photos up to twice their size, in
+ * grey and with more contrast so the strokes stand out from the paper. */
+const OCR_TARGET_SIDE = 2000;
+const OCR_MAX_SIDE = 2400;
+
 const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE) => {
   if (
     typeof document === "undefined" ||
@@ -1573,11 +1577,11 @@ const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE) => {
   }
   try {
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    if (scale >= 1) {
-      if (typeof bitmap.close === "function") bitmap.close();
-      return file;
-    }
+    const longest = Math.max(bitmap.width, bitmap.height);
+    const scale =
+      longest < OCR_TARGET_SIDE
+        ? Math.min(2, OCR_TARGET_SIDE / longest)
+        : Math.min(1, maxSide / longest);
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -1586,10 +1590,15 @@ const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE) => {
       if (typeof bitmap.close === "function") bitmap.close();
       return file;
     }
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    if ("filter" in context) {
+      context.filter = "grayscale(1) contrast(1.6)";
+    }
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     if (typeof bitmap.close === "function") bitmap.close();
     const blob = await new Promise((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.92)
+      canvas.toBlob(resolve, "image/jpeg", 0.95)
     );
     return blob || file;
   } catch (error) {
