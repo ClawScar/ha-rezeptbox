@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.4.9";
+const CARD_VERSION = "2.4.10";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -740,16 +740,6 @@ const photoErrorMessage = (error, file) => {
   }
   return raw || "Upload fehlgeschlagen";
 };
-
-/* Home Assistant wraps the answer of a service that supports responses in
- * { context, response }. Older versions and tests may hand over the bare
- * payload, so accept both. */
-const serviceResponse = (result) =>
-  result &&
-  typeof result === "object" &&
-  Object.prototype.hasOwnProperty.call(result, "response")
-    ? result.response
-    : result;
 
 /* A backup stays importable when photos were cleaned up, but recipes whose
  * own photo is gone would restore with a broken image. */
@@ -2619,13 +2609,6 @@ class RecipeBoxListCard extends HTMLElement {
           <label class="import-file-label">Laden<input class="import-file" type="file" accept="application/json"></label>
         </div>
       </div>
-      <div class="data-section">
-        <h3>Fotos</h3>
-        <p class="tab-hint">Entfernt Fotos eigener Rezepte, die zu keinem Rezept mehr gehören. Bilder anderer Integrationen und Profilfotos bleiben unangetastet. Sicherungen von zuvor gelöschten Rezepten enthalten deren Fotos danach nicht mehr.</p>
-        <div class="tools">
-          <button class="cleanup-photos" type="button">Fotos aufräumen</button>
-        </div>
-      </div>
 `
       : "";
 
@@ -2837,15 +2820,6 @@ class RecipeBoxListCard extends HTMLElement {
     const exportButton = this.shadowRoot.querySelector("button.export");
     if (exportButton) {
       exportButton.addEventListener("click", () => this._export());
-    }
-
-    const cleanupPhotos = this.shadowRoot.querySelector(
-      "button.cleanup-photos"
-    );
-    if (cleanupPhotos) {
-      cleanupPhotos.addEventListener("click", () =>
-        this._cleanupPhotos(cleanupPhotos)
-      );
     }
 
     const file = this.shadowRoot.querySelector("input.import-file");
@@ -3081,43 +3055,6 @@ class RecipeBoxListCard extends HTMLElement {
       this.shadowRoot && this.shadowRoot.querySelector("input.manual-photo");
     if (input) input.value = "";
     this._previewPhoto(null);
-  }
-
-  async _cleanupPhotos(button) {
-    if (!this._hass) return;
-    if (button) button.disabled = true;
-    try {
-      const result = serviceResponse(
-        await this._hass.callService(
-          "recipe_box",
-          "cleanup_recipe_images",
-          {},
-          undefined,
-          false,
-          true
-        )
-      );
-      if (result && result.available === false) {
-        notify(this, "Der Foto-Upload ist in Home Assistant nicht verfügbar.");
-        return;
-      }
-      const removed = Number(result && result.removed) || 0;
-      notify(
-        this,
-        removed
-          ? `${removed} ${removed === 1 ? "Foto" : "Fotos"} aufgeräumt.`
-          : "Keine verwaisten Fotos gefunden."
-      );
-    } catch (error) {
-      notify(
-        this,
-        `Aufräumen fehlgeschlagen: ${
-          (error && (error.message || error.code)) || "unbekannter Fehler"
-        }`
-      );
-    } finally {
-      if (button) button.disabled = false;
-    }
   }
 
   async _export() {

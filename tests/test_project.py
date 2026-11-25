@@ -181,8 +181,6 @@ class FilesTest(unittest.TestCase):
         self.assertIn("image/upload", card)
         self.assertIn("photo-edit-input", card)
         self.assertIn("set_recipe_image", card)
-        self.assertIn("cleanup-photos", card)
-        self.assertIn("cleanup_recipe_images", card)
         self.assertIn("rezeptbox-", card)
         self.assertIn("missingImageWarning", card)
         self.assertIn("HEIC", card)
@@ -222,7 +220,6 @@ class FilesTest(unittest.TestCase):
             "group-remove",
             "set_groups",
             "set_recipe_image",
-            "cleanup_recipe_images",
             "add_group",
             "remove_group",
             "rename_group",

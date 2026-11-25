@@ -123,7 +123,7 @@ const formRoot = (photoFile) => {
 };
 
 const run = async () => {
-  // 2. The upload goes through Home Assistant's image upload and returns a URL.
+  // 1. The upload goes through Home Assistant's image upload and returns a URL.
   const uploading = makeCard();
   uploading._shrinkPhoto = async () => ({ size: 1, type: "image/jpeg" });
   const file = { name: "Omas Karte.JPG", size: 4096, type: "image/jpeg" };
@@ -138,7 +138,7 @@ const run = async () => {
   );
   assert.equal(url, "/api/image/serve/abc123/original");
 
-  // 3. Saving a manual recipe forwards the uploaded photo as image_url.
+  // 2. Saving a manual recipe forwards the uploaded photo as image_url.
   const saving = makeCard();
   saving.shadowRoot = formRoot(file);
   saving._shrinkPhoto = async () => ({ size: 1 });
@@ -153,7 +153,7 @@ const run = async () => {
   assert.deepEqual([...state.calls[0].data.ingredients], ["200 g Mehl", "3 Eier"]);
   assert.match(state.notifications[0], /Rezept gespeichert: Omas Kuchen/);
 
-  // 4. A failed upload aborts the save so the recipe is not stored silently.
+  // 3. A failed upload aborts the save so the recipe is not stored silently.
   const failing = makeCard();
   failing.shadowRoot = formRoot(file);
   failing._hass.fetchWithAuth = async () => ({
@@ -170,7 +170,7 @@ const run = async () => {
   );
   assert.equal(failing.shadowRoot.querySelector("button.manual-save").disabled, false);
 
-  // 5. Without a photo the recipe is saved exactly as before.
+  // 4. Without a photo the recipe is saved exactly as before.
   const plain = makeCard();
   plain.shadowRoot = formRoot(null);
   await plain._saveManual();
@@ -178,11 +178,11 @@ const run = async () => {
   assert.equal(state.calls.length, 1);
   assert.equal("image_url" in state.calls[0].data, false);
 
-  // 6. Without a canvas the original file is uploaded untouched.
+  // 5. Without a canvas the original file is uploaded untouched.
   const fallback = makeCard();
   assert.equal(await fallback._shrinkPhoto(file), file);
 
-  // 7. Removing the photo clears the picker and hides the preview.
+  // 6. Removing the photo clears the picker and hides the preview.
   const clearing = makeCard();
   let srcRemoved = false;
   const input = { value: "C:\\fakepath\\karte.jpg" };
@@ -203,7 +203,7 @@ const run = async () => {
   assert.equal(preview.hidden, true);
   assert.equal(srcRemoved, true);
 
-  // 8. Own recipes offer changing and removing the photo, imported ones do not.
+  // 7. Own recipes offer changing and removing the photo, imported ones do not.
   const detailOptions = { show_image: true, show_steps: true };
   const manualState = {
     entity_id: "sensor.manual",
@@ -248,7 +248,7 @@ const run = async () => {
   );
   assert.doesNotMatch(imported, /photo-edit/);
 
-  // 9. HEIC photos get a concrete hint instead of a bare upload error.
+  // 8. HEIC photos get a concrete hint instead of a bare upload error.
   const heicFile = { name: "IMG_1234.HEIC", type: "image/heic", size: 10 };
   assert.match(
     photoErrorMessage(new Error("400: Bad Request"), heicFile),
@@ -270,7 +270,7 @@ const run = async () => {
     "kaputt"
   );
 
-  // 10. An HEIC file the browser cannot convert is rejected with that hint.
+  // 9. An HEIC file the browser cannot convert is rejected with that hint.
   const heicUpload = makeCard();
   heicUpload._shrinkPhoto = async (item) => item;
   await assert.rejects(
@@ -279,7 +279,7 @@ const run = async () => {
   );
   assert.equal(state.uploads.length, 0, "nothing is uploaded for HEIC");
 
-  // 11. The photo picker is usable again after a successful upload, even
+  // 10. The photo picker is usable again after a successful upload, even
   //     when the card does not re-render.
   const changing = makeCard();
   let changeHandler = null;
@@ -308,22 +308,7 @@ const run = async () => {
   assert.equal(picker.disabled, false, "the picker is enabled again");
   assert.equal(picker.value, "", "the same file can be chosen again");
 
-  // 12. The cleanup button reports what it did.
-  const cleanup = makeCard();
-  await cleanup._cleanupPhotos();
-  assert.equal(state.calls[0].service, "cleanup_recipe_images");
-  assert.match(state.notifications[0], /Keine verwaisten Fotos gefunden/);
-
-  // 13. Removed photos are counted in the message.
-  const cleaning = makeCard();
-  cleaning._hass.callService = async (domain, service) => {
-    state.calls.push({ domain, service });
-    return { removed: 2, kept: 1, available: true };
-  };
-  await cleaning._cleanupPhotos();
-  assert.match(state.notifications[0], /2 Fotos aufgeräumt/);
-
-  // 14. Saving a backup warns about recipes whose photo is gone.
+  // 11. Saving a backup warns about recipes whose photo is gone.
   assert.equal(missingImageWarning({ recipes: [] }), "");
   assert.match(
     missingImageWarning({ missing_images: ["A"] }),
@@ -334,7 +319,7 @@ const run = async () => {
     /fehlende Fotos bei 2 Rezepten\./
   );
 
-  // 15. Without fetchWithAuth the upload falls back to fetch with the token
+  // 12. Without fetchWithAuth the upload falls back to fetch with the token
   //     instead of callApi, which would serialise the multipart body as JSON.
   const legacy = makeCard();
   legacy._hass.fetchWithAuth = undefined;
@@ -356,7 +341,7 @@ const run = async () => {
   );
   assert.equal(legacyUrl, "/api/image/serve/abc123/original");
 
-  // 16. A too large upload gets its own hint.
+  // 13. A too large upload gets its own hint.
   const big = makeCard();
   big._hass.fetchWithAuth = async () => ({
     ok: false,
@@ -377,7 +362,7 @@ const run = async () => {
     /zu groß/
   );
 
-  // 17. A file without MIME type gets one from its name, so Home Assistant
+  // 14. A file without MIME type gets one from its name, so Home Assistant
   //     does not reject the upload as an unknown format.
   const typed = makeCard();
   typed._shrinkPhoto = async (item) => item;
@@ -390,7 +375,7 @@ const run = async () => {
   assert.equal(state.uploads[0].form.entries[0][2], "rezeptbox-Kuchen.png");
   assert.equal(typedUrl, "/api/image/serve/abc123/original");
 
-  // 18. Plain objects thrown by Home Assistant no longer lose their message.
+  // 15. Plain objects thrown by Home Assistant no longer lose their message.
   assert.match(
     photoErrorMessage(
       { error: "Response error: 500", status_code: 500 },
@@ -406,7 +391,7 @@ const run = async () => {
     /image_upload/
   );
 
-  // 19. A failing set_recipe_image is reported as a save error after upload.
+  // 16. A failing set_recipe_image is reported as a save error after upload.
   const saveError = makeCard();
   saveError._hass.callService = async () => {
     throw { error: "Response error: 500", status_code: 500 };
@@ -440,28 +425,7 @@ const run = async () => {
   assert.equal(savePicker.disabled, false);
   assert.equal(savePicker.value, "");
 
-  // 20. Home Assistant wraps service answers in { context, response }; the
-  //     cleanup reports the numbers from the wrapped response.
-  const cleanupCard = makeCard();
-  const cleanupButton = { disabled: false };
-  cleanupCard._hass.callService = async () => ({
-    context: { id: "abc" },
-    response: { removed: 2, kept: 1, available: true },
-  });
-  await cleanupCard._cleanupPhotos(cleanupButton);
-  assert.deepEqual(state.notifications, ["2 Fotos aufgeräumt."]);
-  assert.equal(cleanupButton.disabled, false);
-
-  // 21. A missing image_upload is reported instead of "nothing to clean up".
-  const noUpload = makeCard();
-  noUpload._hass.callService = async () => ({
-    context: { id: "abc" },
-    response: { removed: 0, kept: 0, available: false },
-  });
-  await noUpload._cleanupPhotos(null);
-  assert.match(state.notifications[0], /nicht verfügbar/);
-
-  // 22. While a photo uploads, the save button shows a spinner and is locked.
+  // 17. While a photo uploads, the save button shows a spinner and is locked.
   const busyCard = makeCard();
   const busyClasses = new Set();
   const busyButton = {
@@ -503,7 +467,7 @@ const run = async () => {
   assert.equal(busyButton.classList.contains("busy"), false);
   assert.match(state.notifications[0], /Rezept gespeichert/);
 
-  console.log("card_photo_test: 22 checks passed");
+  console.log("card_photo_test: 18 checks passed");
 };
 
 run().catch((error) => {
