@@ -10,7 +10,7 @@ import html
 import json
 import logging
 import re
-from dataclasses import asdict, dataclass, field, fields
+from dataclasses import asdict, dataclass, field, fields, replace
 from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -311,6 +311,61 @@ class Recipe:
             "rating_count": self.rating_count,
             "nutrition": self.nutrition,
         }
+
+
+def apply_recipe_changes(
+    recipe: Recipe,
+    *,
+    title: str | None = None,
+    servings: int | None = None,
+    ingredients: list[str] | None = None,
+    instructions: list[str] | None = None,
+    tags: list[str] | None = None,
+    image_url: str | None = None,
+) -> Recipe:
+    """Return a copy of the recipe with the given fields replaced.
+
+    ``None`` keeps a field unchanged. A blank title or an empty ingredient
+    list raises :class:`RecipeError` so a broken edit never empties a recipe.
+    """
+    changes: dict[str, Any] = {}
+    if title is not None:
+        changes["title"] = clean_text(title)
+    if servings is not None:
+        changes["servings"] = parse_servings(servings)
+    if image_url is not None:
+        changes["image_url"] = str(image_url).strip()
+    if instructions is not None:
+        changes["instructions"] = [
+            text
+            for text in (clean_text(item) for item in instructions)
+            if text
+        ]
+    if tags is not None:
+        changes["tags"] = [
+            text for text in (clean_text(item) for item in tags) if text
+        ]
+    if ingredients is not None:
+        lines = [
+            text
+            for text in (clean_text(item) for item in ingredients)
+            if text
+        ]
+        changes["ingredients"] = lines
+        # Portion scaling and the shopping list read the structured form.
+        changes["ingredients_structured"] = [
+            parse_ingredient_text(text) for text in lines
+        ]
+        # Group headings belonged to the old line order.
+        changes["ingredient_groups"] = []
+
+    new_title = changes.get("title", recipe.title)
+    new_ingredients = changes.get("ingredients", recipe.ingredients)
+    if not new_title or not new_ingredients:
+        raise RecipeError(
+            "invalid_recipe", "A title and at least one ingredient are required"
+        )
+    return replace(recipe, **changes)
 
 
 # ---------------------------------------------------------------------------

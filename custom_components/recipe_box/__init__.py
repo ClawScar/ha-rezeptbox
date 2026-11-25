@@ -58,6 +58,7 @@ from .const import (
     PLATFORMS,
     SERVICE_ADD_GROUP,
     SERVICE_ADD_RECIPE,
+    SERVICE_UPDATE_RECIPE,
     SERVICE_ADD_TO_SHOPPING_LIST,
     SERVICE_CLEAR_MEAL_PLAN,
     SERVICE_EXPORT_RECIPES,
@@ -83,6 +84,7 @@ from .frontend import (
 from .parser import (
     Recipe,
     RecipeError,
+    apply_recipe_changes,
     clean_text,
     normalize_url,
     parse_ingredient_text,
@@ -166,6 +168,24 @@ SET_RECIPE_IMAGE_SCHEMA = vol.All(
     vol.Schema(
         {
             vol.Optional(ATTR_IMAGE_URL, default=""): cv.string,
+            vol.Optional(ATTR_URL): cv.string,
+            vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
+        }
+    ),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+)
+
+UPDATE_RECIPE_SCHEMA = vol.All(
+    vol.Schema(
+        {
+            vol.Optional(ATTR_TITLE): vol.All(cv.string, vol.Length(min=1, max=160)),
+            vol.Optional(ATTR_SERVINGS): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=100)
+            ),
+            vol.Optional(ATTR_INGREDIENTS): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(ATTR_INSTRUCTIONS): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(ATTR_TAGS): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(ATTR_IMAGE_URL): cv.string,
             vol.Optional(ATTR_URL): cv.string,
             vol.Optional(ATTR_ENTITY_ID): cv.entity_id,
         }
@@ -335,6 +355,15 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             SERVICE_SET_GROUPS,
             partial(_async_set_groups, hass),
             schema=SET_GROUPS_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_UPDATE_RECIPE):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_UPDATE_RECIPE,
+            partial(_async_update_recipe, hass),
+            schema=UPDATE_RECIPE_SCHEMA,
             supports_response=SupportsResponse.OPTIONAL,
         )
 
@@ -789,6 +818,40 @@ async def _async_add_recipe(
     await hub.async_add_recipe(recipe)
     _LOGGER.debug("Added manual recipe %s", recipe.title)
     return {"title": recipe.title, "url": recipe.source_url}
+
+
+async def _async_update_recipe(
+    hass: HomeAssistant, call: ServiceCall
+) -> dict[str, Any]:
+    """Change title, servings, ingredients, steps or tags of a recipe."""
+    hub = _get_hub(hass)
+    if hub is None:
+        raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
+
+    source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
+
+    changes: dict[str, Any] = {}
+    for field, attribute in (
+        (ATTR_TITLE, "title"),
+        (ATTR_SERVINGS, "servings"),
+        (ATTR_INGREDIENTS, "ingredients"),
+        (ATTR_INSTRUCTIONS, "instructions"),
+        (ATTR_TAGS, "tags"),
+        (ATTR_IMAGE_URL, "image_url"),
+    ):
+        if field in call.data:
+            changes[attribute] = call.data[field]
+
+    try:
+        updated = apply_recipe_changes(recipe, **changes)
+    except RecipeError as err:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="invalid_recipe"
+        ) from err
+
+    await hub.async_add_recipe(updated)
+    _LOGGER.debug("Updated recipe %s", source_url)
+    return {"title": updated.title, "url": source_url}
 
 
 async def _async_set_recipe_image(

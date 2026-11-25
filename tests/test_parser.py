@@ -445,5 +445,69 @@ class RecipeGroupsTest(unittest.TestCase):
         )
 
 
+class ApplyRecipeChangesTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.recipe = recipe_parser.Recipe(
+            title="Apfelkuchen",
+            source_url="manual://apfelkuchen",
+            site="Eigenes Rezept",
+            description="Omas Rezept",
+            image_url="/api/image/serve/abc/original",
+            servings=8,
+            ingredients=["4 Äpfel", "200 g Mehl"],
+            ingredients_structured=[
+                recipe_parser.parse_ingredient_text("4 Äpfel"),
+                recipe_parser.parse_ingredient_text("200 g Mehl"),
+            ],
+            instructions=["Backen."],
+            tags=["Kuchen"],
+            groups=["Backen"],
+        )
+
+    def test_replaces_content_and_restructures_ingredients(self) -> None:
+        updated = recipe_parser.apply_recipe_changes(
+            self.recipe,
+            title="Birnenkuchen",
+            ingredients=["3 Birnen", "100 g Zucker"],
+            instructions=["Schälen.", "Backen."],
+        )
+        self.assertEqual(updated.title, "Birnenkuchen")
+        self.assertEqual(updated.ingredients, ["3 Birnen", "100 g Zucker"])
+        self.assertEqual(
+            [item["name"] for item in updated.ingredients_structured],
+            ["Birnen", "Zucker"],
+        )
+        self.assertEqual(updated.ingredients_structured[0]["amount"], 3.0)
+        self.assertEqual(updated.instructions, ["Schälen.", "Backen."])
+
+    def test_keeps_url_photo_groups_and_untouched_fields(self) -> None:
+        updated = recipe_parser.apply_recipe_changes(self.recipe, tags=["Neu"])
+        self.assertEqual(updated.source_url, self.recipe.source_url)
+        self.assertEqual(updated.site, "Eigenes Rezept")
+        self.assertEqual(updated.description, "Omas Rezept")
+        self.assertEqual(updated.image_url, self.recipe.image_url)
+        self.assertEqual(updated.servings, 8)
+        self.assertEqual(updated.groups, ["Backen"])
+        self.assertEqual(updated.ingredients, self.recipe.ingredients)
+        self.assertEqual(updated.tags, ["Neu"])
+        # The original object is never mutated.
+        self.assertEqual(self.recipe.tags, ["Kuchen"])
+
+    def test_can_replace_servings_and_remove_the_photo(self) -> None:
+        updated = recipe_parser.apply_recipe_changes(
+            self.recipe, servings=4, image_url=""
+        )
+        self.assertEqual(updated.servings, 4)
+        self.assertEqual(updated.image_url, "")
+
+    def test_rejects_a_blank_title_or_empty_ingredients(self) -> None:
+        with self.assertRaises(recipe_parser.RecipeError):
+            recipe_parser.apply_recipe_changes(self.recipe, title="  ")
+        with self.assertRaises(recipe_parser.RecipeError):
+            recipe_parser.apply_recipe_changes(self.recipe, ingredients=[])
+        with self.assertRaises(recipe_parser.RecipeError):
+            recipe_parser.apply_recipe_changes(self.recipe, ingredients=["   "])
+
+
 if __name__ == "__main__":
     unittest.main()

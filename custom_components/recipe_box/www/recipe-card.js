@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.8.3";
+const CARD_VERSION = "2.9.0";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1154,24 +1154,374 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   return `/api/image/serve/${result.id}/original`;
 };
 
-const manualFormHtml = () => `<div class="manual data-section">
-  <h3>${tr("Eigenes Rezept", "Own recipe")}</h3>
-  <p class="tab-hint">${tr(
-    "Zutaten und Zubereitung je eine Zeile.",
-    "One ingredient and one step per line."
-  )}</p>
+/* --------------------------------------------------------------------------
+ * Photo scan
+ *
+ * Tesseract runs in the browser with the German language data that ships next
+ * to this card. Nothing leaves the device and no AI service is involved; the
+ * text is only a suggestion that the form below shows for correction.
+ * ------------------------------------------------------------------------ */
+const OCR_BASE = "/recipe_box/ocr/";
+const OCR_MAX_SIDE = 2200;
+const OCR_INGREDIENT_HEADING =
+  /^(zutaten|zutatenliste|ingredients|you need|f\u00fcr die)\b/i;
+const OCR_STEP_HEADING =
+  /^(zubereitung|anleitung|schritte|zubereitungsschritte|instructions|directions|preparation|method|steps)\b/i;
+const OCR_SKIP_HEADING =
+  /^(tipps?|hinweise|n\u00e4hrwerte|nutrition|beilagen|serving suggestion)\b/i;
+const OCR_SERVINGS =
+  /(\d{1,2})\s*(?:portionen?|personen?|servings?|people)\b/i;
+const OCR_FOR_SERVINGS = /\bf(?:\u00fc|u)r\s+(\d{1,2})\b/i;
+const OCR_NUMBERED_STEP = /^\d{1,2}\s*[.)]\s*/;
+/* A bullet or an amount marks an ingredient line, also when the page break
+ * swallowed the "Zutaten" heading. Steps start with a number and a dot. */
+const OCR_INGREDIENT_START =
+  /^\s*(?:[\u2022*+\u00b0\u00ab\u00bb\u2039\u203a~^=]|[-\u2013\u2014]\s|\d+(?:[.,]\d+)?\s*(?:g|kg|ml|l|el|tl|prise|prisen|bund|p\u00e4ckchen|packung|packungen|dose|dosen|st\u00fcck|stk)\b)/i;
+
+const ocrClean = (line) =>
+  String(line || "")
+    .replace(/\u00ad/g, "")
+    .replace(/\|/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+const ocrHeading = (line) => {
+  const text = ocrClean(line).replace(/[:.!,;]+$/, "");
+  if (OCR_INGREDIENT_HEADING.test(text)) return "ingredients";
+  if (OCR_STEP_HEADING.test(text)) return "instructions";
+  if (OCR_SKIP_HEADING.test(text)) return "skip";
+  return "";
+};
+
+/* Bullets are printed in many shapes and Tesseract returns some of them as
+ * ``°`` or ``*``. They must not end up in the ingredient name. */
+const ocrStripBullet = (line) =>
+  ocrClean(line)
+    .replace(
+      /^[\u2022\u00b7*+\-\u2013\u2014\u00b0\u00ab\u00bb\u2039\u203a~^=]+\s*/,
+      ""
+    )
+    .replace(/^o\s+/i, "")
+    .trim();
+
+/* Two-column ingredient lists come back as one line with both columns. */
+const ocrSplitColumns = (line) => {
+  const text = ocrClean(line);
+  /* The middle dot is a separator in subtitles ("Hauptgericht · 4
+   * Portionen"), not a bullet, so only real bullet shapes split a line.
+   * Tesseract returns bullets as °, « or » depending on the print and the
+   * browser build, so all of those count. */
+  const marks = [
+    ...text.matchAll(/[\u2022*+\u00b0\u00ab\u00bb\u2039\u203a~]\s+/g),
+  ].map((match) => match.index);
+  if (marks.length < 2) return [text];
+  const parts = [];
+  const lead = text.slice(0, marks[0]).trim();
+  if (lead) parts.push(lead);
+  for (let index = 0; index < marks.length; index += 1) {
+    const end = index + 1 < marks.length ? marks[index + 1] : text.length;
+    parts.push(text.slice(marks[index], end).trim());
+  }
+  return parts;
+};
+
+const ocrIsNoise = (line, title) => {
+  const text = ocrClean(line);
+  if (!text) return true;
+  if (!/[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]/.test(text)) return true;
+  if (/^\d{1,3}(\s*\/\s*\d{1,3})?$/.test(text)) return true;
+  if (/^(seite|page)\s*\d+/i.test(text)) return true;
+  if (title) {
+    const shorten = (value) =>
+      value
+        .toLowerCase()
+        .replace(/\s*[\u2013-]\s*(seite|page)\s*\d+$/, "")
+        .replace(/[^a-z\u00e4\u00f6\u00fc\u00df0-9]+/g, " ")
+        .trim();
+    if (shorten(text) === shorten(title)) return true;
+  }
+  return false;
+};
+
+const ocrServings = (lines) => {
+  for (const line of (lines || []).slice(0, 5)) {
+    const match = OCR_SERVINGS.exec(line) || OCR_FOR_SERVINGS.exec(line);
+    if (!match) continue;
+    const value = Number(match[1]);
+    if (Number.isFinite(value) && value > 0 && value <= 100) return value;
+  }
+  return null;
+};
+
+const ocrMergeIngredient = (list, line) => {
+  const text = ocrStripBullet(line);
+  if (!text) return;
+  const previous = list[list.length - 1];
+  const wrapped = /^[a-z\u00e4\u00f6\u00fc\u00df]/.test(text) || /,$/.test(text);
+  if (previous && wrapped) {
+    list[list.length - 1] = `${previous} ${text}`;
+    return;
+  }
+  list.push(text);
+};
+
+const ocrMergeStep = (list, line) => {
+  const text = ocrClean(line);
+  if (!text) return;
+  const numbered = OCR_NUMBERED_STEP.test(text);
+  const value = numbered ? text.replace(OCR_NUMBERED_STEP, "") : text;
+  const previous = list[list.length - 1];
+  const wrapped =
+    !numbered &&
+    previous &&
+    (/^[a-z\u00e4\u00f6\u00fc\u00df]/.test(value) || !/[.!?]$/.test(previous));
+  if (wrapped) {
+    list[list.length - 1] = `${previous} ${value}`;
+    return;
+  }
+  if (value) list.push(value);
+};
+
+/* Join the OCR text of all photographed pages into one recipe draft.
+ * Headings may repeat on later pages; they continue the same section. */
+const ocrRecipeFromPages = (pages) => {
+  const sources = (pages || []).map((page) => String(page || ""));
+  const result = {
+    title: "",
+    servings: null,
+    ingredients: [],
+    instructions: [],
+  };
+  let section = "";
+  let sawHeading = false;
+
+  sources.forEach((page, pageIndex) => {
+    const raw = page.split(/\r?\n/).map(ocrClean);
+    const lines = [];
+    for (let index = 0; index < raw.length; index += 1) {
+      let line = raw[index];
+      if (!line) continue;
+      /* A hyphen at the line end belongs to the word on the next line. */
+      while (/[a-z\u00e4\u00f6\u00fc\u00df]-$/i.test(line) && raw[index + 1]) {
+        line = `${line.slice(0, -1)}${raw[index + 1].replace(/^\s+/, "")}`;
+        index += 1;
+      }
+      lines.push(line);
+    }
+
+    for (const line of lines) {
+      for (const part of ocrSplitColumns(line)) {
+        const text = ocrClean(part);
+        if (!text) continue;
+
+        const heading = ocrHeading(text);
+        if (heading) {
+          section = heading;
+          sawHeading = true;
+          continue;
+        }
+        if (ocrIsNoise(text, result.title)) continue;
+        if (section === "skip") continue;
+
+        if (!section) {
+          if (pageIndex === 0 && !result.title) {
+            result.title = text
+              .replace(/^(rezept|recipe)\s*[:\-]\s*/i, "")
+              .trim();
+            result.servings = result.servings || ocrServings(lines);
+            continue;
+          }
+          if (!sawHeading) {
+            /* A short line without an amount between the title and the
+             * ingredients is a subtitle like "Hauptgericht · 4 Portionen". */
+            if (
+              pageIndex === 0 &&
+              (OCR_SERVINGS.test(text) ||
+                OCR_FOR_SERVINGS.test(text) ||
+                /^\d+\s*(?:min|std|stunden?|minutes?)\b/i.test(text) ||
+                (/^[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]/.test(text) &&
+                  text.length <= 60))
+            ) {
+              continue;
+            }
+            section = OCR_NUMBERED_STEP.test(text)
+              ? "instructions"
+              : "ingredients";
+          } else {
+            continue;
+          }
+        }
+
+        if (section === "ingredients") {
+          /* A numbered line starts the steps, even without a heading. */
+          if (OCR_NUMBERED_STEP.test(text)) {
+            section = "instructions";
+            ocrMergeStep(result.instructions, text);
+          } else {
+            ocrMergeIngredient(result.ingredients, text);
+          }
+        } else if (section === "instructions") {
+          /* A new page may continue the ingredients without repeating the
+           * heading; bullets and amounts give that away. */
+          if (OCR_INGREDIENT_START.test(text)) {
+            section = "ingredients";
+            ocrMergeIngredient(result.ingredients, text);
+          } else {
+            ocrMergeStep(result.instructions, text);
+          }
+        }
+      }
+    }
+  });
+
+  if (!result.servings && sources[0]) {
+    result.servings = ocrServings(sources[0].split(/\r?\n/));
+  }
+  const withoutDuplicates = (list) =>
+    list.filter((item, index) => item && item !== list[index - 1]);
+  return {
+    title: result.title,
+    servings: result.servings,
+    ingredients: withoutDuplicates(result.ingredients),
+    instructions: withoutDuplicates(result.instructions),
+  };
+};
+
+const ocrPagesHtml = (pages) =>
+  (pages || [])
+    .map(
+      (file, index) => `<li class="ocr-page">
+        <span class="ocr-page-no">${index + 1}</span>
+        <span class="ocr-page-name">${escapeHtml(
+          (file && file.name) || tr(`Seite ${index + 1}`, `Page ${index + 1}`)
+        )}</span>
+        ${
+          index === 0
+            ? `<span class="ocr-page-photo">${tr("Rezeptfoto", "Photo")}</span>`
+            : ""
+        }
+        <button class="ocr-page-remove" type="button" data-index="${index}" title="${tr(
+          "Seite entfernen",
+          "Remove page"
+        )}" aria-label="${tr("Seite entfernen", "Remove page")}">×</button>
+      </li>`
+    )
+    .join("");
+
+let ocrLoader = null;
+const loadTesseract = () => {
+  if (typeof window !== "undefined" && window.Tesseract) {
+    return Promise.resolve(window.Tesseract);
+  }
+  if (ocrLoader) return ocrLoader;
+  ocrLoader = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `${OCR_BASE}tesseract.min.js`;
+    script.async = true;
+    script.onload = () =>
+      window.Tesseract
+        ? resolve(window.Tesseract)
+        : reject(new Error(tr("Tesseract fehlt.", "Tesseract is missing.")));
+    script.onerror = () => {
+      ocrLoader = null;
+      reject(
+        new Error(
+          tr(
+            "Die Texterkennung konnte nicht geladen werden.",
+            "The text recognition could not be loaded."
+          )
+        )
+      );
+    };
+    document.head.appendChild(script);
+  });
+  return ocrLoader;
+};
+
+/* Phone photos are far larger than OCR needs; shrinking keeps the scan fast
+ * and the webview memory calm. */
+const ocrPhoto = async (file, maxSide = OCR_MAX_SIDE) => {
+  if (
+    typeof document === "undefined" ||
+    typeof createImageBitmap !== "function" ||
+    typeof document.createElement !== "function"
+  ) {
+    return file;
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    if (scale >= 1) {
+      if (typeof bitmap.close === "function") bitmap.close();
+      return file;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext && canvas.getContext("2d");
+    if (!context) {
+      if (typeof bitmap.close === "function") bitmap.close();
+      return file;
+    }
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    if (typeof bitmap.close === "function") bitmap.close();
+    const blob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.92)
+    );
+    return blob || file;
+  } catch (error) {
+    return file;
+  }
+};
+
+const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-section">
+  <h3>${edit ? tr("Rezept bearbeiten", "Edit recipe") : tr("Eigenes Rezept", "Own recipe")}</h3>
+  <p class="tab-hint">${edit
+    ? tr(
+        `Änderungen gelten für „${edit.title}“.`, 
+        `Changes apply to “${edit.title}”.`
+      )
+    : tr(
+        "Zutaten und Zubereitung je eine Zeile.",
+        "One ingredient and one step per line."
+      )}</p>
+  <div class="scan">
+    <div class="scan-bar">
+      <label class="scan-add">${tr("Fotos wählen", "Choose photos")}<input class="ocr-input" type="file" accept="image/*" multiple></label>
+      <button class="ocr-run" type="button"${pages.length ? "" : " disabled"}>${tr(
+        "Text erkennen",
+        "Read text"
+      )}</button>
+      <button class="ocr-clear" type="button"${pages.length ? "" : " hidden"}>${tr(
+        "Liste leeren",
+        "Clear list"
+      )}</button>
+    </div>
+    <p class="scan-hint">${tr(
+      "Gedruckte Rezeptkarten, eine oder mehrere Seiten. Das erste Foto wird das Rezeptfoto; Handschrift erkennt der Scanner nicht.",
+      "Printed recipe cards, one or more pages. The first photo becomes the recipe photo; the scanner cannot read handwriting."
+    )}</p>
+    <ol class="ocr-pages">${ocrPagesHtml(pages)}</ol>
+    <p class="scan-status" role="status"></p>
+  </div>
   <div class="manual-body">
-    <input class="manual-title" type="text" placeholder="${tr("Titel", "Title")}">
-    <input class="manual-servings" type="number" min="1" max="100" placeholder="${tr("Portionen", "Servings")}">
+    <input class="manual-title" type="text" value="${escapeHtml(
+      edit ? edit.title : ""
+    )}" placeholder="${tr("Titel", "Title")}">
+    <input class="manual-servings" type="number" min="1" max="100" value="${
+      edit && edit.servings ? edit.servings : ""
+    }" placeholder="${tr("Portionen", "Servings")}">
     <textarea class="manual-ingredients" rows="3" placeholder="${tr(
       "Zutaten – eine pro Zeile",
       "Ingredients – one per line"
-    )}"></textarea>
+    )}">${escapeHtml(edit ? (edit.ingredients || []).join("\n") : "")}</textarea>
     <textarea class="manual-instructions" rows="3" placeholder="${tr(
       "Zubereitung – ein Schritt pro Zeile",
       "Steps – one per line"
-    )}"></textarea>
-    <input class="manual-tags" type="text" placeholder="${tr(
+    )}">${escapeHtml(edit ? (edit.instructions || []).join("\n") : "")}</textarea>
+    <input class="manual-tags" type="text" value="${escapeHtml(
+      edit ? (edit.tags || []).join(", ") : ""
+    )}" placeholder="${tr(
       "Tags, mit Komma getrennt",
       "Tags, separated by commas"
     )}">
@@ -1186,10 +1536,17 @@ const manualFormHtml = () => `<div class="manual data-section">
         "Remove photo"
       )}</button>
     </div>
-    <button class="manual-save" type="button">${tr(
-      "Rezept speichern",
-      "Save recipe"
-    )}</button>
+    <div class="manual-actions">
+      <button class="manual-save" type="button">${edit
+        ? tr("Rezept aktualisieren", "Update recipe")
+        : tr("Rezept speichern", "Save recipe")}</button>
+      ${edit
+        ? `<button class="manual-cancel" type="button">${tr(
+            "Abbrechen",
+            "Cancel"
+          )}</button>`
+        : ""}
+    </div>
   </div>
 </div>`;
 
@@ -1835,6 +2192,10 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
     meta.entityId && isWebUrl(attributes.source_url)
       ? `<button class="refresh" type="button">${tr("Aktualisieren", "Refresh")}</button>`
       : "";
+  const editButton =
+    !forPrint && meta.entityId && meta.canEdit
+      ? `<button class="edit" type="button">${tr("Bearbeiten", "Edit")}</button>`
+      : "";
   const printButton = `<button class="print" type="button">${tr("Drucken", "Print")}</button>`;
   const favorite =
     !forPrint && meta.entityId
@@ -1880,7 +2241,7 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       : "";
   const footer = forPrint
     ? ""
-    : `<div class="footer">${favorite}${source}${refresh}${printButton}${shopping}</div>`;
+    : `<div class="footer">${favorite}${source}${refresh}${editButton}${printButton}${shopping}</div>`;
 
   return `${image}
     <div class="content">
@@ -2158,6 +2519,14 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
       } finally {
         refresh.disabled = false;
       }
+    });
+  }
+
+  const editButton = root.querySelector("button.edit");
+  if (editButton && typeof options.onEdit === "function") {
+    editButton.addEventListener("click", () => {
+      const attributes = (options.state && options.state.attributes) || {};
+      options.onEdit(attributes.source_url || "");
     });
   }
 
@@ -2493,8 +2862,8 @@ const STYLES = `<style>
   .error { margin: 0; color: var(--error-color, #db4437); font-size: 0.82rem; }
   .shopping-row { display: flex; align-items: center; gap: 10px; margin-left: auto; }
   .only-missing { display: flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--secondary-text-color); cursor: pointer; }
-  button.refresh, button.print { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
-  button.refresh:hover, button.print:hover { border-color: var(--primary-color); }
+  button.refresh, button.print, button.edit { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
+  button.refresh:hover, button.print:hover, button.edit:hover { border-color: var(--primary-color); }
   .filter-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .filter-bar input, .filter-bar select { padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
   .filter-bar input.filter-search { flex: 1 1 150px; min-width: 0; }
@@ -2561,6 +2930,24 @@ const STYLES = `<style>
   button.busy::before { content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 6px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; vertical-align: -1px; animation: recipe-box-spin 0.8s linear infinite; }
   button.busy:disabled { opacity: 0.75; }
   @keyframes recipe-box-spin { to { transform: rotate(360deg); } }
+  .scan { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.08)); }
+  .scan-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .scan-add { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--primary-color); color: var(--primary-color); font-size: 0.85rem; cursor: pointer; }
+  .scan-add input { display: none; }
+  button.ocr-run { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
+  button.ocr-run[disabled] { opacity: 0.5; cursor: default; }
+  button.ocr-clear { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; color: var(--text-primary-color); cursor: pointer; }
+  button.ocr-clear[hidden] { display: none; }
+  .scan-hint { margin: 0; font-size: 0.78rem; color: var(--secondary-text-color); }
+  .scan-status { margin: 0; font-size: 0.82rem; color: var(--secondary-text-color); min-height: 1em; }
+  ol.ocr-pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  li.ocr-page { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; padding: 4px 6px; border-radius: 6px; background: var(--card-background-color, transparent); }
+  .ocr-page-no { min-width: 1.4em; font-weight: 600; }
+  .ocr-page-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ocr-page-photo { font-size: 0.72rem; color: var(--primary-color); border: 1px solid currentColor; border-radius: 999px; padding: 1px 6px; }
+  .ocr-page-remove { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.95rem; padding: 2px 4px; }
+  .manual-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .manual-actions button.manual-cancel { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 8px 14px; font-size: 0.88rem; color: var(--text-primary-color); cursor: pointer; }
   .manual-photo-label { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 6px; border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); font-size: 0.85rem; color: var(--primary-text-color); cursor: pointer; }
   .manual-photo-label input { display: none; }
   .manual-photo-preview { display: flex; align-items: center; gap: 10px; }
@@ -2754,6 +3141,10 @@ class RecipeBoxListCard extends HTMLElement {
     this._hass = undefined;
     this._importUrl = "";
     this._importing = false;
+    /* Photo scan and the recipe that the form currently edits. */
+    this._ocrPages = [];
+    this._ocrBusy = false;
+    this._edit = null;
     this._confirmDelete = null;
     this._selection = new Set();
     this._suppressClickUntil = 0;
@@ -3543,7 +3934,7 @@ class RecipeBoxListCard extends HTMLElement {
         groupCounts(entries),
         this._pendingGroupDelete,
         this._renamingGroup
-      )}${tools}${manualFormHtml()}</div>`,
+      )}${tools}${manualFormHtml(this._edit, this._ocrPages || [])}</div>`,
       plan: entries.length
         ? planHtml(this._hass, entries, this._config, this._planOffset)
         : `<p class="empty">${tr(
@@ -3802,6 +4193,41 @@ class RecipeBoxListCard extends HTMLElement {
       manualSave.addEventListener("click", () => this._saveManual());
     }
 
+    const manualCancel = this.shadowRoot.querySelector("button.manual-cancel");
+    if (manualCancel) {
+      manualCancel.addEventListener("click", () => this._cancelEdit());
+    }
+
+    const ocrInput = this.shadowRoot.querySelector("input.ocr-input");
+    if (ocrInput) {
+      ocrInput.addEventListener("change", () => {
+        const chosen = Array.from(ocrInput.files || []);
+        ocrInput.value = "";
+        if (!chosen.length) return;
+        this._ocrPages = [...(this._ocrPages || []), ...chosen];
+        this._renderOcrPages();
+        this._previewPhoto((this._ocrPages || [])[0] || null);
+        this._scanStatus(
+          tr(
+            "Fotos bereit. „Text erkennen“ liest sie der Reihe nach.",
+            "Photos ready. “Read text” scans them in order."
+          )
+        );
+      });
+    }
+    const ocrRun = this.shadowRoot.querySelector("button.ocr-run");
+    if (ocrRun) ocrRun.addEventListener("click", () => this._scanPages());
+    const ocrClear = this.shadowRoot.querySelector("button.ocr-clear");
+    if (ocrClear) {
+      ocrClear.addEventListener("click", () => {
+        this._ocrPages = [];
+        this._renderOcrPages();
+        this._scanStatus("");
+        this._previewPhoto(null);
+      });
+    }
+    this._bindOcrPages();
+
     const manualPhoto = this.shadowRoot.querySelector("input.manual-photo");
     if (manualPhoto) {
       manualPhoto.addEventListener("change", () => {
@@ -3990,6 +4416,190 @@ class RecipeBoxListCard extends HTMLElement {
     this._viewChanged({ tab: this._tab, selected: pick.entityId });
   }
 
+  _scanStatus(message) {
+    const status =
+      this.shadowRoot && this.shadowRoot.querySelector(".scan-status");
+    if (status) status.textContent = message || "";
+  }
+
+  _renderOcrPages() {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const pages = this._ocrPages || [];
+    const list = root.querySelector("ol.ocr-pages");
+    if (list) list.innerHTML = ocrPagesHtml(pages);
+    const run = root.querySelector("button.ocr-run");
+    if (run) run.disabled = !pages.length || this._ocrBusy;
+    const clear = root.querySelector("button.ocr-clear");
+    if (clear) clear.hidden = !pages.length;
+    this._bindOcrPages();
+  }
+
+  _bindOcrPages() {
+    const root = this.shadowRoot;
+    if (!root) return;
+    root.querySelectorAll("button.ocr-page-remove").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = Number(button.getAttribute("data-index"));
+        if (!Number.isInteger(index)) return;
+        this._ocrPages = (this._ocrPages || []).filter(
+          (_page, position) => position !== index
+        );
+        this._renderOcrPages();
+        this._previewPhoto((this._ocrPages || [])[0] || null);
+      });
+    });
+  }
+
+  /* Runs Tesseract for every photographed page and drops the text into the
+   * form. Nothing is saved until the user has checked the result. */
+  async _scanPages() {
+    const pages = (this._ocrPages || []).slice();
+    if (!this._hass || !pages.length || this._ocrBusy) return;
+    const root = this.shadowRoot;
+    const run = root && root.querySelector("button.ocr-run");
+    this._ocrBusy = true;
+    if (run) run.disabled = true;
+    let worker = null;
+    let currentPage = 1;
+
+    try {
+      const Tesseract = await loadTesseract();
+      this._scanStatus(
+        tr("Texterkennung wird geladen …", "Loading text recognition …")
+      );
+      worker = await Tesseract.createWorker("deu", 1, {
+        workerPath: `${OCR_BASE}worker.min.js`,
+        corePath: `${OCR_BASE}core/tesseract-core-simd-lstm.wasm.js`,
+        langPath: `${OCR_BASE}lang`,
+        gzip: false,
+        logger: (message) => {
+          if (!message || message.status !== "recognizing text") return;
+          const percent = Math.round((message.progress || 0) * 100);
+          this._scanStatus(
+            tr(
+              `Seite ${currentPage} von ${pages.length} – ${percent} %`,
+              `Page ${currentPage} of ${pages.length} – ${percent} %`
+            )
+          );
+        },
+      });
+
+      const texts = [];
+      for (let index = 0; index < pages.length; index += 1) {
+        currentPage = index + 1;
+        this._scanStatus(
+          tr(
+            `Seite ${currentPage} von ${pages.length} wird gelesen …`,
+            `Reading page ${currentPage} of ${pages.length} …`
+          )
+        );
+        const image = await ocrPhoto(pages[index]);
+        const { data } = await worker.recognize(image);
+        texts.push((data && data.text) || "");
+      }
+
+      const scanned = ocrRecipeFromPages(texts);
+      this._fillManualForm(scanned);
+      this._scanStatus("");
+      if (scanned.title && scanned.ingredients.length) {
+        notify(
+          this,
+          tr(
+            `Text erkannt: ${scanned.title} (${scanned.ingredients.length} Zutaten, ${scanned.instructions.length} Schritte). Bitte prüfen und speichern.`,
+            `Text recognised: ${scanned.title} (${scanned.ingredients.length} ingredients, ${scanned.instructions.length} steps). Please check and save.`
+          )
+        );
+      } else {
+        notify(
+          this,
+          tr(
+            "Der Text konnte nicht sicher gelesen werden. Bitte die Felder prüfen oder ein schärferes Foto verwenden.",
+            "The text could not be read reliably. Check the fields or use a sharper photo."
+          )
+        );
+      }
+    } catch (error) {
+      this._scanStatus("");
+      notify(
+        this,
+        tr(
+          `Texterkennung fehlgeschlagen: ${
+            (error && (error.message || error.code)) || "unbekannter Fehler"
+          }`,
+          `Text recognition failed: ${
+            (error && (error.message || error.code)) || "unknown error"
+          }`
+        )
+      );
+    } finally {
+      if (worker) {
+        try {
+          await worker.terminate();
+        } catch (error) {
+          /* a terminated worker is fine */
+        }
+      }
+      this._ocrBusy = false;
+      if (run) run.disabled = !(this._ocrPages || []).length;
+    }
+  }
+
+  _fillManualForm(scanned) {
+    const root = this.shadowRoot;
+    if (!root || !scanned) return;
+    const fill = (selector, value) => {
+      const node = root.querySelector(selector);
+      if (node && value) node.value = value;
+    };
+    fill("input.manual-title", scanned.title);
+    fill(
+      "input.manual-servings",
+      scanned.servings ? String(scanned.servings) : ""
+    );
+    fill("textarea.manual-ingredients", scanned.ingredients.join("\n"));
+    fill("textarea.manual-instructions", scanned.instructions.join("\n"));
+  }
+
+  _startEdit(sourceUrl) {
+    if (!this._hass || !sourceUrl) return;
+    const entry = this._recipes().find(
+      (item) => ((item.state && item.state.attributes) || {}).source_url === sourceUrl
+    );
+    if (!entry) return;
+    const attributes = entry.state.attributes || {};
+    this._edit = {
+      url: sourceUrl,
+      entityId: entry.entityId,
+      title: recipeTitle(entry.state),
+      servings: Number(attributes.servings) || null,
+      ingredients: Array.isArray(attributes.ingredients)
+        ? attributes.ingredients.slice()
+        : [],
+      instructions: Array.isArray(attributes.instructions)
+        ? attributes.instructions.slice()
+        : [],
+      tags: Array.isArray(attributes.tags) ? attributes.tags.slice() : [],
+    };
+    this._ocrPages = [];
+    this._selected = null;
+    this._rememberTab("data");
+    this._signature = null;
+    this._render();
+    const form = this.shadowRoot && this.shadowRoot.querySelector(".manual");
+    if (form && typeof form.scrollIntoView === "function") {
+      form.scrollIntoView({ block: "start" });
+    }
+  }
+
+  _cancelEdit() {
+    this._edit = null;
+    /* Pages scanned for the edit must not turn into a new recipe's photo. */
+    this._ocrPages = [];
+    this._signature = null;
+    this._render();
+  }
+
   async _saveManual() {
     if (!this._hass) return;
     const root = this.shadowRoot;
@@ -4002,7 +4612,12 @@ class RecipeBoxListCard extends HTMLElement {
     const tags = (root.querySelector("input.manual-tags") || {}).value || "";
     const servings = Number((root.querySelector("input.manual-servings") || {}).value);
     const photoInput = root.querySelector("input.manual-photo");
-    const photo = photoInput && photoInput.files && photoInput.files[0];
+    /* The first scanned page is the recipe photo unless one was chosen. */
+    const photo =
+      (photoInput && photoInput.files && photoInput.files[0]) ||
+      (this._ocrPages || [])[0] ||
+      null;
+    const editing = this._edit;
 
     const data = {
       title: title.trim(),
@@ -4061,18 +4676,40 @@ class RecipeBoxListCard extends HTMLElement {
         }
       }
 
-      await this._hass.callService(
-        "recipe_box",
-        "add_recipe",
-        data,
-        undefined,
-        false,
-        true
-      );
-      notify(
-        this,
-        tr(`Rezept gespeichert: ${data.title}`, `Recipe saved: ${data.title}`)
-      );
+      if (editing) {
+        data.url = editing.url;
+        await this._hass.callService(
+          "recipe_box",
+          "update_recipe",
+          data,
+          undefined,
+          false,
+          true
+        );
+        notify(
+          this,
+          tr(
+            `Rezept aktualisiert: ${data.title}`,
+            `Recipe updated: ${data.title}`
+          )
+        );
+        this._edit = null;
+      } else {
+        await this._hass.callService(
+          "recipe_box",
+          "add_recipe",
+          data,
+          undefined,
+          false,
+          true
+        );
+        notify(
+          this,
+          tr(`Rezept gespeichert: ${data.title}`, `Recipe saved: ${data.title}`)
+        );
+      }
+      this._ocrPages = [];
+      this._previewPhoto(null);
       this._rememberTab("recipes");
       this._signature = null;
       this._render();
@@ -4417,6 +5054,7 @@ class RecipeBoxListCard extends HTMLElement {
         ${detailHtml(entry.state, this._config, session.checked, servings, {
           entityId: entry.entityId,
           hass: this._hass,
+          canEdit: true,
           favorite: Boolean((entry.state.attributes || {}).favorite),
           groups: knownGroups(this._hass, this._recipes()),
         })}
@@ -4442,6 +5080,7 @@ class RecipeBoxListCard extends HTMLElement {
           this._render();
         },
         onSession: () => writeSession(entry.entityId, session),
+        onEdit: (source) => this._startEdit(source),
         onFavorite: () => {
           this._signature = null;
           this._render();

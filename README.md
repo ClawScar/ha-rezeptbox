@@ -46,6 +46,8 @@ Einkaufsliste.
 - **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt; nicht mehr benötigte Fotos löscht die Rezeptbox dabei automatisch
+- **Foto-Scanner** für gedruckte Rezeptkarten: mehrere Seiten fotografieren, Text mit Tesseract direkt im Browser erkennen lassen und als Rezeptvorschlag im Formular prüfen – ohne KI-Dienst, ohne Internet, ohne Serverpakete; das erste Foto wird das Rezeptfoto
+- **Rezepte bearbeiten**: Titel, Portionen, Zutaten, Zubereitung, Tags und Foto eines gespeicherten Rezepts über **Bearbeiten** in der Detailansicht oder den Service `recipe_box.update_recipe` ändern
 - **Wochenplan** zum Blättern: sieben Tage ab heute, eine Woche vor und zurück, Rezeptbilder, Heute-Markierung, geplante Tage direkt an der Rezeptzeile, Reste-/Auswärts-Tage ohne Rezept und Einkauf für die sichtbare Woche
 - **Sicherung**: alle Rezepte und den Wochenplan per Speichern-Dialog als JSON sichern und wieder einlesen
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
@@ -252,7 +254,24 @@ die Integration die Datei in den optionalen **Zielordner** aus den Optionen
 und meldet den Pfad. **Laden** daneben liest eine solche Sicherung
 wieder ein. Unter
 **Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
-und Tags. Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
+und Tags. Über **Bearbeiten** in der Detailansicht eines gespeicherten Rezepts
+öffnet sich dasselbe Formular mit den vorhandenen Werten; **Rezept
+aktualisieren** speichert die Korrektur über `recipe_box.update_recipe`.
+
+Für gedruckte Rezeptkarten gibt es im Formular den **Foto-Scanner**: mit
+**Fotos wählen** eine oder mehrere Seiten aufnehmen oder aus der Galerie
+holen (das Handy bietet dabei auch die Kamera an), mit **Text erkennen** der
+Reihe nach einlesen lassen und das Ergebnis prüfen. Abschnitte wie „Zutaten“
+und „Zubereitung“ dürfen sich auf späteren Seiten wiederholen; sie werden
+fortgesetzt statt neu begonnen. Das erste Foto wird das Rezeptfoto. Die
+Texterkennung läuft mit Tesseract und dem deutschen Sprachmodell direkt im
+Browser – rund 5,5 MB liegen dafür unter `www/ocr/`, es geht kein Foto und kein
+Text an einen Dienst, und eine KI ist nicht beteiligt. Handschrift erkennt der
+Scanner nicht; bei Reflexen oder schräger Aufnahme steigt die Fehlerquote, ein
+gerades, gut beleuchtetes Foto liefert die besten Ergebnisse. Bei älteren
+Browsern ohne WebAssembly-SIMD erscheint eine Fehlermeldung.
+
+Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
 oder direkt mit der Handy-Kamera aufnehmen; es wird vor dem Hochladen auf
 handliche Größe verkleinert und erscheint danach als Rezeptbild in Liste und
 Detailansicht. **Foto entfernen** verwirft die Auswahl wieder. Bei einem
@@ -441,6 +460,24 @@ werden nicht erneut zusammengerechnet.
 Legt ein Rezept ohne Quellseite an (Familienrezept, Karte, PDF-Abschrift).
 Ohne `url` bekommt es einen internen Schlüssel (`manual://…`); es erscheint wie
 ein importiertes Rezept als Gerät mit Sensoren und Button.
+
+### `recipe_box.update_recipe`
+
+| Feld | Pflicht | Beschreibung |
+| --- | --- | --- |
+| `entity_id` oder `url` | eins von beiden | Rezept-Sensor oder Quelladresse |
+| `title` | nein | Neuer Name |
+| `ingredients` | nein | Alle Zutatenzeilen; ersetzt die bisherige Liste |
+| `instructions` | nein | Alle Zubereitungsschritte; ersetzt die bisherige Liste |
+| `servings` | nein | Portionen |
+| `tags` | nein | Schlagwörter für die Suche |
+| `image_url` | nein | Neues Foto |
+
+Ändert ein gespeichertes Rezept, ohne es neu anzulegen; weggelassene Felder
+bleiben, wie sie sind. Zutaten werden dabei neu strukturiert, damit Portionen
+und Einkaufsliste weiter funktionieren. Ein späteres **Aktualisieren** eines
+importierten Rezepts holt die Quellseite erneut und ersetzt die Änderungen.
+Die Karte nutzt denselben Service für **Bearbeiten** in der Detailansicht.
 
 ### `recipe_box.set_recipe_image`
 

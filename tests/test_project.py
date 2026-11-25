@@ -155,6 +155,7 @@ class FilesTest(unittest.TestCase):
         strings = json.loads((COMPONENT / "strings.json").read_text("utf-8"))
         for name in (
             "add_recipe",
+            "update_recipe",
             "refresh_recipe",
             "export_recipes",
             "import_recipes",
@@ -410,6 +411,85 @@ class ShoppingTargetFilesTest(unittest.TestCase):
         readme = (BASE / "README.md").read_text("utf-8")
         self.assertIn("Ziel-Einkaufsliste", readme)
         self.assertIn("Alexa Devices", readme)
+
+
+class PhotoScannerAndEditTest(unittest.TestCase):
+    def test_ocr_assets_ship_with_the_card(self) -> None:
+        ocr = COMPONENT / "www" / "ocr"
+        for name in (
+            "tesseract.min.js",
+            "worker.min.js",
+            "lang/deu.traineddata",
+            "core/tesseract-core-simd-lstm.wasm.js",
+        ):
+            self.assertTrue((ocr / name).is_file(), name)
+        # A stub or a missing language model would make the scan unusable.
+        self.assertGreater(
+            (ocr / "lang" / "deu.traineddata").stat().st_size, 500_000
+        )
+
+    def test_card_scans_multiple_pages_offline(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        for marker in (
+            "ocrRecipeFromPages",
+            "ocrSplitColumns",
+            "OCR_BASE",
+            "createWorker",
+            "workerPath:",
+            "langPath:",
+            "ocr-page",
+            "ocr-run",
+            "The first scanned page is the recipe photo",
+        ):
+            self.assertIn(marker, card)
+        # Nothing may be sent to a remote OCR or AI service.
+        self.assertNotIn("cdn.jsdelivr.net", card)
+
+    def test_card_edits_stored_recipes(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        for marker in (
+            "update_recipe",
+            "manual-cancel",
+            "canEdit",
+            "Rezept bearbeiten",
+            "Rezept aktualisieren",
+        ):
+            self.assertIn(marker, card)
+
+    def test_update_recipe_service_is_documented(self) -> None:
+        self.assertIn(
+            'SERVICE_UPDATE_RECIPE = "update_recipe"',
+            (COMPONENT / "const.py").read_text("utf-8"),
+        )
+        init = (COMPONENT / "__init__.py").read_text("utf-8")
+        self.assertIn("SERVICE_UPDATE_RECIPE", init)
+        self.assertIn("apply_recipe_changes", init)
+        services = (COMPONENT / "services.yaml").read_text("utf-8")
+        self.assertIn("update_recipe:", services)
+        for name in (
+            "strings.json",
+            "translations/de.json",
+            "translations/en.json",
+        ):
+            data = json.loads((COMPONENT / name).read_text("utf-8"))
+            self.assertIn("update_recipe", data["services"])
+            self.assertEqual(
+                set(data["services"]["update_recipe"]["fields"]),
+                {
+                    "url",
+                    "title",
+                    "ingredients",
+                    "instructions",
+                    "servings",
+                    "tags",
+                    "image_url",
+                },
+            )
+
+    def test_readme_explains_scanner_and_edit(self) -> None:
+        readme = (BASE / "README.md").read_text("utf-8")
+        for marker in ("Foto-Scanner", "Tesseract", "Handschrift", "update_recipe"):
+            self.assertIn(marker, readme)
 
 
 if __name__ == "__main__":

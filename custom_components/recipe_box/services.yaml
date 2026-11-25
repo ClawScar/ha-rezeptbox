@@ -82,6 +82,57 @@ set_recipe_image:
 cleanup_recipe_images:
   fields: {}
 
+update_recipe:
+  fields:
+    url:
+      example: https://example.com/omas-apfelkuchen
+      selector:
+        text:
+          type: url
+    entity_id:
+      example: sensor.rezept_omas_apfelkuchen
+      selector:
+        entity:
+          domain: sensor
+    title:
+      example: Omas Apfelkuchen
+      selector:
+        text:
+    ingredients:
+      example:
+        - 4 Äpfel
+        - 200 g Mehl
+      selector:
+        text:
+          multiple: true
+    instructions:
+      example:
+        - Äpfel schälen und schneiden.
+        - Teig ausrollen und 45 Minuten backen.
+      selector:
+        text:
+          multiple: true
+    servings:
+      example: 8
+      selector:
+        number:
+          min: 1
+          max: 100
+          step: 1
+          mode: box
+    tags:
+      example:
+        - Kuchen
+        - Familie
+      selector:
+        text:
+          multiple: true
+    image_url:
+      example: /api/image/serve/abcdef/original
+      selector:
+        text:
+          type: url
+
 remove_recipe:
   fields:
     url:

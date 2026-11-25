@@ -77,6 +77,40 @@
         }
       }
     },
+    "update_recipe": {
+      "name": "Rezept bearbeiten",
+      "description": "Ändert Titel, Portionen, Zutaten, Zubereitung, Tags oder Foto eines gespeicherten Rezepts. Ein späteres Aktualisieren eines importierten Rezepts ersetzt diese Änderungen wieder durch die Quellseite.",
+      "fields": {
+        "url": {
+          "name": "Rezept-URL",
+          "description": "Quelladresse des Rezepts (oder entity_id)."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Neuer Name des Rezepts."
+        },
+        "ingredients": {
+          "name": "Zutaten",
+          "description": "Alle Zutatenzeilen; ersetzt die bisherige Liste."
+        },
+        "instructions": {
+          "name": "Zubereitung",
+          "description": "Alle Zubereitungsschritte; ersetzt die bisherige Liste."
+        },
+        "servings": {
+          "name": "Portionen",
+          "description": "Für wie viele Portionen das Rezept gedacht ist."
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "Schlagwörter für die Suche in der Rezeptliste."
+        },
+        "image_url": {
+          "name": "Bild-URL",
+          "description": "Optionales neues Bild zum Rezept."
+        }
+      }
+    },
     "remove_recipe": {
       "name": "Rezept entfernen",
       "description": "Entfernt ein importiertes Rezept samt Entitäten und Gerät aus der Rezeptbox.",

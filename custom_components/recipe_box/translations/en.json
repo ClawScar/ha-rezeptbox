@@ -77,6 +77,40 @@
         }
       }
     },
+    "update_recipe": {
+      "name": "Edit a recipe",
+      "description": "Changes title, servings, ingredients, steps, tags or photo of a stored recipe. Refreshing an imported recipe later replaces these edits with the source page.",
+      "fields": {
+        "url": {
+          "name": "Recipe URL",
+          "description": "Source URL of the recipe (or entity_id)."
+        },
+        "title": {
+          "name": "Title",
+          "description": "New name of the recipe."
+        },
+        "ingredients": {
+          "name": "Ingredients",
+          "description": "All ingredient lines; replaces the existing list."
+        },
+        "instructions": {
+          "name": "Instructions",
+          "description": "All cooking steps; replaces the existing list."
+        },
+        "servings": {
+          "name": "Servings",
+          "description": "How many servings the recipe is written for."
+        },
+        "tags": {
+          "name": "Tags",
+          "description": "Keywords for searching the recipe list."
+        },
+        "image_url": {
+          "name": "Image URL",
+          "description": "Optional new picture of the recipe."
+        }
+      }
+    },
     "remove_recipe": {
       "name": "Remove a recipe",
       "description": "Removes an imported recipe, its entities and its device from the recipe box.",
