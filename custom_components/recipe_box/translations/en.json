@@ -23,7 +23,7 @@
         "data_description": {
           "update_interval_hours": "0 disables automatic refresh. Imported recipes stay available from the local cache.",
           "shopping_target": "To-do list that receives the ingredients, for example the Alexa shopping list. Leave empty for the Home Assistant shopping list.",
-          "backup_path": "Folder inside the Home Assistant configuration directory where Save writes the JSON file, for example backups. Leave empty to save in the browser."
+          "backup_path": "Fallback folder inside the Home Assistant configuration directory, for example backups. Save normally opens a save dialog; this folder is used only where no dialog and no share sheet exist, for example in the mobile app."
         }
       }
     }
@@ -129,7 +129,13 @@
     },
     "export_recipes": {
       "name": "Export recipes",
-      "description": "Returns all recipes and the meal plan as JSON. With a target folder configured, the file is saved there and its path is returned."
+      "description": "Returns all recipes and the meal plan as JSON. With write_backup the file is also saved into the configured backup folder and its path is returned.",
+      "fields": {
+        "write_backup": {
+          "name": "Write backup file",
+          "description": "Also writes the JSON into the backup target folder. The card only uses this when no save dialog or share sheet is available."
+        }
+      }
     },
     "import_recipes": {
       "name": "Import recipes (backup)",

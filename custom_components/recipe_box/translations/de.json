@@ -23,7 +23,7 @@
         "data_description": {
           "update_interval_hours": "0 schaltet die automatische Aktualisierung ab. Importierte Rezepte bleiben aus dem lokalen Cache verfügbar.",
           "shopping_target": "To-do-Liste, die die Zutaten aufnimmt, zum Beispiel die Alexa-Einkaufsliste. Leer lassen für die Home-Assistant-Einkaufsliste.",
-          "backup_path": "Ordner im Home-Assistant-Konfigurationsordner, in den Sichern die JSON-Datei schreibt, zum Beispiel backups. Leer lassen, dann speichert der Browser."
+          "backup_path": "Rückfall-Ordner im Home-Assistant-Konfigurationsordner, zum Beispiel backups. Sichern öffnet normalerweise einen Speichern-Dialog; dieser Ordner wird nur genutzt, wo weder Dialog noch Teilen-Menü verfügbar sind, etwa in der Handy-App."
         }
       }
     }
@@ -129,7 +129,13 @@
     },
     "export_recipes": {
       "name": "Rezepte exportieren",
-      "description": "Gibt alle Rezepte und den Wochenplan als JSON zurück. Ist ein Zielordner eingestellt, wird die Datei dort gespeichert und der Pfad mitgeliefert."
+      "description": "Gibt alle Rezepte und den Wochenplan als JSON zurück. Mit write_backup wird die Datei zusätzlich im eingestellten Zielordner gespeichert und der Pfad mitgeliefert.",
+      "fields": {
+        "write_backup": {
+          "name": "Sicherungsdatei schreiben",
+          "description": "Schreibt das JSON zusätzlich in den Zielordner. Die Karte nutzt das nur, wenn weder Speichern-Dialog noch Teilen-Menü verfügbar sind."
+        }
+      }
     },
     "import_recipes": {
       "name": "Rezepte importieren (Sicherung)",

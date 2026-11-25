@@ -140,7 +140,13 @@ add_to_shopping_list:
         boolean:
 
 export_recipes:
-  fields: {}
+  fields:
+    write_backup:
+      required: false
+      default: false
+      example: true
+      selector:
+        boolean:
 
 import_recipes:
   fields:

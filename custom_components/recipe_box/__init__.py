@@ -47,6 +47,7 @@ from .const import (
     ATTR_TITLE,
     ATTR_URL,
     ATTR_URLS,
+    ATTR_WRITE_BACKUP,
     CONF_URL,
     DATA_HUB,
     DOMAIN,
@@ -291,7 +292,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             DOMAIN,
             SERVICE_EXPORT_RECIPES,
             partial(_async_export_recipes, hass),
-            schema=vol.Schema({}),
+            schema=vol.Schema(
+                {
+                    # Set by the card only when it cannot offer a save dialog
+                    # or share sheet, so the file is not written twice.
+                    vol.Optional(ATTR_WRITE_BACKUP, default=False): cv.boolean
+                }
+            ),
             supports_response=SupportsResponse.ONLY,
         )
 
@@ -883,23 +890,27 @@ async def _async_export_recipes(
         "missing_images": hub.missing_image_titles(),
     }
 
-    target = configured_backup_path(hass)
-    if target:
-        text = json.dumps(data, ensure_ascii=False, indent=2)
-        try:
-            path = await hass.async_add_executor_job(
-                partial(write_backup, hass, target, text)
-            )
-        except BackupPathError as err:
-            raise HomeAssistantError(str(err)) from err
-        except OSError as err:
-            raise HomeAssistantError(
-                f"Sicherung konnte nicht geschrieben werden: {err}"
-            ) from err
-        # The card stores this path instead of asking the browser to download
-        # the file, which does not work in the Home Assistant mobile app.
-        data["path"] = str(path)
-        data["filename"] = path.name
+    # The card asks for this only when it has no save dialog and no share
+    # sheet; otherwise the user picks the file themselves and nothing is
+    # written on the server.
+    if call.data.get(ATTR_WRITE_BACKUP):
+        target = configured_backup_path(hass)
+        if target:
+            text = json.dumps(data, ensure_ascii=False, indent=2)
+            try:
+                path = await hass.async_add_executor_job(
+                    partial(write_backup, hass, target, text)
+                )
+            except BackupPathError as err:
+                raise HomeAssistantError(str(err)) from err
+            except OSError as err:
+                raise HomeAssistantError(
+                    f"Sicherung konnte nicht geschrieben werden: {err}"
+                ) from err
+            # The card reports this path instead of starting a download,
+            # which does not work in the Home Assistant mobile app.
+            data["path"] = str(path)
+            data["filename"] = path.name
     return data
 
 

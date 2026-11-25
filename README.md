@@ -47,7 +47,7 @@ Einkaufsliste.
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt; nicht mehr benötigte Fotos löscht die Rezeptbox dabei automatisch
 - **Wochenplan** zum Blättern: sieben Tage ab heute, eine Woche vor und zurück, Rezeptbilder, Heute-Markierung, geplante Tage direkt an der Rezeptzeile, Reste-/Auswärts-Tage ohne Rezept und Einkauf für die sichtbare Woche
-- **Sicherung**: alle Rezepte und den Wochenplan als JSON herunterladen und wieder einlesen
+- **Sicherung**: alle Rezepte und den Wochenplan per Speichern-Dialog als JSON sichern und wieder einlesen
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
 - **Button-Entität** „Zutaten auf die Liste“ je Rezept für Dashboard und Automationen
 
@@ -101,11 +101,13 @@ eine beliebige To-do-Liste aus Home Assistant, zum Beispiel die
 Alexa-Einkaufsliste aus der Integration **Alexa Devices**. Bleibt das Feld leer,
 schreiben Button, Karte und Service wie bisher in die
 Home-Assistant-Einkaufsliste. Dort lässt sich außerdem ein **Zielordner für
-Sicherungen** angeben: ein Ordner im Home-Assistant-Konfigurationsordner, zum
-Beispiel `backups`. **Sichern** legt die JSON-Datei dann direkt dort ab und
-nennt den vollständigen Pfad – das funktioniert auch in der Handy-App, wo
-Webviews keinen Download-Dialog haben. Bleibt das Feld leer, speichert der
-Browser wie bisher.
+Sicherungen** als Rückfall angeben: ein Ordner im
+Home-Assistant-Konfigurationsordner, zum Beispiel `backups`. **Sichern** öffnet
+normalerweise den Speichern-Dialog des Browsers, in dem sich Name und Ort frei
+wählen lassen. Nur wo es weder diesen Dialog noch ein Teilen-Menü gibt, etwa
+in der Handy-App, legt die Integration die JSON-Datei in diesem Ordner ab und
+nennt den vollständigen Pfad. Bleibt das Feld leer, lädt der Browser in
+diesem Fall herunter.
 
 ## Rezept importieren
 
@@ -241,12 +243,13 @@ die Liste füllt sich sofort, ohne Neustart), **Gruppen** (anlegen, sortieren,
 umbenennen, löschen, jeweils mit der Anzahl ihrer Rezepte), **Sicherung** sowie
 **Eigenes Rezept**. Der Tab **Daten** steht rechts neben **Wochenplan**.
 
-Unter **Sicherung** speichert **Sichern** die JSON-Datei. Ist in den Optionen
-der Integration ein **Zielordner** eingestellt, schreibt die Integration die
-Datei dorthin und meldet den Pfad; ohne Zielordner öffnet sich der
-Speichern-Dialog des Browsers (Chrome/Edge), Browser ohne diesen Dialog legen
-die Datei im Download-Ordner ab, in der Home-Assistant-App erscheint
-stattdessen das Teilen-Menü. **Laden** daneben liest eine solche Sicherung
+Unter **Sicherung** speichert **Sichern** die JSON-Datei. Chrome und Edge
+öffnen dafür einen **Speichern-Dialog**, in dem sich Dateiname und Ordner
+frei wählen lassen; Browser ohne diesen Dialog legen die Datei im
+Download-Ordner ab, in der Home-Assistant-App erscheint stattdessen das
+Teilen-Menü. Nur wenn weder Dialog noch Teilen-Menü verfügbar sind, schreibt
+die Integration die Datei in den optionalen **Zielordner** aus den Optionen
+und meldet den Pfad. **Laden** daneben liest eine solche Sicherung
 wieder ein. Unter
 **Eigenes Rezept** entsteht ein Rezept mit Titel, Portionen, Zutaten, Schritten
 und Tags. Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
@@ -477,9 +480,11 @@ aktualisieren.
 Gibt `recipes`, `plan`, `groups`, `favorites` und `missing_images` als JSON zurück (für
 Sicherungen oder eigene Skripte). `missing_images` nennt Rezepte, deren eigenes
 Foto nicht mehr existiert; die Karte hängt dann beim Sichern einen Hinweis an.
-Ist ein Zielordner eingestellt, schreibt der Service die Datei zusätzlich dort
-und liefert `path` (vollständiger Pfad) und `filename` mit. Der Button
-**Sichern** unter **Daten → Sicherung** nutzt denselben Service.
+Mit `write_backup: true` schreibt der Service die Datei zusätzlich in den
+eingestellten Zielordner und liefert `path` (vollständiger Pfad) und
+`filename` mit. Der Button **Sichern** unter **Daten → Sicherung** nutzt
+denselben Service und setzt das Flag nur, wenn weder Speichern-Dialog noch
+Teilen-Menü verfügbar sind.
 
 ### `recipe_box.import_recipes`
 

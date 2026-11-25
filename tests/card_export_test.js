@@ -27,6 +27,7 @@ const state = {
   timers: [],
   shared: null,
   notifications: [],
+  serviceData: null,
 };
 
 const context = {
@@ -97,7 +98,10 @@ const RECIPES = { recipes: [{ title: "Testrezept" }], plan: {} };
 const makeCard = (response = RECIPES) => {
   const card = new context.RecipeBoxListCard();
   card._hass = {
-    callService: async () => response,
+    callService: async (domain, service, data) => {
+      state.serviceData = data;
+      return response;
+    },
   };
   card.dispatchEvent = (event) => state.notifications.push(event.detail.message);
   return card;
@@ -112,6 +116,7 @@ const reset = () => {
   state.timers = [];
   state.shared = null;
   state.notifications = [];
+  state.serviceData = null;
   delete context.window.showSaveFilePicker;
   context.navigator.maxTouchPoints = 0;
   delete context.navigator.share;
@@ -134,6 +139,11 @@ const run = async () => {
     };
   };
   await makeCard()._export();
+  assert.equal(
+    state.serviceData.write_backup,
+    false,
+    "a save dialog means the server writes nothing"
+  );
   assert.equal(state.pickerOptions.suggestedName.startsWith("rezeptbox-"), true);
   assert.match(state.pickerOptions.suggestedName, /\.json$/);
   assert.equal(state.download, null, "no download link when the dialog was used");
@@ -155,6 +165,7 @@ const run = async () => {
   // 3. Without the API the JSON is downloaded; the blob URL is kept alive.
   reset();
   await makeCard()._export();
+  assert.equal(state.serviceData.write_backup, true);
   assert.ok(state.download, "download link was clicked");
   assert.match(state.download.download, /^rezeptbox-\d{4}-\d{2}-\d{2}\.json$/);
   assert.equal(state.download.href, "blob:test");
@@ -173,26 +184,46 @@ const run = async () => {
     state.shared = data;
   };
   await makeCard()._export();
+  assert.equal(state.serviceData.write_backup, false);
   assert.equal(state.download, null);
   assert.match(state.shared.files[0].name, /^rezeptbox-\d{4}-\d{2}-\d{2}\.json$/);
   assert.match(state.shared.files[0].parts[0].parts[0], /"title": "Testrezept"/);
   assert.deepEqual(state.notifications, ["Sicherung gespeichert."]);
 
-  // 5. A server-side target folder skips the browser save dialog entirely.
+  // 5. Without a dialog and a share sheet the integration may write into the
+  //    configured backup folder; the card reports that path.
   reset();
-  context.window.showSaveFilePicker = async () => {
-    throw new Error("must not open");
-  };
   await makeCard({
     ...RECIPES,
     path: "/config/backups/rezeptbox-2026-11-25.json",
     filename: "rezeptbox-2026-11-25.json",
   })._export();
+  assert.equal(state.serviceData.write_backup, true);
   assert.equal(state.pickerOptions, null);
   assert.equal(state.download, null, "the browser stores nothing");
   assert.deepEqual(state.notifications, [
     "Sicherung gespeichert: /config/backups/rezeptbox-2026-11-25.json",
   ]);
+
+  // 7. A configured backup folder never replaces the save dialog.
+  reset();
+  context.window.showSaveFilePicker = async () => ({
+    name: "gewaehlt.json",
+    createWritable: async () => ({
+      write: async (blob) => {
+        state.saved = blob;
+      },
+      close: async () => {},
+    }),
+  });
+  await makeCard({
+    ...RECIPES,
+    path: "/config/backups/rezeptbox-2026-11-25.json",
+    filename: "rezeptbox-2026-11-25.json",
+  })._export();
+  assert.equal(state.serviceData.write_backup, false);
+  assert.equal(state.download, null);
+  assert.deepEqual(state.notifications, ["Sicherung gespeichert: gewaehlt.json"]);
 
   // 6. A missing service response is reported, no empty backup is written.
   reset();
@@ -203,7 +234,7 @@ const run = async () => {
     /^Sichern fehlgeschlagen: .*Sicherungsdaten/
   );
 
-  console.log("card_export_test: 6 checks passed");
+  console.log("card_export_test: 7 checks passed");
 };
 
 run().catch((error) => {

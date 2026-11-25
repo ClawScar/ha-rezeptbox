@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.8.1";
+const CARD_VERSION = "2.8.2";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -4131,10 +4131,20 @@ class RecipeBoxListCard extends HTMLElement {
   async _export() {
     if (!this._hass) return;
     try {
+      // The save dialog is the preferred way to store a backup: the user
+      // picks name and folder themselves. Only when neither the dialog nor
+      // the share sheet is available does the integration write the file
+      // into the configured backup folder instead.
+      const canPickFile = typeof window.showSaveFilePicker === "function";
+      const canShareFile =
+        typeof File === "function" &&
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.maxTouchPoints > 0;
       const data = await this._hass.callService(
         "recipe_box",
         "export_recipes",
-        {},
+        { write_backup: !canPickFile && !canShareFile },
         undefined,
         false,
         true
@@ -4148,25 +4158,12 @@ class RecipeBoxListCard extends HTMLElement {
         );
       }
 
-      // With a backup folder configured the integration already wrote the
-      // file on the server; browsers (and the mobile app) save nothing.
-      if (typeof data.path === "string" && data.path) {
-        notify(
-          this,
-          tr(
-            `Sicherung gespeichert: ${data.path}${missingImageWarning(data)}`,
-            `Backup saved: ${data.path}${missingImageWarning(data)}`
-          )
-        );
-        return;
-      }
-
       const text = JSON.stringify(data, null, 2);
       const filename = `rezeptbox-${isoDate(new Date())}.json`;
       const type = "application/json";
 
       // Chromium opens the real save dialog through the File System Access API.
-      if (typeof window.showSaveFilePicker === "function") {
+      if (canPickFile) {
         let handle = null;
         try {
           handle = await window.showSaveFilePicker({
@@ -4199,16 +4196,24 @@ class RecipeBoxListCard extends HTMLElement {
         }
       }
 
+      // Without a save dialog the integration may have written the file into
+      // the configured backup folder, for example in the mobile app.
+      if (typeof data.path === "string" && data.path) {
+        notify(
+          this,
+          tr(
+            `Sicherung gespeichert: ${data.path}${missingImageWarning(data)}`,
+            `Backup saved: ${data.path}${missingImageWarning(data)}`
+          )
+        );
+        return;
+      }
+
       const blob = new Blob([text], { type });
 
       // Mobile Home Assistant apps have no download dialog; the share sheet
       // lets the user store the backup in the file manager instead.
-      if (
-        typeof File === "function" &&
-        typeof navigator.share === "function" &&
-        typeof navigator.canShare === "function" &&
-        navigator.maxTouchPoints > 0
-      ) {
+      if (canShareFile) {
         const file = new File([blob], filename, { type });
         if (navigator.canShare({ files: [file] })) {
           try {

@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "2.8.1"
+VERSION = "2.8.2"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
@@ -75,6 +75,7 @@ ATTR_FAVORITE = "favorite"
 ATTR_FAVORITES = "favorites"
 ATTR_PLAN = "plan"
 ATTR_DATE = "date"
+ATTR_WRITE_BACKUP = "write_backup"
 MANUAL_URL_PREFIX = "manual://"
 
 KNOWN_IMPORT_ERRORS = {

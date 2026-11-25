@@ -1,9 +1,9 @@
 """Server-side storage for Rezeptbox backups.
 
-When a target folder is configured, ``recipe_box.export_recipes`` writes the
-JSON file there instead of leaving the browser to download it. That keeps
-saving reliable in the Home Assistant app, where webviews have no download
-dialog and the share sheet depends on a user gesture.
+The card normally offers a save dialog, so the user picks name and folder.
+Only when that is impossible – the Home Assistant app has neither a save
+dialog nor a reliable download – does ``recipe_box.export_recipes`` write the
+JSON file into the configured folder instead.
 """
 
 from __future__ import annotations

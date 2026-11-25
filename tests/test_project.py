@@ -423,6 +423,12 @@ class BackupTargetFilesTest(unittest.TestCase):
         init = (COMPONENT / "__init__.py").read_text("utf-8")
         self.assertIn("write_backup", init)
         self.assertIn('data["path"]', init)
+        # The card asks for the server-side write only as a fallback.
+        const = (COMPONENT / "const.py").read_text("utf-8")
+        self.assertIn('ATTR_WRITE_BACKUP = "write_backup"', const)
+        self.assertIn("call.data.get(ATTR_WRITE_BACKUP)", init)
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        self.assertIn("write_backup: !canPickFile && !canShareFile", card)
 
     def test_options_offer_a_backup_folder(self) -> None:
         flow = (COMPONENT / "config_flow.py").read_text("utf-8")
