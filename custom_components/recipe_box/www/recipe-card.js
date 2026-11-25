@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.10";
+const CARD_VERSION = "2.9.0-beta.11";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1809,7 +1809,7 @@ const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-sec
       )}</p>
   <div class="scan">
     <div class="scan-bar">
-      <button class="scan-add scan-pick" type="button">${tr("Fotos wählen", "Choose photos")}</button>
+      <label class="scan-add scan-pick">${tr("Fotos wählen", "Choose photos")}<input class="scan-input" type="file" accept="image/*" multiple></label>
       <button class="ocr-run" type="button"${pages.length ? "" : " disabled"}>${tr(
         "Text erkennen",
         "Read text"
@@ -3311,6 +3311,11 @@ const STYLES = `<style>
   .scan { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.08)); }
   .scan-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .scan-add { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--primary-color); background: none; color: var(--primary-color); font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  /* The real input sits invisibly on the label: Android webviews only open the
+   * photo picker for a tapped file input inside the page, not for a hidden
+   * input that script clicks. */
+  label.scan-pick { position: relative; overflow: hidden; }
+  label.scan-pick input.scan-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
   button.ocr-run { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
   button.ocr-run[disabled] { opacity: 0.5; cursor: default; }
   button.ocr-clear { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; color: var(--text-primary-color); cursor: pointer; }
@@ -3532,8 +3537,6 @@ class RecipeBoxListCard extends HTMLElement {
     this._pendingGroupDelete = null;
     this._groupDeleteTimer = null;
     this._backup = null;
-    this._scanInput = null;
-    this._photoPoll = null;
     this._renamingGroup = null;
     this._filter = {
       query: "",
@@ -4585,8 +4588,8 @@ class RecipeBoxListCard extends HTMLElement {
       manualCancel.addEventListener("click", () => this._cancelEdit());
     }
 
-    const ocrPick = this.shadowRoot.querySelector("button.scan-pick");
-    if (ocrPick) ocrPick.addEventListener("click", () => this._pickPhotos());
+    const ocrInput = this.shadowRoot.querySelector("input.scan-input");
+    if (ocrInput) this._attachScanInput(ocrInput);
     const ocrRun = this.shadowRoot.querySelector("button.ocr-run");
     if (ocrRun) ocrRun.addEventListener("click", () => this._scanPages());
     const ocrClear = this.shadowRoot.querySelector("button.ocr-clear");
@@ -4794,70 +4797,17 @@ class RecipeBoxListCard extends HTMLElement {
     if (status) status.textContent = message || "";
   }
 
-  /* The file input lives outside the card: Home Assistant re-renders the
-   * card while the native picker is open, and an input inside the shadow
-   * tree loses its files then (typical in the mobile app). The input is
-   * created once and kept, so the change listener always stays attached. */
-  _photoInput() {
-    if (this._scanInput && this._scanInput.parentNode) return this._scanInput;
-    if (typeof document === "undefined" || !document.createElement) return null;
-    if (!document.body) return null;
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.multiple = true;
-    input.setAttribute("aria-hidden", "true");
-    input.style.position = "fixed";
-    input.style.top = "0";
-    input.style.left = "-10000px";
-    input.style.opacity = "0";
+  /* The file input lives in the form, so Android's webview opens the photo
+   * picker from the tap itself. The listener sits on the input element, so a
+   * re-render while the picker is open cannot lose the chosen files. */
+  _attachScanInput(input) {
+    if (!input || input._rezeptboxScan) return;
+    input._rezeptboxScan = true;
     input.addEventListener("change", () => {
       const chosen = Array.from(input.files || []);
       input.value = "";
-      this._stopPhotoPoll();
       if (chosen.length) this._addPhotos(chosen);
     });
-    document.body.appendChild(input);
-    this._scanInput = input;
-    return input;
-  }
-
-  _stopPhotoPoll() {
-    if (this._photoPoll && typeof clearInterval === "function") {
-      clearInterval(this._photoPoll);
-    }
-    this._photoPoll = null;
-  }
-
-  _pickPhotos() {
-    const input = this._photoInput();
-    if (!input) return;
-    input.value = "";
-    input.click();
-    /* Some app webviews close the picker without a change event. The files
-     * are then read from the input for a few seconds. */
-    if (typeof setInterval !== "function") return;
-    this._stopPhotoPoll();
-    let tries = 0;
-    this._photoPoll = setInterval(() => {
-      tries += 1;
-      const chosen = Array.from(input.files || []);
-      if (chosen.length) {
-        input.value = "";
-        this._stopPhotoPoll();
-        this._addPhotos(chosen);
-        return;
-      }
-      if (tries >= 40) {
-        this._stopPhotoPoll();
-        this._scanStatus(
-          tr(
-            "Die Fotoauswahl kam nicht an. Bitte „Fotos wählen“ erneut antippen.",
-            "The photo selection did not arrive. Please tap “Choose photos” again."
-          )
-        );
-      }
-    }, 500);
   }
 
   _addPhotos(chosen) {
