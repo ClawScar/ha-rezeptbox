@@ -246,7 +246,16 @@ const run = async () => {
   assert.match(full, /class="backup-share"/);
   assert.match(full, /download="rezeptbox-2026-11-25.json"/);
 
-  console.log("card_export_test: 8 checks passed");
+  // 9. The frontend wraps a service response as { context, response };
+  //    the card must read the payload from there.
+  reset();
+  card = makeCard({ context: { id: "ctx" }, response: RECIPES });
+  await card._export();
+  assert.equal(state.dialogShown, 1);
+  assert.match(card._backup.blob.parts[0], /"title": "Testrezept"/);
+  assert.deepEqual(state.notifications, []);
+
+  console.log("card_export_test: 9 checks passed");
 };
 
 run().catch((error) => {

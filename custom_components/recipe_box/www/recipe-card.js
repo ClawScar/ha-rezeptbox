@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.4";
+const CARD_VERSION = "2.9.0-beta.5";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -2627,6 +2627,13 @@ const deleteButtonHtml = (entityId, pending) => `<button class="delete${pending 
     "Delete recipe"
   )}">${pending ? tr("Löschen?", "Delete?") : `<ha-icon icon="mdi:delete-outline"></ha-icon>`}</button>`;
 
+/* The frontend wraps a service response as { context, response }; some
+ * versions handed back the payload itself. Accept both shapes. */
+const serviceResponse = (reply) =>
+  reply && typeof reply === "object" && reply.context && "response" in reply
+    ? reply.response
+    : reply;
+
 const notify = (target, message) => {
   if (!target || typeof target.dispatchEvent !== "function") return;
   target.dispatchEvent(
@@ -3532,7 +3539,7 @@ class RecipeBoxListCard extends HTMLElement {
     this._render();
     try {
       if (urls.length === 1) {
-        const response = await this._hass.callService(
+        const single = await this._hass.callService(
           "recipe_box",
           "import_recipe",
           { url: urls[0] },
@@ -3540,6 +3547,7 @@ class RecipeBoxListCard extends HTMLElement {
           false,
           true
         );
+        const response = serviceResponse(single);
         this._importUrl = "";
         const title = response && response.title;
         notify(
@@ -3549,7 +3557,7 @@ class RecipeBoxListCard extends HTMLElement {
             : tr("Rezept importiert.", "Recipe imported.")
         );
       } else {
-        const response = await this._hass.callService(
+        const many = await this._hass.callService(
           "recipe_box",
           "import_recipe",
           { urls },
@@ -3557,6 +3565,7 @@ class RecipeBoxListCard extends HTMLElement {
           false,
           true
         );
+        const response = serviceResponse(many);
         this._importUrl = "";
         const imported = (response && response.imported) || [];
         const failed = (response && response.failed) || [];
@@ -5005,7 +5014,7 @@ class RecipeBoxListCard extends HTMLElement {
     try {
       /* The card never asks the server to store the file. The dialog below
        * lets the user save or share it themselves. */
-      const data = await this._hass.callService(
+      const reply = await this._hass.callService(
         "recipe_box",
         "export_recipes",
         {},
@@ -5013,6 +5022,7 @@ class RecipeBoxListCard extends HTMLElement {
         false,
         true
       );
+      const data = serviceResponse(reply);
       if (!data || typeof data !== "object" || !Array.isArray(data.recipes)) {
         throw new Error(
           tr(
@@ -5196,7 +5206,7 @@ class RecipeBoxListCard extends HTMLElement {
           )
         );
       }
-      const response = await this._hass.callService(
+      const reply = await this._hass.callService(
         "recipe_box",
         "import_recipes",
         {
@@ -5209,6 +5219,7 @@ class RecipeBoxListCard extends HTMLElement {
         false,
         true
       );
+      const response = serviceResponse(reply);
       notify(
         this,
         tr(
