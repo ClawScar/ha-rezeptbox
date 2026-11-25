@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.14";
+const CARD_VERSION = "2.9.0-beta.15";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1344,11 +1344,13 @@ const ocrServings = (lines) => {
   return null;
 };
 
-const ocrMergeIngredient = (list, line) => {
+const ocrMergeIngredient = (list, line, allowWrap = true) => {
   const text = ocrTidy(ocrStripBullet(line));
   if (!text) return;
   const previous = list[list.length - 1];
-  const wrapped = /^[a-z\u00e4\u00f6\u00fc\u00df]/.test(text) || /,$/.test(text);
+  /* A line at the start of a page never continues the previous page. */
+  const wrapped =
+    allowWrap && (/^[a-z\u00e4\u00f6\u00fc\u00df]/.test(text) || /,$/.test(text));
   if (previous && wrapped) {
     list[list.length - 1] = `${previous} ${text}`;
     return;
@@ -1356,13 +1358,14 @@ const ocrMergeIngredient = (list, line) => {
   list.push(text);
 };
 
-const ocrMergeStep = (list, line) => {
+const ocrMergeStep = (list, line, allowWrap = true) => {
   const text = ocrTidy(line);
   if (!text) return;
   const numbered = OCR_NUMBERED_STEP.test(text);
   const value = numbered ? text.replace(OCR_NUMBERED_STEP, "") : text;
   const previous = list[list.length - 1];
   const wrapped =
+    allowWrap &&
     !numbered &&
     previous &&
     (/^[a-z\u00e4\u00f6\u00fc\u00df]/.test(value) || !/[.!?]$/.test(previous));
@@ -1375,6 +1378,80 @@ const ocrMergeStep = (list, line) => {
 
 /* Join the OCR text of all photographed pages into one recipe draft.
  * Headings may repeat on later pages; they continue the same section. */
+/* Printed steps often run as one paragraph ("... geben. Mit ... vermischen.").
+ * The recipe shows them as a numbered list, so a paragraph that holds several
+ * sentences becomes several steps. Abbreviations stay inside their sentence. */
+const OCR_ABBREVIATION =
+  /(?:^|[\s(])(?:ca|z|b|d|h|ggf|evtl|ev|min|sek|std|tl|el|bzw|usw|inkl|max|mind|sog|vgl|nr|dr|bspw|etwa|ungef|zirka)\.$/i;
+
+const ocrSplitSentences = (text) => {
+  const parts = [];
+  let current = "";
+  String(text || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .forEach((word) => {
+      current = current ? `${current} ${word}` : word;
+      if (!/[.!?]$/.test(word)) return;
+      if (OCR_ABBREVIATION.test(word)) return;
+      parts.push(current);
+      current = "";
+    });
+  if (current) parts.push(current);
+  /* A sentence that starts lowercase belongs to the one before it. */
+  const merged = [];
+  parts.forEach((part) => {
+    const previous = merged[merged.length - 1];
+    if (previous && /^[a-z\u00e4\u00f6\u00fc]/.test(part)) {
+      merged[merged.length - 1] = `${previous} ${part}`;
+    } else {
+      merged.push(part);
+    }
+  });
+  return merged;
+};
+
+/* "1. ... 2. ..." in one recognised line is two steps. */
+const ocrSplitNumbered = (text) => {
+  const marks = [...String(text || "").matchAll(/(?:^|\s)(\d{1,2})[.)]\s+/g)];
+  if (marks.length < 2) return [String(text || "")];
+  const parts = [];
+  marks.forEach((mark, index) => {
+    const start = mark.index + mark[0].length;
+    const end = index + 1 < marks.length ? marks[index + 1].index : text.length;
+    parts.push(text.slice(start, end).trim());
+  });
+  const head = text.slice(0, marks[0].index).trim();
+  if (head) parts.unshift(head);
+  return parts.filter(Boolean);
+};
+
+/* A fragment such as "E E &" is leftovers from the drawing, not a step. */
+const ocrIsStepNoise = (text) => {
+  const value = String(text || "").trim();
+  if (!value) return true;
+  const letters = (value.match(/\p{L}/gu) || []).length;
+  const words = value.split(/\s+/).filter((word) => /\p{L}{2,}/u.test(word));
+  return letters < 6 && words.length < 2;
+};
+
+const ocrSplitSteps = (list) => {
+  const steps = [];
+  (list || []).forEach((step) => {
+    ocrSplitNumbered(step).forEach((entry) => {
+      const value = ocrTidy(entry);
+      if (!value) return;
+      const pieces = ocrSplitSentences(value);
+      pieces.forEach((piece) => {
+        const clean = ocrTidy(piece);
+        if (!clean || ocrIsStepNoise(clean)) return;
+        steps.push(clean);
+      });
+    });
+  });
+  return steps;
+};
+
 const ocrRecipeFromPages = (pages) => {
   const sources = (pages || []).map((page) => String(page || ""));
   const result = {
@@ -1428,6 +1505,9 @@ const ocrRecipeFromPages = (pages) => {
 
     if (pageIndex > 0) flushTitle();
 
+    /* The first printed line of a page starts a new entry; a page break in
+     * the middle of a line would otherwise glue two entries together. */
+    let pageStart = true;
     for (const line of lines) {
       for (const part of ocrSplitColumns(line)) {
         const text = ocrClean(part);
@@ -1442,6 +1522,8 @@ const ocrRecipeFromPages = (pages) => {
           sawHeading = true;
           continue;
         }
+        const allowWrap = !pageStart;
+        pageStart = false;
         if (ocrIsNoise(bare, result.title)) continue;
         if (section === "skip") continue;
 
@@ -1452,13 +1534,13 @@ const ocrRecipeFromPages = (pages) => {
           if (OCR_NUMBERED_STEP.test(bare)) {
             flushTitle();
             section = "instructions";
-            ocrMergeStep(result.instructions, bare);
+            ocrMergeStep(result.instructions, bare, allowWrap);
             continue;
           }
           if (ocrLooksLikeIngredient(bare)) {
             flushTitle();
             section = "ingredients";
-            ocrMergeIngredient(result.ingredients, bare);
+            ocrMergeIngredient(result.ingredients, bare, allowWrap);
             continue;
           }
           /* Everything above the first real section is the title block:
@@ -1474,19 +1556,19 @@ const ocrRecipeFromPages = (pages) => {
           /* A numbered line starts the steps, even without a heading. */
           if (OCR_NUMBERED_STEP.test(bare)) {
             section = "instructions";
-            ocrMergeStep(result.instructions, bare);
+            ocrMergeStep(result.instructions, bare, allowWrap);
           } else if (!OCR_OPTIONAL_LINE.test(bare)) {
             /* "OPTIONAL: ETWAS SÜSSE" is a note, not an ingredient. */
-            ocrMergeIngredient(result.ingredients, bare);
+            ocrMergeIngredient(result.ingredients, bare, allowWrap);
           }
         } else if (section === "instructions") {
           /* A new page may continue the ingredients without repeating the
            * heading; bullets and amounts give that away. */
           if (OCR_INGREDIENT_START.test(bare)) {
             section = "ingredients";
-            ocrMergeIngredient(result.ingredients, bare);
+            ocrMergeIngredient(result.ingredients, bare, allowWrap);
           } else {
-            ocrMergeStep(result.instructions, bare);
+            ocrMergeStep(result.instructions, bare, allowWrap);
           }
         }
       }
@@ -1505,7 +1587,7 @@ const ocrRecipeFromPages = (pages) => {
     title: result.title,
     servings: result.servings,
     ingredients: withoutDuplicates(result.ingredients),
-    instructions: withoutDuplicates(result.instructions),
+    instructions: withoutDuplicates(ocrSplitSteps(result.instructions)),
   };
 };
 
@@ -5128,10 +5210,17 @@ class RecipeBoxListCard extends HTMLElement {
     for (let index = 0; index < pageScans.length; index += 1) {
       const scan = pageScans[index];
       const height = await ocrImageHeight(scan.image);
-      const bands = ocrZoneBands(ocrDataLines(scan.data), height);
+      const lines = ocrDataLines(scan.data);
+      let bands = ocrZoneBands(lines, height);
       if (!bands) {
-        zoneTexts.push("");
-        continue;
+        /* A second page that continues the steps often repeats no heading;
+         * its whole page is then read as the preparation. */
+        if (index > 0 && lines.length > 2) {
+          bands = { steps: { top: 0.04, bottom: 0.99 } };
+        } else {
+          zoneTexts.push("");
+          continue;
+        }
       }
       found = true;
       const parts = [];
