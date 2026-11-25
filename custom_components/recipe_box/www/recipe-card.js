@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.18";
+const CARD_VERSION = "2.9.0-beta.19";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -3502,7 +3502,9 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
 
 const STYLES = `<style>
   :host { display: block; }
-  ha-card { overflow: hidden; }
+  /* No overflow clipping here: any overflow on the card stops the sticky tab
+   * bar from sticking to the page. The card background covers the corners. */
+  ha-card { overflow: visible; }
   .recipe-image { display: block; width: 100%; max-height: 260px; object-fit: cover; }
   .content { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
   h2 { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--primary-text-color); }
@@ -3617,7 +3619,8 @@ const STYLES = `<style>
   .import-file-label { display: inline-flex; }
   .import-file { display: none; }
   .manual, .plan { display: flex; flex-direction: column; gap: 6px; }
-  .tabs { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
+  /* The tabs stay at the top while the recipes scroll past. */
+  .tabs { position: sticky; top: 0; z-index: 6; display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color, #fff))); }
   button.tab { flex: 0 0 auto; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 8px 12px; font-size: 0.85rem; color: var(--secondary-text-color); cursor: pointer; white-space: nowrap; }
   button.tab:hover { color: var(--primary-text-color); }
   button.tab.active { color: var(--primary-color); border-bottom-color: var(--primary-color); font-weight: 600; }

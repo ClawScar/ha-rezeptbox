@@ -46,6 +46,7 @@ Einkaufsliste.
 - **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt; nicht mehr benötigte Fotos löscht die Rezeptbox dabei automatisch
+- **Tabs bleiben stehen**: „Rezepte“, „Wochenplan“ und „Daten“ kleben beim Scrollen oben am Rand, solange die Karte sichtbar ist
 - **Foto-Scanner** für gedruckte Rezeptkarten: mehrere Seiten fotografieren, Text mit Tesseract direkt im Browser erkennen lassen und als Rezeptvorschlag im Formular prüfen – ohne KI-Dienst, ohne Internet, ohne Serverpakete; das erste Foto wird das Rezeptfoto
 - **Rezepte bearbeiten**: Titel, Portionen, Zutaten, Zubereitung, Tags und Foto eines gespeicherten Rezepts über **Bearbeiten** in der Detailansicht oder den Service `recipe_box.update_recipe` ändern
 - **Wochenplan** zum Blättern: sieben Tage ab heute, eine Woche vor und zurück, Rezeptbilder, Heute-Markierung, geplante Tage direkt an der Rezeptzeile, Reste-/Auswärts-Tage ohne Rezept und Einkauf für die sichtbare Woche
@@ -173,14 +174,14 @@ nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
 Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js?v=2.9.0-beta.18
+url: /recipe_box/recipe-card.js?v=2.9.0-beta.19
 type: module
 ```
 
 Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
 Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
 und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
-aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.18“).
+aktiv ist, steht unter **Daten → Sicherung** („Karte 2.9.0-beta.19“).
 
 ### Rezeptliste mit Detailansicht
 
