@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.7.0-beta.1";
+const CARD_VERSION = "2.7.0-beta.2";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -664,6 +664,7 @@ const weekDays = (count = 7) => {
     );
     days.push({
       iso: isoDate(date),
+      isToday: offset === 0,
       label: date.toLocaleDateString(uiLocale(), {
         weekday: "short",
         day: "2-digit",
@@ -1106,22 +1107,46 @@ const planHtml = (hass, entries) => {
   const planned = new Map(
     mealPlanEntries(hass).map((entry) => [String(entry.date), entry])
   );
+  let plannedCount = 0;
   const rows = weekDays()
     .map((day) => {
       const current = planned.get(day.iso);
+      const currentUrl = current
+        ? String(current.source_url || "")
+        : "";
+      const plannedEntry = current
+        ? entries.find(
+            ({ state }) =>
+              String((state.attributes || {}).source_url || "") === currentUrl
+          )
+        : null;
+      if (plannedEntry) plannedCount += 1;
       const options = entries
         .map(({ entityId, state }) => {
           const sourceUrl = String((state.attributes || {}).source_url || "");
-          const selected =
-            current && String(current.source_url || "") === sourceUrl;
+          const selected = plannedEntry && currentUrl === sourceUrl;
           return `<option value="${escapeHtml(entityId)}"${
             selected ? " selected" : ""
           }>${escapeHtml(recipeTitle(state))}</option>`;
         })
         .join("");
-      return `<div class="plan-row">
-        <span class="plan-day">${escapeHtml(day.label)}</span>
-        <select class="plan-select" data-date="${day.iso}"><option value="">—</option>${options}</select>
+      return `<div class="plan-row${day.isToday ? " plan-row-today" : ""}${
+        plannedEntry ? " plan-row-planned" : " plan-row-empty"
+      }">
+        <span class="plan-day">
+          <span class="plan-day-label">${escapeHtml(day.label)}</span>
+          ${
+            day.isToday
+              ? `<span class="plan-today">${tr("Heute", "Today")}</span>`
+              : ""
+          }
+        </span>
+        <select class="plan-select ${
+          plannedEntry ? "plan-select-planned" : "plan-select-empty"
+        }" data-date="${day.iso}"><option value="">${tr(
+        "+ Rezept",
+        "+ Recipe"
+      )}</option>${options}</select>
         ${
           current
             ? `<button class="plan-clear" type="button" data-date="${day.iso}" title="${tr("Tag leeren", "Clear day")}" aria-label="${tr("Tag leeren", "Clear day")}">✕</button>`
@@ -1131,9 +1156,9 @@ const planHtml = (hass, entries) => {
     })
     .join("");
   return `<div class="plan">
-    <p class="tab-hint">${tr(
-      "Wochenplan für die nächsten sieben Tage.",
-      "Meal plan for the next seven days."
+    <p class="tab-hint plan-summary">${plannedCount} ${tr(
+      "von 7 Tagen geplant",
+      "of 7 days planned"
     )}</p>
     <div class="plan-body">
       ${rows}
@@ -2129,10 +2154,18 @@ const STYLES = `<style>
   .photo-edit-label { display: inline-flex; align-items: center; padding: 5px 10px; border-radius: 6px; border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; }
   .photo-edit-input { display: none; }
   button.photo-remove { background: none; border: none; padding: 0; font-size: 0.82rem; color: var(--secondary-text-color); text-decoration: underline; cursor: pointer; }
-  .plan-row { display: flex; align-items: center; gap: 8px; }
-  .plan-day { min-width: 74px; font-size: 0.82rem; color: var(--secondary-text-color); }
-  .plan-select { flex: 1 1 auto; min-width: 0; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; }
-  button.plan-clear { background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.85rem; padding: 4px 6px; }
+  .plan-summary { font-weight: 600; color: var(--primary-text-color); }
+  .plan-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; }
+  .plan-row-today { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); box-shadow: inset 3px 0 0 var(--primary-color); padding-left: 10px; }
+  .plan-day { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 80px; font-size: 0.82rem; color: var(--secondary-text-color); }
+  .plan-today { padding: 1px 7px; border-radius: 999px; background: var(--primary-color); color: var(--text-primary-color, #fff); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em; }
+  .plan-select { flex: 1 1 auto; min-width: 0; min-height: 40px; padding: 8px 32px 8px 12px; border: 1px solid transparent; border-radius: 10px; background-color: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); font-family: inherit; font-size: 0.9rem; text-overflow: ellipsis; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23727a80' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 18px; }
+  .plan-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 1px; }
+  .plan-select-planned { font-weight: 600; }
+  .plan-select-empty { border: 1px dashed var(--divider-color, rgba(127, 127, 127, 0.4)); background-color: transparent; color: var(--secondary-text-color); }
+  .plan-select-empty:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
+  button.plan-clear { min-width: 36px; min-height: 36px; border-radius: 8px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; font-size: 0.9rem; padding: 4px 6px; }
+  button.plan-clear:hover { background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); color: var(--primary-text-color); }
   @media print {
     .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, .groups-editor, .selection-bar, .dialog-backdrop { display: none !important; }
     ha-card { box-shadow: none; }
