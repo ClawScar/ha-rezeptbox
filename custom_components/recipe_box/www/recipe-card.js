@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.7.1";
+const CARD_VERSION = "2.8.0-beta.1";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -653,18 +653,19 @@ const isoDate = (date) =>
     date.getDate()
   ).padStart(2, "0")}`;
 
-const weekDays = (count = 7) => {
+const weekDays = (count = 7, offset = 0) => {
   const today = new Date();
   const days = [];
-  for (let offset = 0; offset < count; offset += 1) {
+  for (let index = 0; index < count; index += 1) {
+    const shift = offset + index;
     const date = new Date(
       today.getFullYear(),
       today.getMonth(),
-      today.getDate() + offset
+      today.getDate() + shift
     );
     days.push({
       iso: isoDate(date),
-      isToday: offset === 0,
+      isToday: shift === 0,
       label: date.toLocaleDateString(uiLocale(), {
         weekday: "short",
         day: "2-digit",
@@ -673,6 +674,193 @@ const weekDays = (count = 7) => {
     });
   }
   return days;
+};
+
+const rangeDayLabel = (iso) => {
+  const date = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return String(iso || "");
+  return date.toLocaleDateString(uiLocale(), {
+    day: "2-digit",
+    month: "2-digit",
+  });
+};
+
+const planRangeLabel = (offset = 0) => {
+  const days = weekDays(7, offset);
+  return `${rangeDayLabel(days[0].iso)} – ${rangeDayLabel(days[6].iso)}`;
+};
+
+/* The plan window starts today. Scrolling back is limited to the oldest
+ * planned day, so the arrows never wander into empty months. */
+const planOffsetBounds = (entries = []) => {
+  const today = isoDate(new Date());
+  let min = 0;
+  for (const entry of entries) {
+    const date = String((entry && entry.date) || "");
+    if (!date || date >= today) continue;
+    const days = Math.round(
+      (new Date(`${date}T12:00:00`) - new Date(`${today}T12:00:00`)) /
+        86400000
+    );
+    min = Math.min(min, Math.floor(days / 7) * 7);
+  }
+  return { min, max: 84 };
+};
+
+const stepPlanOffset = (offset, step, entries) => {
+  const { min, max } = planOffsetBounds(entries);
+  return Math.max(min, Math.min(max, offset + step));
+};
+
+/* Days without a recipe: the plan should also allow leftovers or eating out. */
+const PLAN_NOTES = [
+  {
+    id: "leftovers",
+    icon: "mdi:recycle",
+    label: () => tr("Reste", "Leftovers"),
+  },
+  {
+    id: "away",
+    icon: "mdi:silverware-fork-knife",
+    label: () => tr("Auswärts", "Eating out"),
+  },
+];
+
+const noteOptionValue = (id) => `note:${id}`;
+
+const noteFromValue = (value) =>
+  PLAN_NOTES.find((note) => noteOptionValue(note.id) === String(value || "")) ||
+  null;
+
+const noteForLabel = (label) =>
+  PLAN_NOTES.find((note) => note.label() === String(label || "")) || null;
+
+const planEntryLabel = (entry) =>
+  String((entry && (entry.label || entry.title)) || "");
+
+const planCallData = (date, entityId, context = {}) => {
+  const note = noteFromValue(entityId);
+  if (note) {
+    return { service: "plan_recipe", data: { date, label: note.label() } };
+  }
+  if (!entityId) return { service: "clear_meal_plan", data: { date } };
+  return { service: "plan_recipe", data: { date, entity_id: entityId } };
+};
+
+const planNotice = (date, entityId, context = {}) => {
+  const note = noteFromValue(entityId);
+  if (!entityId) return tr("Tag geleert.", "Day cleared.");
+  const label = shortDayLabel(date);
+  const replaces = String(context.replaces || "");
+  if (replaces) {
+    return tr(
+      `${label}: ${replaces} ersetzt.`,
+      `${label}: replaced ${replaces}.`
+    );
+  }
+  if (note) {
+    return tr(
+      `${label}: ${note.label()} eingetragen.`,
+      `${label}: ${note.label()} added.`
+    );
+  }
+  return tr(`Für ${label} eingeplant.`, `Planned for ${label}.`);
+};
+
+/* The planned weekdays of one recipe, shown in its row in the recipe list. */
+const upcomingPlanDates = (hass, sourceUrl, limit = 3) => {
+  const today = isoDate(new Date());
+  const source = String(sourceUrl || "");
+  if (!source) return [];
+  const dates = mealPlanEntries(hass)
+    .filter(
+      (entry) =>
+        String(entry.date || "") >= today &&
+        String(entry.source_url || "") === source
+    )
+    .map((entry) => String(entry.date))
+    .sort();
+  if (!dates.length) return [];
+  const labels = dates.slice(0, limit).map(dayChipLabel);
+  if (dates.length > limit) labels.push(`+${dates.length - limit}`);
+  return labels;
+};
+
+const FAVORITE_KEY = "recipe_box:favorites";
+const RANDOM_HISTORY_KEY = "recipe_box:random";
+
+const readFavorites = () => {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(FAVORITE_KEY) || "[]");
+    return new Set(Array.isArray(raw) ? raw.map(String) : []);
+  } catch (error) {
+    return new Set();
+  }
+};
+
+const writeFavorites = (favorites) => {
+  try {
+    window.localStorage.setItem(FAVORITE_KEY, JSON.stringify([...favorites]));
+  } catch (error) {
+    /* private mode: favorites stay for this session only */
+  }
+};
+
+const toggleFavorite = (sourceUrl) => {
+  const key = String(sourceUrl || "");
+  if (!key) return false;
+  const favorites = readFavorites();
+  const next = !favorites.has(key);
+  if (next) favorites.add(key);
+  else favorites.delete(key);
+  writeFavorites(favorites);
+  return next;
+};
+
+const readRandomHistory = () => {
+  try {
+    const raw = JSON.parse(
+      window.localStorage.getItem(RANDOM_HISTORY_KEY) || "[]"
+    );
+    return Array.isArray(raw) ? raw.map(String).filter(Boolean) : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+const rememberRandomPick = (sourceUrl) => {
+  const key = String(sourceUrl || "");
+  if (!key) return [];
+  const history = [
+    key,
+    ...readRandomHistory().filter((item) => item !== key),
+  ].slice(0, 20);
+  try {
+    window.localStorage.setItem(RANDOM_HISTORY_KEY, JSON.stringify(history));
+  } catch (error) {
+    /* no persistence, the pick still works */
+  }
+  return history;
+};
+
+/* "Was kochen?" prefers favorites and avoids the last few suggestions. */
+const pickRandomEntry = (pool, favorites, history, random = Math.random) => {
+  if (!pool.length) return null;
+  const recent = new Set(history.slice(0, 3));
+  const sourceOf = (entry) =>
+    String(((entry && entry.state && entry.state.attributes) || {}).source_url || "");
+  let candidates = pool.filter((entry) => !recent.has(sourceOf(entry)));
+  if (!candidates.length) candidates = pool;
+  const weights = candidates.map((entry) =>
+    favorites.has(sourceOf(entry)) ? 3 : 1
+  );
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let roll = random() * total;
+  for (let index = 0; index < candidates.length; index += 1) {
+    roll -= weights[index];
+    if (roll < 0) return candidates[index];
+  }
+  return candidates[candidates.length - 1];
 };
 
 const filterBarHtml = (entries, filter) => {
@@ -1125,28 +1313,145 @@ const shortDayLabel = (iso) => {
   });
 };
 
+/* The day picker in the detail view: three weeks, searchable by weekday,
+ * date or ISO value, so planning does not need a trip back to the list. */
+const DETAIL_PLAN_DAYS = 21;
+
+const detailDayChipsHtml = (hass, state, query = "") => {
+  const sourceUrl = String(
+    ((state && state.attributes) || {}).source_url || ""
+  );
+  const plannedByDate = new Map(
+    mealPlanEntries(hass).map((entry) => [String(entry.date), entry])
+  );
+  const needle = String(query || "")
+    .trim()
+    .toLowerCase();
+  const days = weekDays(DETAIL_PLAN_DAYS).filter((day) => {
+    const text = `${shortDayLabel(day.iso)} ${dayChipLabel(
+      day.iso
+    )} ${day.iso}`.toLowerCase();
+    return !needle || text.includes(needle);
+  });
+  if (!days.length) {
+    return `<p class="tab-hint detail-plan-empty">${tr(
+      "Kein Tag passt zur Suche.",
+      "No day matches the search."
+    )}</p>`;
+  }
+  return days
+    .map((day) => {
+      const entry = plannedByDate.get(day.iso);
+      const entryUrl = String((entry && entry.source_url) || "");
+      const mine = Boolean(entryUrl) && entryUrl === sourceUrl;
+      const plannedTitle = entry ? planEntryLabel(entry) : "";
+      const replaces = !mine && plannedTitle ? plannedTitle : "";
+      const label = shortDayLabel(day.iso);
+      const action = mine
+        ? tr(
+            `Bereits für ${label} eingeplant – zum Entfernen antippen`,
+            `Already planned for ${label} – tap to remove`
+          )
+        : replaces
+          ? tr(
+              `Für ${label} einplanen – ersetzt ${replaces}`,
+              `Plan for ${label} – replaces ${replaces}`
+            )
+          : tr(`Für ${label} einplanen`, `Plan for ${label}`);
+      return `<button class="detail-day-chip${
+        mine ? " detail-day-current" : ""
+      }${entry && !mine ? " detail-day-taken" : ""}" type="button" data-date="${
+        day.iso
+      }" data-replaces="${escapeHtml(
+        replaces
+      )}" aria-pressed="${mine}" title="${escapeHtml(
+        action
+      )}" aria-label="${escapeHtml(action)}">${escapeHtml(label)}${
+        mine ? '<ha-icon icon="mdi:check"></ha-icon>' : ""
+      }</button>`;
+    })
+    .join("");
+};
+
+const detailPlanHtml = (state, hass, meta = {}) => {
+  if (!meta.entityId || !hass) return "";
+  return `<div class="section detail-plan">
+    <h3>${tr("Einplanen", "Plan it")}</h3>
+    <input class="detail-day-search" type="search" placeholder="${tr(
+      "Tag suchen – z. B. Fr oder 28.11.",
+      "Search a day – e.g. Fri or 28/11"
+    )}" aria-label="${tr("Tag suchen", "Search a day")}">
+    <div class="detail-day-list" role="group" aria-label="${tr(
+      "Tage",
+      "Days"
+    )}">${detailDayChipsHtml(hass, state)}</div>
+  </div>`;
+};
+
+const bindDetailDayPicker = (root, card, state) => {
+  const list = root.querySelector(".detail-day-list");
+  if (!list) return;
+  const entityId =
+    card._detailEntityId ||
+    (card._config && card._config.entity) ||
+    card._selected;
+  const bindChips = () => {
+    list.querySelectorAll("button.detail-day-chip").forEach((button) => {
+      button.addEventListener("click", () => {
+        const date = button.getAttribute("data-date");
+        const replaces = button.getAttribute("data-replaces") || "";
+        if (button.getAttribute("aria-pressed") === "true") {
+          card._plan(date, "");
+          return;
+        }
+        card._plan(date, entityId, { replaces });
+      });
+    });
+  };
+  bindChips();
+  const search = root.querySelector("input.detail-day-search");
+  if (!search) return;
+  search.addEventListener("input", () => {
+    list.innerHTML = detailDayChipsHtml(card._hass, state, search.value);
+    bindChips();
+  });
+};
+
 /* The strip under a recipe in the list: one tap plans it for that day. Days
- * that already have a recipe say so, so replacing is a visible choice. */
-const planDayStripHtml = (entityId, plannedByDate, titleBySource) =>
+ * that already have a recipe say so, so replacing is a visible choice, and
+ * the recipe's own days stay filled. */
+const planDayStripHtml = (
+  entityId,
+  plannedByDate,
+  titleBySource,
+  sourceUrl = ""
+) =>
   `<div class="day-strip" role="group" aria-label="${tr(
     "Tag wählen",
     "Choose a day"
   )}">${weekDays()
     .map((day) => {
       const entry = plannedByDate.get(day.iso);
+      const entryUrl = String((entry && entry.source_url) || "");
       const plannedTitle = entry
-        ? titleBySource.get(String(entry.source_url || "")) || ""
+        ? String(planEntryLabel(entry)) ||
+          titleBySource.get(entryUrl) ||
+          ""
         : "";
+      const mine = Boolean(entryUrl) && entryUrl === String(sourceUrl || "");
       const label = dayChipLabel(day.iso);
-      const action = plannedTitle
-        ? tr(
-            `Für ${label} einplanen – ersetzt ${plannedTitle}`,
-            `Plan for ${label} – replaces ${plannedTitle}`
-          )
-        : tr(`Für ${label} einplanen`, `Plan for ${label}`);
+      const action =
+        plannedTitle && mine
+          ? tr(`Für ${label} eingeplant`, `Planned for ${label}`)
+          : plannedTitle
+            ? tr(
+                `Für ${label} einplanen – ersetzt ${plannedTitle}`,
+                `Plan for ${label} – replaces ${plannedTitle}`
+              )
+            : tr(`Für ${label} einplanen`, `Plan for ${label}`);
       return `<button class="day-chip${
         entry ? " day-chip-planned" : ""
-      }" type="button" data-entity="${escapeHtml(
+      }${mine ? " day-chip-current" : ""}" type="button" data-entity="${escapeHtml(
         entityId
       )}" data-date="${day.iso}" data-replaces="${escapeHtml(
         plannedTitle
@@ -1160,25 +1465,33 @@ const planDayStripHtml = (entityId, plannedByDate, titleBySource) =>
     })
     .join("")}</div>`;
 
-const planHtml = (hass, entries, settings = {}) => {
+const planHtml = (hass, entries, settings = {}, offset = 0) => {
   const showImage = settings.show_image !== false;
+  const planEntries = mealPlanEntries(hass);
   const planned = new Map(
-    mealPlanEntries(hass).map((entry) => [String(entry.date), entry])
+    planEntries.map((entry) => [String(entry.date), entry])
   );
+  const today = isoDate(new Date());
+  const pastCount = planEntries.filter(
+    (entry) => String(entry.date || "") < today
+  ).length;
   let plannedCount = 0;
-  const rows = weekDays()
+  const rows = weekDays(7, offset)
     .map((day) => {
       const current = planned.get(day.iso);
-      const currentUrl = current
-        ? String(current.source_url || "")
-        : "";
-      const plannedEntry = current
-        ? entries.find(
-            ({ state }) =>
-              String((state.attributes || {}).source_url || "") === currentUrl
-          )
-        : null;
-      if (plannedEntry) plannedCount += 1;
+      const currentUrl = String((current && current.source_url) || "");
+      const currentLabel = current ? String(current.label || "") : "";
+      const note = currentLabel ? noteForLabel(currentLabel) : null;
+      const plannedEntry =
+        current && currentUrl
+          ? entries.find(
+              ({ state }) =>
+                String((state.attributes || {}).source_url || "") ===
+                currentUrl
+            )
+          : null;
+      const hasPlan = Boolean(plannedEntry) || Boolean(currentLabel);
+      if (hasPlan) plannedCount += 1;
       const picture =
         showImage && plannedEntry
           ? String((plannedEntry.state.attributes || {}).image_url || "")
@@ -1190,9 +1503,17 @@ const planHtml = (hass, entries, settings = {}) => {
               picture
             )}" alt="" loading="lazy">`
           : `<span class="plan-thumb plan-thumb-placeholder${
-              current ? "" : " plan-thumb-empty"
+              hasPlan ? "" : " plan-thumb-empty"
+            }${
+              currentLabel ? " plan-thumb-note" : ""
             }" aria-hidden="true"><ha-icon icon="${
-              current ? "mdi:chef-hat" : "mdi:calendar-blank-outline"
+              currentLabel
+                ? note
+                  ? note.icon
+                  : "mdi:note-text-outline"
+                : current
+                  ? "mdi:chef-hat"
+                  : "mdi:calendar-blank-outline"
             }"></ha-icon></span>`;
       const options = entries
         .map(({ entityId, state }) => {
@@ -1203,11 +1524,23 @@ const planHtml = (hass, entries, settings = {}) => {
           }>${escapeHtml(recipeTitle(state))}</option>`;
         })
         .join("");
+      const notes = PLAN_NOTES.map((item) => {
+        const selected = Boolean(currentLabel) && currentLabel === item.label();
+        return `<option value="${noteOptionValue(item.id)}"${
+          selected ? " selected" : ""
+        }>${escapeHtml(item.label())}</option>`;
+      }).join("");
+      const customNote =
+        currentLabel && !note
+          ? `<option value="note:custom" selected>${escapeHtml(
+              currentLabel
+            )}</option>`
+          : "";
       return `<div class="plan-row${day.isToday ? " plan-row-today" : ""}${
-        plannedEntry ? " plan-row-planned" : " plan-row-empty"
+        hasPlan ? " plan-row-planned" : " plan-row-empty"
       }${showImage ? " plan-row-picture" : ""}${
         current ? " plan-row-clearable" : ""
-      }">
+      }${currentLabel ? " plan-row-note" : ""}">
         ${thumb}
         <span class="plan-day">
           <span class="plan-day-label">${escapeHtml(day.label)}</span>
@@ -1218,11 +1551,14 @@ const planHtml = (hass, entries, settings = {}) => {
           }
         </span>
         <select class="plan-select ${
-          plannedEntry ? "plan-select-planned" : "plan-select-empty"
+          hasPlan ? "plan-select-planned" : "plan-select-empty"
         }" data-date="${day.iso}"><option value="">${tr(
         "+ Rezept",
         "+ Recipe"
-      )}</option>${options}</select>
+      )}</option>${options}<optgroup label="${tr(
+        "Ohne Rezept",
+        "Without a recipe"
+      )}">${notes}${customNote}</optgroup></select>
         ${
           current
             ? `<button class="plan-clear" type="button" data-date="${day.iso}" title="${tr("Tag leeren", "Clear day")}" aria-label="${tr("Tag leeren", "Clear day")}">✕</button>`
@@ -1232,10 +1568,47 @@ const planHtml = (hass, entries, settings = {}) => {
     })
     .join("");
   return `<div class="plan">
-    <p class="tab-hint plan-summary">${plannedCount} ${tr(
-      "von 7 Tagen geplant",
-      "of 7 days planned"
-    )}</p>
+    <div class="plan-head">
+      <p class="tab-hint plan-summary">${escapeHtml(
+        planRangeLabel(offset)
+      )} · ${plannedCount} ${tr("von 7 Tagen geplant", "of 7 days planned")}</p>
+      <div class="plan-nav" role="group" aria-label="${tr(
+        "Wochen blättern",
+        "Browse weeks"
+      )}">
+        <button class="plan-prev" type="button" title="${tr(
+          "Vorige Woche",
+          "Previous week"
+        )}" aria-label="${tr("Vorige Woche", "Previous week")}">‹</button>
+        ${
+          offset
+            ? `<button class="plan-today-button" type="button">${tr(
+                "Heute",
+                "Today"
+              )}</button>`
+            : ""
+        }
+        <button class="plan-next" type="button" title="${tr(
+          "Nächste Woche",
+          "Next week"
+        )}" aria-label="${tr("Nächste Woche", "Next week")}">›</button>
+      </div>
+    </div>
+    ${
+      pastCount
+        ? `<div class="plan-past"><span>${
+            pastCount === 1
+              ? tr("1 vergangener Tag im Plan", "1 past day in the plan")
+              : tr(
+                  `${pastCount} vergangene Tage im Plan`,
+                  `${pastCount} past days in the plan`
+                )
+          }</span><button class="plan-prune" type="button">${tr(
+            "Aufräumen",
+            "Clean up"
+          )}</button></div>`
+        : ""
+    }
     <div class="plan-body">
       ${rows}
       <button class="week-shopping" type="button">${tr(
@@ -1572,6 +1945,27 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       ? `<button class="refresh" type="button">${tr("Aktualisieren", "Refresh")}</button>`
       : "";
   const printButton = `<button class="print" type="button">${tr("Drucken", "Print")}</button>`;
+  const favorite =
+    !forPrint && meta.entityId
+      ? `<button class="favorite-toggle${
+          meta.favorite ? " active" : ""
+        }" type="button" data-source="${escapeHtml(
+          attributes.source_url || ""
+        )}" aria-pressed="${Boolean(
+          meta.favorite
+        )}" title="${
+          meta.favorite
+            ? tr("Aus Favoriten entfernen", "Remove from favorites")
+            : tr("Zu Favoriten hinzufügen", "Add to favorites")
+        }" aria-label="${
+          meta.favorite
+            ? tr("Aus Favoriten entfernen", "Remove from favorites")
+            : tr("Zu Favoriten hinzufügen", "Add to favorites")
+        }"><ha-icon icon="${
+          meta.favorite ? "mdi:star" : "mdi:star-outline"
+        }"></ha-icon>${tr("Favorit", "Favorite")}</button>`
+      : "";
+  const detailPlan = forPrint ? "" : detailPlanHtml(state, meta.hass, meta);
   const shopping =
     Array.isArray(attributes.ingredients) && attributes.ingredients.length
       ? `<div class="shopping-row">
@@ -1594,7 +1988,7 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       : "";
   const footer = forPrint
     ? ""
-    : `<div class="footer">${source}${refresh}${printButton}${shopping}</div>`;
+    : `<div class="footer">${favorite}${source}${refresh}${printButton}${shopping}</div>`;
 
   return `${image}
     <div class="content">
@@ -1604,6 +1998,7 @@ const detailHtml = (state, options, checked, servings, meta = {}) => {
       ${tagsHtml(attributes)}
       ${photoEdit}
       ${groupsEditorHtml(attributes, meta, Array.isArray(meta.groups) ? meta.groups : [])}
+      ${detailPlan}
       ${updateHintHtml(attributes)}
       ${ingredients ? `<div class="section"><h3>${tr("Zutaten", "Ingredients")}</h3>${servingsControl}${ingredients}</div>` : ""}
       ${nutritionHtml(attributes)}
@@ -2055,6 +2450,20 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
     });
   });
 
+  const favoriteButton = root.querySelector("button.favorite-toggle");
+  if (favoriteButton) {
+    favoriteButton.addEventListener("click", () => {
+      const active = toggleFavorite(favoriteButton.getAttribute("data-source"));
+      notify(
+        dispatcher,
+        active
+          ? tr("Zu Favoriten hinzugefügt.", "Added to favorites.")
+          : tr("Aus Favoriten entfernt.", "Removed from favorites.")
+      );
+      if (typeof options.onFavorite === "function") options.onFavorite();
+    });
+  }
+
   const button = root.querySelector("button.shopping");
   if (!button || !hass) return;
 
@@ -2142,10 +2551,30 @@ const STYLES = `<style>
   .list-bar button.delete { margin-left: auto; }
   button.plan-add { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; padding: 8px 6px; border-radius: 6px; --mdc-icon-size: 20px; }
   button.plan-add:hover, button.plan-add[aria-expanded="true"] { color: var(--primary-color); background: rgba(127, 127, 127, 0.08); }
+  button.plan-add { position: relative; }
+  button.plan-add.plan-add-planned { color: var(--primary-color); }
+  button.plan-add-planned::after { content: ""; position: absolute; top: 8px; right: 8px; width: 6px; height: 6px; border-radius: 50%; background: var(--primary-color); }
+  button.recipe-favorite { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 40px; background: none; border: none; color: var(--secondary-text-color); cursor: pointer; padding: 8px 2px; border-radius: 6px; --mdc-icon-size: 20px; }
+  button.recipe-favorite:hover { background: rgba(127, 127, 127, 0.08); }
+  button.recipe-favorite.active { color: var(--warning-color, #ffa600); }
+  button.favorite-toggle { display: inline-flex; align-items: center; gap: 4px; background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 6px; padding: 6px 10px; font-size: 0.82rem; color: var(--primary-text-color); cursor: pointer; --mdc-icon-size: 18px; }
+  button.favorite-toggle:hover { border-color: var(--primary-color); }
+  button.favorite-toggle.active { color: var(--warning-color, #ffa600); border-color: currentColor; }
+  .detail-plan { gap: 6px; }
+  input.detail-day-search { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
+  .detail-day-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 6px; }
+  button.detail-day-chip { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 40px; padding: 6px 8px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; background: none; color: var(--primary-text-color); font-family: inherit; font-size: 0.82rem; cursor: pointer; }
+  button.detail-day-chip:hover { border-color: var(--primary-color); }
+  button.detail-day-chip.detail-day-taken { border-style: dashed; color: var(--secondary-text-color); }
+  button.detail-day-chip.detail-day-current { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; }
+  button.detail-day-chip ha-icon { --mdc-icon-size: 16px; }
+  .detail-plan-empty { grid-column: 1 / -1; }
   .day-strip { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: 4px; padding: 0 0 10px; }
   button.day-chip { position: relative; flex: 1 1 44px; min-width: 44px; min-height: 40px; padding: 4px 2px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; background: none; color: var(--primary-text-color); font-family: inherit; font-size: 0.78rem; cursor: pointer; }
   button.day-chip:hover { border-color: var(--primary-color); }
   button.day-chip.day-chip-planned { border-color: var(--primary-color); color: var(--primary-color); font-weight: 600; }
+  button.day-chip.day-chip-current { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+  button.day-chip.day-chip-current .day-chip-dot { background: currentColor; opacity: 0.7; }
   .day-chip-dot { display: inline-block; width: 5px; height: 5px; margin-left: 4px; border-radius: 50%; background: currentColor; vertical-align: middle; }
   button.recipe-item:hover { background: var(--secondary-background-color, rgba(127, 127, 127, 0.08)); }
   .thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
@@ -2153,6 +2582,8 @@ const STYLES = `<style>
   .item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .item-title { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .item-meta { font-size: 0.8rem; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-plan { display: inline-flex; align-items: center; gap: 4px; font-size: 0.78rem; font-weight: 600; color: var(--primary-color); }
+  .item-plan ha-icon { --mdc-icon-size: 15px; }
   ha-icon.chevron { margin-left: auto; color: var(--secondary-text-color); --mdc-icon-size: 20px; flex: 0 0 auto; }
   .list-bar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--divider-color, rgba(127, 127, 127, 0.25)); }
   button.back { background: none; border: none; padding: 4px 0; color: var(--primary-color); font-size: 0.9rem; cursor: pointer; white-space: nowrap; }
@@ -2240,6 +2671,15 @@ const STYLES = `<style>
   .photo-edit-input { display: none; }
   button.photo-remove { background: none; border: none; padding: 0; font-size: 0.82rem; color: var(--secondary-text-color); text-decoration: underline; cursor: pointer; }
   .plan-summary { font-weight: 600; color: var(--primary-text-color); }
+  .plan-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+  .plan-nav { display: flex; align-items: center; gap: 4px; }
+  .plan-nav button { min-width: 36px; min-height: 32px; padding: 2px 8px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; background: none; color: var(--primary-text-color); font-family: inherit; font-size: 0.9rem; cursor: pointer; }
+  .plan-nav button:hover { border-color: var(--primary-color); }
+  .plan-nav button.plan-today-button { font-size: 0.78rem; font-weight: 600; }
+  .plan-past { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 10px; border-radius: 8px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.12)); font-size: 0.8rem; color: var(--secondary-text-color); }
+  button.plan-prune { background: none; border: none; color: var(--primary-color); font-family: inherit; font-size: 0.8rem; text-decoration: underline; cursor: pointer; padding: 4px; }
+  .plan-row-note .plan-select { font-style: italic; }
+  .plan-thumb-note { background: transparent; border: 1px dashed var(--primary-color); color: var(--primary-color); }
   .plan-row { display: grid; align-items: center; gap: 4px 10px; padding: 6px 8px; border-radius: 10px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "day clear" "select select"; }
   .plan-row-picture { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "day day clear" "thumb select select"; }
   .plan-thumb { grid-area: thumb; display: block; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; }
@@ -2350,6 +2790,10 @@ class RecipeBoxCard extends HTMLElement {
     this.shadowRoot.innerHTML = `${STYLES}
       <ha-card>${detailHtml(this._state, this._config, session.checked, servings, {
         entityId,
+        hass: this._hass,
+        favorite: readFavorites().has(
+          String((this._state.attributes || {}).source_url || "")
+        ),
         groups: knownGroups(this._hass, recipeEntities(this._hass, null)),
       })}</ha-card>`;
     bindDetail(
@@ -2370,8 +2814,35 @@ class RecipeBoxCard extends HTMLElement {
           this._render();
         },
         onSession: () => writeSession(entityId, session),
+        onFavorite: () => this._render(),
       }
     );
+
+    this._detailEntityId = entityId;
+    bindDetailDayPicker(this.shadowRoot, this, this._state);
+  }
+
+  async _plan(date, entityId, context = {}) {
+    if (!this._hass || !date) return;
+    const { service, data } = planCallData(date, entityId, context);
+    try {
+      await this._hass.callService("recipe_box", service, data);
+      notify(this, planNotice(date, entityId, context));
+    } catch (error) {
+      notify(
+        this,
+        tr(
+          `Wochenplan: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Meal plan: ${(error && (error.message || error.code)) || "error"}`
+        )
+      );
+    } finally {
+      const fresh =
+        this._hass.states &&
+        this._hass.states[this._config ? this._config.entity : ""];
+      if (fresh) this._state = fresh;
+      this._render();
+    }
   }
 }
 
@@ -2398,6 +2869,8 @@ class RecipeBoxListCard extends HTMLElement {
     this._tab = "recipes";
     this._restoreFocus = false;
     this._planPicker = null;
+    this._planOffset = 0;
+    this._detailEntityId = null;
   }
 
   static getStubConfig() {
@@ -2989,8 +3462,9 @@ class RecipeBoxListCard extends HTMLElement {
 
   _renderList(entries) {
     const filtered = this._filtered(entries);
+    const planEntries = mealPlanEntries(this._hass);
     const plannedByDate = new Map(
-      mealPlanEntries(this._hass).map((entry) => [String(entry.date), entry])
+      planEntries.map((entry) => [String(entry.date), entry])
     );
     const titleBySource = new Map(
       entries.map(({ state }) => [
@@ -2998,8 +3472,12 @@ class RecipeBoxListCard extends HTMLElement {
         recipeTitle(state),
       ])
     );
+    const favorites = readFavorites();
     const items = filtered.map(({ entityId, state }) => {
       const attributes = state.attributes || {};
+      const sourceUrl = String(attributes.source_url || "");
+      const plannedDays = upcomingPlanDates(this._hass, sourceUrl);
+      const isFavorite = favorites.has(sourceUrl);
       const meta = [
         formatMinutes(attributes.total_time_minutes),
         formatServings(attributes.servings),
@@ -3030,10 +3508,38 @@ class RecipeBoxListCard extends HTMLElement {
           <span class="item-text">
             <span class="item-title">${escapeHtml(recipeTitle(state))}</span>
             <span class="item-meta">${escapeHtml(meta)}</span>
+            ${
+              plannedDays.length
+                ? `<span class="item-plan"><ha-icon icon="mdi:calendar-check"></ha-icon>${escapeHtml(
+                    plannedDays.join(" · ")
+                  )}</span>`
+                : ""
+            }
           </span>
           <ha-icon class="chevron" icon="${chevron}"></ha-icon>
         </button>
-        <button class="plan-add" type="button" data-entity="${escapeHtml(
+        ${
+          sourceUrl
+            ? `<button class="recipe-favorite${
+                isFavorite ? " active" : ""
+              }" type="button" data-source="${escapeHtml(
+                sourceUrl
+              )}" aria-pressed="${isFavorite}" title="${
+                isFavorite
+                  ? tr("Aus Favoriten entfernen", "Remove from favorites")
+                  : tr("Zu Favoriten hinzufügen", "Add to favorites")
+              }" aria-label="${
+                isFavorite
+                  ? tr("Aus Favoriten entfernen", "Remove from favorites")
+                  : tr("Zu Favoriten hinzufügen", "Add to favorites")
+              }"><ha-icon icon="${
+                isFavorite ? "mdi:star" : "mdi:star-outline"
+              }"></ha-icon></button>`
+            : ""
+        }
+        <button class="plan-add${
+          plannedDays.length ? " plan-add-planned" : ""
+        }" type="button" data-entity="${escapeHtml(
           entityId
         )}" aria-expanded="${planOpen}" title="${tr(
         "Einem Tag zuordnen",
@@ -3045,7 +3551,12 @@ class RecipeBoxListCard extends HTMLElement {
         ${removeButton}
         ${
           planOpen
-            ? planDayStripHtml(entityId, plannedByDate, titleBySource)
+            ? planDayStripHtml(
+                entityId,
+                plannedByDate,
+                titleBySource,
+                sourceUrl
+              )
             : ""
         }
       </li>`;
@@ -3118,7 +3629,7 @@ class RecipeBoxListCard extends HTMLElement {
         this._renamingGroup
       )}${tools}${manualFormHtml()}</div>`,
       plan: entries.length
-        ? planHtml(this._hass, entries, this._config)
+        ? planHtml(this._hass, entries, this._config, this._planOffset)
         : `<p class="empty">${tr(
             "Noch keine Rezepte für den Wochenplan.",
             "No recipes for the meal plan yet."
@@ -3143,6 +3654,7 @@ class RecipeBoxListCard extends HTMLElement {
         if (!next || next === this._tab) return;
         this._rememberTab(next);
         this._planPicker = null;
+        this._planOffset = 0;
         this._signature = null;
         this._render();
         this._viewChanged({ tab: next, selected: null });
@@ -3201,6 +3713,21 @@ class RecipeBoxListCard extends HTMLElement {
         this._planPicker = null;
         this._signature = null;
         this._plan(date, entityId, { replaces });
+      });
+    });
+
+    this.shadowRoot.querySelectorAll("button.recipe-favorite").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const active = toggleFavorite(button.getAttribute("data-source"));
+        notify(
+          this,
+          active
+            ? tr("Zu Favoriten hinzugefügt.", "Added to favorites.")
+            : tr("Aus Favoriten entfernt.", "Removed from favorites.")
+        );
+        this._signature = null;
+        this._renderList(entries);
       });
     });
 
@@ -3421,6 +3948,73 @@ class RecipeBoxListCard extends HTMLElement {
     if (weekShopping) {
       weekShopping.addEventListener("click", () => this._weekShopping());
     }
+
+    const stepWeek = (step) => {
+      const next = stepPlanOffset(this._planOffset, step, planEntries);
+      if (next === this._planOffset) return;
+      this._planOffset = next;
+      this._signature = null;
+      this._renderList(entries);
+    };
+    const planPrev = this.shadowRoot.querySelector("button.plan-prev");
+    if (planPrev) planPrev.addEventListener("click", () => stepWeek(-7));
+    const planNext = this.shadowRoot.querySelector("button.plan-next");
+    if (planNext) planNext.addEventListener("click", () => stepWeek(7));
+    const planTodayButton = this.shadowRoot.querySelector(
+      "button.plan-today-button"
+    );
+    if (planTodayButton) {
+      planTodayButton.addEventListener("click", () => {
+        this._planOffset = 0;
+        this._signature = null;
+        this._renderList(entries);
+      });
+    }
+    const planPrune = this.shadowRoot.querySelector("button.plan-prune");
+    if (planPrune) {
+      planPrune.addEventListener("click", () => this._prunePlan());
+    }
+  }
+
+  async _prunePlan() {
+    if (!this._hass) return;
+    const today = isoDate(new Date());
+    const dates = [
+      ...new Set(
+        mealPlanEntries(this._hass)
+          .map((entry) => String(entry.date || ""))
+          .filter((date) => date && date < today)
+      ),
+    ];
+    if (!dates.length) return;
+    try {
+      for (const date of dates) {
+        await this._hass.callService("recipe_box", "clear_meal_plan", {
+          date,
+        });
+      }
+      notify(
+        this,
+        dates.length === 1
+          ? tr("1 vergangenen Tag entfernt.", "Removed 1 past day.")
+          : tr(
+              `${dates.length} vergangene Tage entfernt.`,
+              `Removed ${dates.length} past days.`
+            )
+      );
+      this._planOffset = 0;
+    } catch (error) {
+      notify(
+        this,
+        tr(
+          `Wochenplan: ${(error && (error.message || error.code)) || "Fehler"}`,
+          `Meal plan: ${(error && (error.message || error.code)) || "error"}`
+        )
+      );
+    } finally {
+      this._signature = null;
+      this._render();
+    }
   }
 
   _openRandom(entries) {
@@ -3435,7 +4029,22 @@ class RecipeBoxListCard extends HTMLElement {
       );
       return;
     }
-    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const pick = pickRandomEntry(
+      pool,
+      readFavorites(),
+      readRandomHistory()
+    );
+    if (!pick) return;
+    rememberRandomPick(
+      String(((pick.state && pick.state.attributes) || {}).source_url || "")
+    );
+    notify(
+      this,
+      tr(
+        `Vorschlag: ${recipeTitle(pick.state)}`,
+        `Suggestion: ${recipeTitle(pick.state)}`
+      )
+    );
     this._selected = pick.entityId;
     this._signature = null;
     this._render();
@@ -3751,27 +4360,10 @@ class RecipeBoxListCard extends HTMLElement {
 
   async _plan(date, entityId, context = {}) {
     if (!this._hass || !date) return;
+    const { service, data } = planCallData(date, entityId, context);
     try {
-      if (entityId) {
-        await this._hass.callService("recipe_box", "plan_recipe", {
-          date,
-          entity_id: entityId,
-        });
-        const label = shortDayLabel(date);
-        const replaces = String(context.replaces || "");
-        notify(
-          this,
-          replaces
-            ? tr(
-                `${label}: ${replaces} ersetzt.`,
-                `${label}: replaced ${replaces}.`
-              )
-            : tr(`Für ${label} eingeplant.`, `Planned for ${label}.`)
-        );
-      } else {
-        await this._hass.callService("recipe_box", "clear_meal_plan", { date });
-        notify(this, tr("Tag geleert.", "Day cleared."));
-      }
+      await this._hass.callService("recipe_box", service, data);
+      notify(this, planNotice(date, entityId, context));
     } catch (error) {
       notify(
         this,
@@ -3789,8 +4381,13 @@ class RecipeBoxListCard extends HTMLElement {
   async _weekShopping() {
     if (!this._hass) return;
     const entries = this._recipes();
+    const visible = new Set(
+      weekDays(7, this._planOffset).map((day) => day.iso)
+    );
     const targets = [];
     for (const item of mealPlanEntries(this._hass)) {
+      if (!visible.has(String(item.date || ""))) continue;
+      if (!item.source_url) continue;
       const match = entries.find(
         ({ state }) =>
           String((state.attributes || {}).source_url || "") ===
@@ -3802,8 +4399,8 @@ class RecipeBoxListCard extends HTMLElement {
       notify(
         this,
         tr(
-          "Im Wochenplan steht noch kein Rezept.",
-          "The meal plan has no recipe yet."
+          "Im sichtbaren Zeitraum steht noch kein Rezept.",
+          "The visible week has no recipe yet."
         )
       );
       return;
@@ -3848,6 +4445,10 @@ class RecipeBoxListCard extends HTMLElement {
         </div>
         ${detailHtml(entry.state, this._config, session.checked, servings, {
           entityId: entry.entityId,
+          hass: this._hass,
+          favorite: readFavorites().has(
+            String((entry.state.attributes || {}).source_url || "")
+          ),
           groups: knownGroups(this._hass, this._recipes()),
         })}
       </ha-card>${deleteDialogHtml(
@@ -3872,8 +4473,15 @@ class RecipeBoxListCard extends HTMLElement {
           this._render();
         },
         onSession: () => writeSession(entry.entityId, session),
+        onFavorite: () => {
+          this._signature = null;
+          this._render();
+        },
       }
     );
+
+    this._detailEntityId = entry.entityId;
+    bindDetailDayPicker(this.shadowRoot, this, entry.state);
 
     this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
       button.addEventListener("click", () => {

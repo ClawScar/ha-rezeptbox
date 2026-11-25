@@ -33,6 +33,7 @@ from .const import (
     ATTR_INGREDIENTS,
     ATTR_INGREDIENTS_STRUCTURED,
     ATTR_INSTRUCTIONS,
+    ATTR_LABEL,
     ATTR_MERGE,
     ATTR_NAME,
     ATTR_PLAN,
@@ -81,6 +82,7 @@ from .parser import (
     parse_ingredient_text,
     scale_ingredient_lines,
 )
+from .plan import clean_plan_label
 from .shopping import TODO_DOMAIN, async_add_ingredient_lines, shopping_target
 
 _LOGGER = logging.getLogger(__name__)
@@ -133,9 +135,12 @@ PLAN_RECIPE_SCHEMA = vol.All(
             vol.Optional(ATTR_SERVINGS): vol.All(
                 vol.Coerce(float), vol.Range(min=0.5, max=100)
             ),
+            vol.Optional(ATTR_LABEL): vol.All(
+                cv.string, vol.Length(min=1, max=40)
+            ),
         }
     ),
-    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID),
+    cv.has_at_least_one_key(ATTR_URL, ATTR_ENTITY_ID, ATTR_LABEL),
 )
 
 CLEAR_MEAL_PLAN_SCHEMA = vol.Schema({vol.Optional(ATTR_DATE): cv.date})
@@ -873,8 +878,16 @@ async def _async_plan_recipe(
     if hub is None:
         raise HomeAssistantError("Die Rezeptbox ist nicht eingerichtet.")
 
-    source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
     date = str(call.data.get(ATTR_DATE))
+    label = clean_plan_label(call.data.get(ATTR_LABEL))
+    if label:
+        # Leftovers, eating out and similar days have no recipe of their own.
+        await hub.async_set_plan(
+            date, "", call.data.get(ATTR_SERVINGS), label
+        )
+        return {"date": date, "title": label, "url": ""}
+
+    source_url, recipe = _resolve_recipe(hub, _call_recipe_url(hass, call))
     await hub.async_set_plan(date, source_url, call.data.get(ATTR_SERVINGS))
     return {"date": date, "title": recipe.title, "url": source_url}
 

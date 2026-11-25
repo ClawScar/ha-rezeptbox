@@ -155,14 +155,18 @@
           "name": "Rezept",
           "description": "Rezeptbox-Sensor des Rezepts."
         },
-        "url": {
-          "name": "Rezept-URL",
-          "description": "Quelladresse (Alternative zum Sensor)."
-        },
-        "servings": {
-          "name": "Portionen",
-          "description": "Portionen für diesen Tag."
-        }
+            "url": {
+     "name": "Rezept-URL",
+     "description": "Quelladresse (Alternative zum Sensor)."
+    },
+    "label": {
+     "name": "Bezeichnung",
+     "description": "Freier Tag ohne Rezept, z. B. Reste oder Auswärts."
+    },
+    "servings": {
+     "name": "Portionen",
+     "description": "Portionen für diesen Tag."
+    }
       }
     },
     "clear_meal_plan": {

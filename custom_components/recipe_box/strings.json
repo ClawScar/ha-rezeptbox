@@ -159,6 +159,10 @@
           "name": "Recipe URL",
           "description": "Source URL (alternative to the sensor)."
         },
+        "label": {
+          "name": "Label",
+          "description": "Free-text day without a recipe, e.g. leftovers or eating out."
+        },
         "servings": {
           "name": "Servings",
           "description": "Servings for this day."

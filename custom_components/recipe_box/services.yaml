@@ -179,6 +179,10 @@ plan_recipe:
       selector:
         text:
           type: url
+    label:
+      example: Reste
+      selector:
+        text:
     servings:
       example: 4
       selector:

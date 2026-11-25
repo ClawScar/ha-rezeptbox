@@ -24,6 +24,7 @@ from .const import (
 )
 from .parser import Recipe, RecipeError, clean_text
 from .photos import image_id_from_url, orphaned_photo_ids, owned_photo_ids
+from .plan import clean_plan_label, make_plan_entry, normalize_plan_entry
 from .scraper import async_scrape_recipe
 
 _LOGGER = logging.getLogger(__name__)
@@ -140,9 +141,9 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         plan = stored.get("plan") if isinstance(stored, dict) else None
         if isinstance(plan, dict):
             self.plan = {
-                str(date): entry
+                str(date): normalized
                 for date, entry in plan.items()
-                if isinstance(entry, dict) and entry.get("url")
+                if (normalized := normalize_plan_entry(entry)) is not None
             }
 
         status = stored.get("status") if isinstance(stored, dict) else None
@@ -446,11 +447,12 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
     async def async_set_plan(
         self,
         date: str,
-        source_url: str,
+        source_url: str = "",
         servings: float | None = None,
+        label: str = "",
     ) -> None:
-        """Plan one recipe for a date."""
-        self.plan[date] = {"url": source_url, "servings": servings}
+        """Plan one recipe or a free-text day such as leftovers."""
+        self.plan[date] = make_plan_entry(source_url, servings, label)
         await self._async_save()
         self.async_update_listeners()
 
@@ -466,11 +468,9 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
     async def async_import_plan(self, plan: dict[str, Any]) -> None:
         """Merge a stored plan from an export back into the recipe box."""
         for date, entry in plan.items():
-            if isinstance(entry, dict) and entry.get("url"):
-                self.plan[str(date)] = {
-                    "url": str(entry["url"]),
-                    "servings": entry.get("servings"),
-                }
+            normalized = normalize_plan_entry(entry)
+            if normalized is not None:
+                self.plan[str(date)] = normalized
         await self._async_save()
         self.async_update_listeners()
 
@@ -480,16 +480,18 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         for date in sorted(self.plan):
             entry = self.plan[date]
             recipe = self.recipes.get(str(entry.get("url") or ""))
-            if recipe is None:
+            label = clean_plan_label(entry.get("label"))
+            if recipe is None and not label:
                 continue
-            entries.append(
-                {
-                    "date": date,
-                    "title": recipe.title,
-                    "source_url": recipe.source_url,
-                    "servings": entry.get("servings"),
-                }
-            )
+            item: dict[str, Any] = {
+                "date": date,
+                "title": label or (recipe.title if recipe else ""),
+                "source_url": recipe.source_url if recipe else "",
+                "servings": entry.get("servings"),
+            }
+            if label:
+                item["label"] = label
+            entries.append(item)
         return entries
 
     async def _async_remove_entities(self, source_url: str) -> None:

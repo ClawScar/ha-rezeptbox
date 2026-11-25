@@ -277,7 +277,12 @@ listCard.setConfig({});
 listCard.hass = hassFor("de", [lasagne]);
 const listEntries = listCard._recipes();
 let list = listCard.shadowRoot.innerHTML;
-assert.equal(count(list, 'class="plan-add"'), 2, "one calendar button per recipe");
+assert.equal(count(list, 'class="plan-add'), 2, "one calendar button per recipe");
+assert.equal(
+  count(list, 'class="plan-add plan-add-planned"'),
+  1,
+  "the already planned recipe marks its calendar button"
+);
 has(list, 'aria-expanded="false"');
 has(list, 'title="Einem Tag zuordnen"');
 hasNot(list, 'class="day-strip"', "the strip stays closed until tapped");

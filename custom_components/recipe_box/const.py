@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "2.7.1"
+VERSION = "2.8.0-beta.1"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
@@ -68,6 +68,7 @@ ATTR_IMAGE_URL = "image_url"
 ATTR_EXCLUDE = "exclude"
 ATTR_MERGE = "merge"
 ATTR_RECIPES = "recipes"
+ATTR_LABEL = "label"
 ATTR_PLAN = "plan"
 ATTR_DATE = "date"
 MANUAL_URL_PREFIX = "manual://"

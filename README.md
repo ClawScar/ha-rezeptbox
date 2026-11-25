@@ -42,11 +42,11 @@ Einkaufsliste.
 - **Einstellbares Aktualisierungsintervall** (Standard: 24 Stunden, 0 = nie)
 - **Einkaufsliste ohne Dubletten**: gleiche Zutaten werden zusammengerechnet („2 Zwiebeln“ + „3 Zwiebeln“ → „5 Zwiebeln“, 500 g + 500 g → 1 kg), auch über mehrere Rezepte hinweg
 - **Nur fehlende Zutaten**: abgehakte Zutaten bleiben auf Wunsch von der Einkaufsliste
-- **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag
+- **Suche und Filter** in der Rezeptliste: Textsuche, Tags, Zeitfilter, Sortierung und „Was kochen?“ für einen Zufallsvorschlag, der Favoriten bevorzugt und zuletzt Vorgeschlagenes überspringt
 - **Gruppen**: Gruppen wie „Familie“ oder „Backen“ im Tab **Daten** anlegen, sortieren, umbenennen und löschen, Rezepte in der Detailansicht zuweisen und in der Rezeptliste über einen Tab je Gruppe direkt wechseln
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt; nicht mehr benötigte Fotos löscht die Rezeptbox dabei automatisch
-- **Wochenplan** für die nächsten sieben Tage – direkt aus der Rezeptliste über das Kalender-Symbol einem Tag zuordnen, mit Rezeptbild, Heute-Markierung, Raster auf breiten Bildschirmen und Einkauf für die ganze Woche
+- **Wochenplan** zum Blättern: sieben Tage ab heute, eine Woche vor und zurück, Rezeptbilder, Heute-Markierung, geplante Tage direkt an der Rezeptzeile, Reste-/Auswärts-Tage ohne Rezept und Einkauf für die sichtbare Woche
 - **Sicherung**: alle Rezepte und den Wochenplan als JSON herunterladen und wieder einlesen
 - **Mehr pro Rezept**: Nährwerte, Druckansicht, Schritt-Timer („25 Minuten“ antippen) und ein Aktualisieren-Button mit sichtbarem Fehlerstatus
 - **Button-Entität** „Zutaten auf die Liste“ je Rezept für Dashboard und Automationen
@@ -192,9 +192,13 @@ gewählte Gruppe und startet nach einem Neuladen dort wieder.
 
 Der Tab **Rezepte** zeigt die Liste: Suchfeld, Tag-Auswahl, Zeitfilter und
 Sortierung filtern sie; **Was kochen?** öffnet ein zufälliges Rezept aus der
-aktuellen Auswahl. Rechts neben jedem Eintrag entfernt der Papierkorb das
-Rezept – der erste Klick fragt mit **Löschen?** nach, der zweite löscht
-endgültig. In der Detailansicht sitzt derselbe Button oben rechts.
+aktuellen Auswahl. Favoriten (★ in der Zeile oder in der Detailansicht) werden
+dabei dreifach gewichtet, die letzten drei Vorschläge übersprungen. Unter den
+Angaben eines Rezepts steht, für welche Tage es schon eingeplant ist
+(„Mi 26 · Fr 28“); das Kalender-Symbol trägt dann einen Punkt. Rechts neben
+jedem Eintrag entfernt der Papierkorb das Rezept – der erste Klick fragt mit
+**Löschen?** nach, der zweite löscht endgültig. In der Detailansicht sitzt
+derselbe Button oben rechts.
 
 Sobald Gruppen angelegt sind, sitzt über der Liste eine Tab-Leiste: **Alle**
 zeigt jedes Rezept, ein Tipp auf einen Gruppennamen nur die Rezepte dieser
@@ -262,15 +266,30 @@ gelöschten Rezepten verlieren deren Bilder. Verweist ein Rezept auf ein nicht
 mehr vorhandenes Foto, warnt die Karte beim Sichern mit „Achtung: fehlende
 Fotos bei …“.
 
-Im Tab **Wochenplan** lassen sich die nächsten sieben Tage füllen (inklusive
-**Woche auf die Einkaufsliste**). Jede Zeile zeigt das Foto des geplanten
+Im Tab **Wochenplan** lässt sich jede Woche füllen: die sieben Tage ab heute,
+mit ‹ und › eine Woche vor und zurück (höchstens bis zum ältesten geplanten Tag)
+und **Heute** zurück zur aktuellen Woche. Die Kopfzeile nennt den Zeitraum und
+wie viele der sieben Tage geplant sind. Jede Zeile zeigt das Foto des geplanten
 Rezepts; ohne Foto steht dort ein Platzhalter, leere Tage bleiben gestrichelt.
 Auf breiten Bildschirmen werden die sieben Tage zu einem Raster.
+
+Im Auswahlfeld eines Tages stehen neben den Rezepten auch **Reste** und
+**Auswärts** für Tage ohne Rezept. Sie zählen als geplant, tauchen aber nicht
+auf der Einkaufsliste auf. **Woche auf die Einkaufsliste** übernimmt nur die
+Rezepte der sichtbaren Woche. Vergangene Tage bleiben im Plan, bis sie über
+**Aufräumen** in der Hinweiszeile entfernt werden – auf die Einkaufsliste
+kommen sie nie.
 
 Schneller geht es aus der Rezeptliste: Das Kalender-Symbol in einer Zeile
 klappt die nächsten sieben Tage auf. Ein Tipp plant das Rezept für diesen Tag;
 Tage, an denen schon ein Rezept steht, sind markiert und nennen beim Antippen,
-was ersetzt wird.
+was ersetzt wird. Tage mit diesem Rezept sind gefüllt.
+
+In der Detailansicht plant der Abschnitt **Einplanen** das offene Rezept: Ein
+Suchfeld filtert die nächsten drei Wochen nach Wochentag, Datum oder
+ISO-Datum, ein Tipp plant den Tag, ein Tipp auf den bereits geplanten Tag
+entfernt ihn wieder. Der Stern **Favorit** markiert das Rezept für „Was
+kochen?“.
 
 ### Einzelnes Rezept
 
@@ -461,12 +480,13 @@ Liest eine Sicherung wieder ein und antwortet mit `imported` und `failed`.
 | Feld | Pflicht | Beschreibung |
 | --- | --- | --- |
 | `date` | ja / nein | Tag im Format `YYYY-MM-DD` (bei `clear_meal_plan` ohne Datum: ganzer Plan) |
-| `entity_id` oder `url` | ja (nur `plan_recipe`) | Rezept, das eingeplant wird |
+| `entity_id` oder `url` | eins von beiden | Rezept, das eingeplant wird |
+| `label` | nein | Freier Tag ohne Rezept, z. B. `Reste` oder `Auswärts` (statt `entity_id`/`url`) |
 | `servings` | nein | Portionen für diesen Tag |
 
 Der Plan liegt im Speicher der Integration und ist über
-`sensor.rezeptbox_wochenplan` verfügbar; die Karte zeigt die nächsten sieben
-Tage und kann die ganze Woche auf die Einkaufsliste übernehmen.
+`sensor.rezeptbox_wochenplan` verfügbar; die Karte zeigt sieben Tage ab heute
+und kann die sichtbare Woche auf die Einkaufsliste übernehmen.
 
 ### `recipe_box.set_groups`
 
