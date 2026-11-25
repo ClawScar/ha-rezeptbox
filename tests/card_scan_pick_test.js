@@ -105,6 +105,11 @@ const run = () => {
   assert.match(form, /<input class="scan-input" type="file" accept="image\/\*" multiple>/);
   assert.match(form, /Fotos wählen/);
   assert.doesNotMatch(form, /button class="scan-add/);
+  // ... plus a plain file field without the photo filter, in case Android's
+  // photo picker swallows the selection.
+  assert.match(form, /<label class="scan-add scan-pick scan-plain">/);
+  assert.match(form, /<input class="scan-input-alt" type="file">/);
+  assert.match(form, /Datei wählen/);
   assert.match(form, /<button class="ocr-run" type="button" disabled>/);
 
   // 2. The tap goes straight to the input, so Android opens the picker.
@@ -204,7 +209,20 @@ const run = () => {
   input3.fire("change");
   assert.match(state.status, /keine Dateien geliefert/);
 
-  console.log("card_scan_pick_test: 9 checks passed");
+  // 10. The plain file field feeds the same page list.
+  reset();
+  const plainCard = makeCard();
+  const plainInput = makeInput();
+  plainInput.type = "file";
+  plainCard._attachScanInput(plainInput);
+  const plain = { name: "seite9.jpg", type: "image/jpeg" };
+  plainInput.files = [plain];
+  plainInput.fire("change");
+  assert.equal(plainCard._ocrPages.length, 1);
+  assert.equal(plainCard._ocrPages[0], plain);
+  assert.equal(state.rendered, 1);
+
+  console.log("card_scan_pick_test: 10 checks passed");
 };
 
 run();

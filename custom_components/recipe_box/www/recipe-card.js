@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "2.9.0-beta.12";
+const CARD_VERSION = "2.9.0-beta.13";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -1810,6 +1810,7 @@ const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-sec
   <div class="scan">
     <div class="scan-bar">
       <label class="scan-add scan-pick">${tr("Fotos wählen", "Choose photos")}<input class="scan-input" type="file" accept="image/*" multiple></label>
+      <label class="scan-add scan-pick scan-plain">${tr("Datei wählen", "Choose file")}<input class="scan-input-alt" type="file"></label>
       <button class="ocr-run" type="button"${pages.length ? "" : " disabled"}>${tr(
         "Text erkennen",
         "Read text"
@@ -3315,7 +3316,9 @@ const STYLES = `<style>
    * photo picker for a tapped file input inside the page, not for a hidden
    * input that script clicks. */
   label.scan-pick { position: relative; overflow: hidden; }
-  label.scan-pick input.scan-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  label.scan-pick input.scan-input,
+  label.scan-pick input.scan-input-alt { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .scan-plain { border-style: dashed; }
   button.ocr-run { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
   button.ocr-run[disabled] { opacity: 0.5; cursor: default; }
   button.ocr-clear { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; color: var(--text-primary-color); cursor: pointer; }
@@ -4596,8 +4599,8 @@ class RecipeBoxListCard extends HTMLElement {
       manualCancel.addEventListener("click", () => this._cancelEdit());
     }
 
-    const ocrInput = this.shadowRoot.querySelector("input.scan-input");
-    if (ocrInput) this._attachScanInput(ocrInput);
+    const ocrInputs = this.shadowRoot.querySelectorAll("input.scan-input, input.scan-input-alt");
+    ocrInputs.forEach((input) => this._attachScanInput(input));
     const ocrRun = this.shadowRoot.querySelector("button.ocr-run");
     if (ocrRun) ocrRun.addEventListener("click", () => this._scanPages());
     const ocrClear = this.shadowRoot.querySelector("button.ocr-clear");
