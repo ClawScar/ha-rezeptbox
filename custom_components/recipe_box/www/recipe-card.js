@@ -2198,6 +2198,21 @@ const ocrZoneText = (data, minConfidence = 45) => {
     .join("\n");
 };
 
+/* A phone browser opens its camera for a file input with capture; desktop
+ * browsers ignore the attribute, so the extra button only shows on touch
+ * devices where it actually leads to a camera. */
+const cameraCaptureAvailable = () => {
+  if (typeof document === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+  if (!(Number(navigator.maxTouchPoints) > 0)) return false;
+  try {
+    return "capture" in document.createElement("input");
+  } catch (error) {
+    return false;
+  }
+};
+
 const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class="manual data-section">
   <h3>${edit ? tr("Rezept bearbeiten", "Edit recipe") : tr("Eigenes Rezept", "Own recipe")}</h3>
   <p class="tab-hint">${edit
@@ -2212,6 +2227,9 @@ const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class=
   <div class="scan">
     <div class="scan-bar">
       <label class="scan-add scan-pick">${tr("Foto hinzufügen", "Add photo")}<input class="scan-input" type="file"></label>
+      ${cameraCaptureAvailable()
+        ? `<label class="scan-add scan-capture">${tr("Foto aufnehmen", "Take photo")}<input class="scan-input scan-camera" type="file" accept="image/*" capture="environment"></label>`
+        : ""}
       <button class="ocr-run" type="button"${pages.length ? "" : " disabled"}>${tr(
         "Text erkennen",
         "Read text"

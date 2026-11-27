@@ -320,8 +320,9 @@ aktualisieren** speichert die Korrektur über `recipe_box.update_recipe`.
 
 Für gedruckte Rezeptkarten gibt es im Formular den **Foto-Scanner**: mit
 **Foto hinzufügen** nimmt ein Bild pro Auswahl auf – Kamera oder Galerie, je
-nachdem, was der Datei-Dialog des Geräts anbietet; für jede weitere Seite wird
-erneut getippt. Die gewählten Seiten erscheinen mit Vorschaubild in der Liste.
+nachdem, was der Datei-Dialog des Geräts anbietet; auf Handy und Tablet
+erscheint zusätzlich **Foto aufnehmen**, das direkt die Kamera öffnet. Für jede
+weitere Seite wird erneut getippt. Die gewählten Seiten erscheinen mit Vorschaubild in der Liste.
 Ein Feld mit Mehrfachauswahl oder Foto-Filter liefert auf Android keine Dateien,
 deshalb bewusst ein einfaches Dateifeld. Mit **Text erkennen** werden sie der
 Reihe nach eingelesen und das Ergebnis im Formular geprüft. Abschnitte wie „Zutaten“
