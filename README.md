@@ -1,10 +1,31 @@
 # Rezeptbox für Home Assistant
 
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ClawScar&repository=ha-rezeptbox&category=integration)
+
 *Rezeptbox for Home Assistant – import recipes from a URL and use them right in
-your dashboard: a sidebar page, groups, a weekly meal plan, shopping-list
-export, portion scaling and a photo scanner for printed recipe cards (with
-optional AI reading). The card and the sidebar page follow Home Assistant's
-language, so an English installation gets an English UI.*
+your dashboard. The card and the sidebar page follow Home Assistant's language,
+so an English installation gets an English UI.*
+
+**What it does**
+
+- **Import by URL** – paste one or more links; Chefkoch has a dedicated adapter,
+  other sites work through their schema.org recipe data.
+- **Sidebar page and Lovelace cards** – import, browse and delete recipes without
+  any dashboard setup; the recipe detail shows photo, times, servings, ratings
+  and tags, with ingredients to tick off and step-by-step instructions.
+- **Portions and shopping list** – scale a recipe and the ingredient amounts
+  recalculate live; send them to Home Assistant's shopping list, merged and
+  scaled, optionally skipping ingredients you already ticked off.
+- **Groups, search and filters** – organise recipes in groups, search by text,
+  filter by tag or cooking time, and let “What to cook?” suggest a recipe
+  (favourites first).
+- **Weekly meal plan** – seven days with next/previous week, “leftovers” and
+  “eating out” days, plus the shopping list for the visible week.
+- **Own recipes and photo scanner** – add family recipes without a link, read
+  printed recipe cards with the built-in offline OCR or the AI set up in Home
+  Assistant (handwriting included), and edit stored recipes later.
+- **Backup and offline cache** – export and re-import all recipes, the meal plan
+  and groups as JSON; the last loaded recipe stays available offline.
 
 Rezepte mit einem Link importieren und direkt im Dashboard anzeigen – ohne
 Copy-and-paste. Die Rezeptbox startet leer; Rezepte kommen später über das
