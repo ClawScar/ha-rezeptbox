@@ -504,6 +504,26 @@ class PhotoScannerAndEditTest(unittest.TestCase):
         for marker in ("Foto-Scanner", "Tesseract", "Handschrift", "update_recipe"):
             self.assertIn(marker, readme)
 
+    def test_ai_scan_hides_the_option_before_2025_8(self) -> None:
+        scan = (COMPONENT / "ai_scan.py").read_text("utf-8")
+        block = scan[
+            scan.index("def ai_task_entity_ids") : scan.index(
+                "def configured_ai_prompt"
+            )
+        ]
+        # Home Assistant 2025.7 has AI tasks but no photo attachments; the
+        # feature flag only exists from 2025.8. The lookup must not raise and
+        # must hide the AI option before any entity is inspected.
+        self.assertIn(
+            'getattr(AITaskEntityFeature, "SUPPORT_ATTACHMENTS", None)', block
+        )
+        self.assertLess(
+            block.index("SUPPORT_ATTACHMENTS"),
+            block.index("for entity_id in"),
+        )
+        self.assertIn("if attachments_feature is None:", block)
+        self.assertNotIn("AITaskEntityFeature.SUPPORT_ATTACHMENTS", block)
+
 
 class ManualRecipeRefreshTest(unittest.TestCase):
     def test_manual_recipes_are_not_fetched_again(self) -> None:

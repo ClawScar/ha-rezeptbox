@@ -47,7 +47,14 @@ def ai_task_entity_ids(hass: HomeAssistant) -> list[str]:
         from homeassistant.components.ai_task import AITaskEntityFeature
         from homeassistant.components.ai_task.const import DATA_COMPONENT
     except ImportError:
-        # Home Assistant before 2025.8 has no AI tasks at all.
+        # Home Assistant before 2025.7 has no AI tasks at all.
+        return []
+
+    # 2025.7 knows AI tasks, but not photo attachments yet: the flag only
+    # exists from 2025.8. Without it the card has nothing to offer, so the AI
+    # option stays hidden instead of raising an AttributeError.
+    attachments_feature = getattr(AITaskEntityFeature, "SUPPORT_ATTACHMENTS", None)
+    if attachments_feature is None:
         return []
 
     component = hass.data.get(DATA_COMPONENT)
@@ -65,7 +72,7 @@ def ai_task_entity_ids(hass: HomeAssistant) -> list[str]:
             continue
         if AITaskEntityFeature.GENERATE_DATA not in features:
             continue
-        if AITaskEntityFeature.SUPPORT_ATTACHMENTS not in features:
+        if attachments_feature not in features:
             continue
         found.append(entity_id)
     return sorted(found)
