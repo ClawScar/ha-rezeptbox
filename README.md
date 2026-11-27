@@ -8,21 +8,18 @@ so an English installation gets an English UI.*
 
 ## Screenshots
 
-<img src="docs/screenshots/detail.jpg" width="380" alt="Rezept-Detailansicht mit Foto, Gruppen, Portionen und abhakbaren Zutaten">
+<!-- Absolute image URLs: the HACS store renders the README outside GitHub and
+     strips relative image paths (hacs/integration#4787). -->
+
+<img src="https://raw.githubusercontent.com/ClawScar/ha-rezeptbox/main/docs/screenshots/detail.jpg" width="380" alt="Rezept-Detailansicht mit Foto, Gruppen, Portionen und abhakbaren Zutaten">
 
 *Detailansicht: Foto, Gruppen, Portionen und abhakbare Zutaten · Detail view with
 photo, groups, portions and tickable ingredients.*
 
-<table>
-  <tr>
-    <td align="center"><img src="docs/screenshots/liste.jpg" width="260" alt="Rezeptliste mit Gruppen-Tabs, Suche und Filtern"><br><sub>Liste mit Gruppen, Suche und Filtern<br>Recipe list with groups, search and filters</sub></td>
-    <td align="center"><img src="docs/screenshots/wochenplan.jpg" width="260" alt="Wochenplan mit Heute-Markierung, Resten und Auswärts"><br><sub>Wochenplan mit „Heute“, Resten und Auswärts<br>Weekly plan with today, leftovers and eating out</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/screenshots/import.jpg" width="260" alt="Import mit Gruppenauswahl im Daten-Tab"><br><sub>Import mit Gruppenauswahl<br>Import straight into an existing group</sub></td>
-    <td align="center"><img src="docs/screenshots/scanner.jpg" width="260" alt="Eigenes Rezept mit Foto-Scanner und KI-Erkennung"><br><sub>Eigenes Rezept mit Foto-Scanner und KI<br>Own recipe with photo scanner and AI reading</sub></td>
-  </tr>
-</table>
+| | |
+|:--:|:--:|
+| <img src="https://raw.githubusercontent.com/ClawScar/ha-rezeptbox/main/docs/screenshots/liste.jpg" width="260" alt="Rezeptliste mit Gruppen-Tabs, Suche und Filtern"><br><sub>Liste mit Gruppen, Suche und Filtern<br>Recipe list with groups, search and filters</sub> | <img src="https://raw.githubusercontent.com/ClawScar/ha-rezeptbox/main/docs/screenshots/wochenplan.jpg" width="260" alt="Wochenplan mit Heute-Markierung, Resten und Auswärts"><br><sub>Wochenplan mit „Heute“, Resten und Auswärts<br>Weekly plan with today, leftovers and eating out</sub> |
+| <img src="https://raw.githubusercontent.com/ClawScar/ha-rezeptbox/main/docs/screenshots/import.jpg" width="260" alt="Import mit Gruppenauswahl im Daten-Tab"><br><sub>Import mit Gruppenauswahl<br>Import straight into an existing group</sub> | <img src="https://raw.githubusercontent.com/ClawScar/ha-rezeptbox/main/docs/screenshots/scanner.jpg" width="260" alt="Eigenes Rezept mit Foto-Scanner und KI-Erkennung"><br><sub>Eigenes Rezept mit Foto-Scanner und KI<br>Own recipe with photo scanner and AI reading</sub> |
 
 **What it does**
 
