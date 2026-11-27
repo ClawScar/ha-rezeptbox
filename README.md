@@ -1,5 +1,11 @@
 # Rezeptbox für Home Assistant
 
+*Rezeptbox for Home Assistant – import recipes from a URL and use them right in
+your dashboard: a sidebar page, groups, a weekly meal plan, shopping-list
+export, portion scaling and a photo scanner for printed recipe cards (with
+optional AI reading). The card and the sidebar page follow Home Assistant's
+language, so an English installation gets an English UI.*
+
 Rezepte mit einem Link importieren und direkt im Dashboard anzeigen – ohne
 Copy-and-paste. Die Rezeptbox startet leer; Rezepte kommen später über das
 Importfeld in der Rezeptliste hinzu. Die Integration holt sich Titel, Bild,
