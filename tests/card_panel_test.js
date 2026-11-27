@@ -264,12 +264,14 @@ list._config.navigate = (view) => reported.push(view);
 list._viewChanged({ tab: "data", selected: null });
 same(reported[reported.length - 1], { tab: "data", selected: null });
 
-// 13b. Editing reports the data tab and cancelling returns to the recipe, so
-// the panel's URL cannot put the open recipe back over the form.
+// 13b. Editing opens its own dialog: it neither switches the tab nor reports
+// a view, so the panel's URL cannot put the open recipe back over the form.
 const editing = Object.create(RecipeBoxListCard.prototype);
 const editViews = [];
 editing._config = { entities: undefined, navigate: (view) => editViews.push(view) };
 editing._hass = { states: {} };
+editing._tab = "recipes";
+editing._selected = "sensor.schnitzel";
 editing._recipes = () => [
   {
     entityId: "sensor.schnitzel",
@@ -285,16 +287,51 @@ editing._recipes = () => [
 ];
 editing._render = () => {};
 editing._startEdit("manual://schnitzel");
-assert.equal(editing._tab, "data");
 assert.equal(editing._edit.title, "Schnitzel");
-same(editViews[editViews.length - 1], { tab: "data", selected: null });
+assert.equal(editing._tab, "recipes");
+assert.equal(editing._selected, "sensor.schnitzel");
+assert.equal(editViews.length, 0);
 editing._cancelEdit();
 assert.equal(editing._edit, null);
 assert.equal(editing._tab, "recipes");
-same(editViews[editViews.length - 1], {
-  tab: "recipes",
-  selected: "sensor.schnitzel",
-});
+assert.equal(editViews.length, 0);
+
+// 13c. The dialog is part of the rendered HTML: a ShadowRoot is a
+// DocumentFragment and has no insertAdjacentHTML, so the markup goes into
+// both view templates instead.
+const mounted = Object.create(RecipeBoxListCard.prototype);
+mounted._edit = { title: "Schnitzel", ingredients: ["Fleisch"] };
+mounted._ocrPages = [];
+mounted._aiRead = false;
+const dialogHtml = mounted._editDialogHtml();
+assert.match(dialogHtml, /dialog-backdrop edit-backdrop/);
+assert.match(dialogHtml, /dialog edit-dialog/);
+assert.match(dialogHtml, /manual-title/);
+assert.match(dialogHtml, /Rezept bearbeiten/);
+assert.equal(
+  (source.match(/\$\{this\._editDialogHtml\(\)\}/g) || []).length,
+  2,
+  "detail and list render the edit dialog"
+);
+assert.equal(mounted._bindEditDialog(), undefined);
+mounted.shadowRoot = { querySelector: () => null };
+assert.equal(mounted._bindEditDialog(), undefined);
+mounted._edit = null;
+assert.equal(mounted._editDialogHtml(), "");
+
+// 13d. While the dialog is open the card behind it holds still, so an incoming
+// state update cannot replace the dialog and wipe the typed fields.
+const frozen = Object.create(RecipeBoxListCard.prototype);
+frozen._edit = { title: "Schnitzel" };
+frozen._selected = null;
+frozen._recipes = () => [];
+let frozenRenders = 0;
+frozen._renderList = () => {
+  frozenRenders += 1;
+};
+frozen.shadowRoot = { querySelector: () => ({}) };
+frozen._render();
+assert.equal(frozenRenders, 0);
 
 // 14. Without a panel the card applies views itself and does no URL work.
 const plain = Object.create(RecipeBoxListCard.prototype);

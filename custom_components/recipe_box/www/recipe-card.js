@@ -23,7 +23,7 @@
  * servings along, so the shopping list also gets the scaled amounts.
  */
 
-const CARD_VERSION = "3.0.2";
+const CARD_VERSION = "3.0.3";
 const DETAIL_TYPE = "recipe-box-card";
 const LIST_TYPE = "recipe-box-list";
 const PANEL_TYPE = "recipe-box-panel";
@@ -3764,6 +3764,8 @@ const STYLES = `<style>
   .dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.5); }
   .dialog { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 12px; background: var(--card-background-color, #fff); color: var(--primary-text-color); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35); }
   .dialog h3 { margin: 0; font-size: 0.95rem; letter-spacing: 0; text-transform: none; color: var(--primary-text-color); }
+  .edit-backdrop { align-items: flex-start; overflow-y: auto; }
+  .dialog.edit-dialog { max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; }
   .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
   .dialog-actions button, .dialog-actions a.backup-download { border-radius: 6px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
   .dialog-actions a.backup-download { background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; text-decoration: none; }
@@ -4191,6 +4193,9 @@ class RecipeBoxListCard extends HTMLElement {
 
   _render(recipes) {
     if (!this.shadowRoot) return;
+    /* While the edit dialog is open the card behind it holds still: a ticking
+     * sensor must not replace the dialog and wipe the typed fields. */
+    if (this._edit && this.shadowRoot.querySelector(".edit-dialog")) return;
     /* Android webviews drop the chosen files when the card replaces its DOM
      * while the photo picker is open, so the card holds still until the
      * selection arrives. The picker normally closes within a few seconds; the
@@ -4205,12 +4210,14 @@ class RecipeBoxListCard extends HTMLElement {
       const selected = entries.find((entry) => entry.entityId === this._selected);
       if (selected) {
         this._renderDetail(selected);
+        this._bindEditDialog();
         return;
       }
       this._selected = null;
     }
 
     this._renderList(entries);
+    this._bindEditDialog();
   }
 
   /* The group the import form would add the new recipes to. */
@@ -4843,7 +4850,7 @@ class RecipeBoxListCard extends HTMLElement {
         this._pendingGroupDelete,
         this._renamingGroup
       )}${tools}${manualFormHtml(
-        this._edit,
+        null,
         this._ocrPages || [],
         this._aiRead
       )}</div>`,
@@ -4865,7 +4872,7 @@ class RecipeBoxListCard extends HTMLElement {
           ${showTabs ? tabsHtml(tab) : ""}
           <div class="tab-panel" role="tabpanel">${panels[tab] || panels.recipes}</div>
         </div>
-      </ha-card>${dialog}${backupDialogHtml(this._backup)}`;
+      </ha-card>${dialog}${this._editDialogHtml()}${backupDialogHtml(this._backup)}`;
 
     if (this.shadowRoot.querySelector("ol.ocr-pages")) this._renderOcrPages();
     this.shadowRoot.querySelectorAll("button.tab").forEach((button) => {
@@ -5108,52 +5115,9 @@ class RecipeBoxListCard extends HTMLElement {
       });
     }
 
-    const manualSave = this.shadowRoot.querySelector("button.manual-save");
-    if (manualSave) {
-      bindBusyButton(manualSave, () => this._saveManual());
-    }
-
-    const manualCancel = this.shadowRoot.querySelector("button.manual-cancel");
-    if (manualCancel) {
-      bindBusyButton(manualCancel, () => this._cancelEdit());
-    }
-
-    const ocrInputs = this.shadowRoot.querySelectorAll("input.scan-input");
-    ocrInputs.forEach((input) => this._attachScanInput(input));
-    const ocrRun = this.shadowRoot.querySelector("button.ocr-run");
-    if (ocrRun) bindBusyButton(ocrRun, () => this._scanPages());
-    const ocrClear = this.shadowRoot.querySelector("button.ocr-clear");
-    if (ocrClear) {
-      bindBusyButton(ocrClear, () => {
-        this._ocrPages = [];
-        this._renderOcrPages();
-        this._scanStatus("");
-        this._previewPhoto(null);
-      });
-    }
-    this._bindOcrPages();
-    const aiBox = this.shadowRoot.querySelector("input.ocr-ai");
-    if (aiBox) {
-      aiBox.addEventListener("change", () => {
-        /* Kept on the card, so a re-render does not silently drop the choice. */
-        this._aiRead = Boolean(aiBox.checked);
-      });
-    }
-    this._loadAiScan();
-
-    const manualPhoto = this.shadowRoot.querySelector("input.manual-photo");
-    if (manualPhoto) {
-      manualPhoto.addEventListener("change", () => {
-        const chosen = manualPhoto.files && manualPhoto.files[0];
-        this._previewPhoto(chosen || null);
-      });
-    }
-    const manualPhotoRemove = this.shadowRoot.querySelector(
-      "button.manual-photo-remove"
-    );
-    if (manualPhotoRemove) {
-      bindBusyButton(manualPhotoRemove, () => this._clearPhoto());
-    }
+    /* The data tab keeps the "new recipe" form; while the edit dialog is
+     * open its hidden form stays unbound. */
+    if (!this._edit) this._bindManualForm(this.shadowRoot);
 
     const createGroup = this.shadowRoot.querySelector("button.group-create-button");
     if (createGroup) {
@@ -5329,9 +5293,102 @@ class RecipeBoxListCard extends HTMLElement {
     this._viewChanged({ tab: this._tab, selected: pick.entityId });
   }
 
+  /* Wires one recipe form: either the data tab or the edit dialog. Every
+   * query stays inside the given root, so the two forms never bind each
+   * other's buttons or read each other's fields. */
+  _bindManualForm(root) {
+    if (!root) return;
+    const manualSave = root.querySelector("button.manual-save");
+    if (manualSave) {
+      bindBusyButton(manualSave, () => this._saveManual());
+    }
+
+    const manualCancel = root.querySelector("button.manual-cancel");
+    if (manualCancel) {
+      bindBusyButton(manualCancel, () => this._cancelEdit());
+    }
+
+    root.querySelectorAll("input.scan-input").forEach((input) => {
+      this._attachScanInput(input);
+    });
+    const ocrRun = root.querySelector("button.ocr-run");
+    if (ocrRun) bindBusyButton(ocrRun, () => this._scanPages());
+    const ocrClear = root.querySelector("button.ocr-clear");
+    if (ocrClear) {
+      bindBusyButton(ocrClear, () => {
+        this._ocrPages = [];
+        this._renderOcrPages();
+        this._scanStatus("");
+        this._previewPhoto(null);
+      });
+    }
+    this._bindOcrPages();
+
+    const aiBox = root.querySelector("input.ocr-ai");
+    if (aiBox) {
+      aiBox.addEventListener("change", () => {
+        /* Kept on the card, so a re-render does not silently drop the choice. */
+        this._aiRead = Boolean(aiBox.checked);
+      });
+    }
+    this._loadAiScan();
+
+    const manualPhoto = root.querySelector("input.manual-photo");
+    if (manualPhoto) {
+      manualPhoto.addEventListener("change", () => {
+        const chosen = manualPhoto.files && manualPhoto.files[0];
+        this._previewPhoto(chosen || null);
+      });
+    }
+    const manualPhotoRemove = root.querySelector("button.manual-photo-remove");
+    if (manualPhotoRemove) {
+      bindBusyButton(manualPhotoRemove, () => this._clearPhoto());
+    }
+  }
+
+  /* The edit form opens in its own dialog and closes when it is done, so no
+   * tab switch or panel navigation can take it away in between. The markup is
+   * part of the rendered HTML: a ShadowRoot is a DocumentFragment and has no
+   * insertAdjacentHTML. */
+  _editDialogHtml() {
+    if (!this._edit) return "";
+    return `<div class="dialog-backdrop edit-backdrop">
+        <div class="dialog edit-dialog" role="dialog" aria-modal="true">${manualFormHtml(
+          this._edit,
+          this._ocrPages || [],
+          this._aiRead
+        )}</div>
+      </div>`;
+  }
+
+  /* Binds the dialog that _editDialogHtml put into the rendered HTML. */
+  _bindEditDialog() {
+    if (!this._edit || !this.shadowRoot) return;
+    const dialog = this.shadowRoot.querySelector(".edit-dialog");
+    if (!dialog) return;
+    this._bindManualForm(dialog);
+    this._renderOcrPages();
+    const backdrop = this.shadowRoot.querySelector(".edit-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", (event) => {
+        /* A tap outside the form closes it, like the cancel button. */
+        if (event.target === backdrop) this._cancelEdit();
+      });
+    }
+  }
+
+  /* Form helpers target the open edit dialog; the data tab keeps its own
+   * "new recipe" form, so both never read each other's fields. */
+  _formRoot() {
+    const host = this.shadowRoot;
+    const dialog =
+      host && host.querySelector && host.querySelector(".edit-dialog");
+    return dialog && typeof dialog.querySelector === "function" ? dialog : host;
+  }
+
   _scanStatus(message) {
-    const status =
-      this.shadowRoot && this.shadowRoot.querySelector(".scan-status");
+    const root = this._formRoot();
+    const status = root && root.querySelector(".scan-status");
     if (status) status.textContent = message || "";
   }
 
@@ -5414,7 +5471,7 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _renderOcrPages() {
-    const root = this.shadowRoot;
+    const root = this._formRoot();
     if (!root) return;
     const pages = this._ocrPages || [];
     this._releasePageUrls();
@@ -5441,7 +5498,7 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _bindOcrPages() {
-    const root = this.shadowRoot;
+    const root = this._formRoot();
     if (!root) return;
     root.querySelectorAll("button.ocr-page-remove").forEach((button) => {
       bindBusyButton(button, () => {
@@ -5518,7 +5575,7 @@ class RecipeBoxListCard extends HTMLElement {
   async _scanPages() {
     const pages = (this._ocrPages || []).slice();
     if (!this._hass || !pages.length || this._ocrBusy) return;
-    const root = this.shadowRoot;
+    const root = this._formRoot();
     const run = root && root.querySelector("button.ocr-run");
     this._ocrBusy = true;
     if (run) run.disabled = true;
@@ -5652,8 +5709,8 @@ class RecipeBoxListCard extends HTMLElement {
   /* The AI option stays hidden until Home Assistant reports an AI task entity
    * that can read photos. Asking once per card is enough. */
   _loadAiScan() {
-    const label =
-      this.shadowRoot && this.shadowRoot.querySelector("label.scan-ai");
+    const root = this._formRoot();
+    const label = root && root.querySelector("label.scan-ai");
     if (!label) return;
     if (this._aiEntities !== null) {
       label.hidden = !this._aiEntities.length;
@@ -5667,8 +5724,8 @@ class RecipeBoxListCard extends HTMLElement {
         this._aiEntities = [];
       })
       .then(() => {
-        const current =
-          this.shadowRoot && this.shadowRoot.querySelector("label.scan-ai");
+        const open = this._formRoot();
+        const current = open && open.querySelector("label.scan-ai");
         if (current) current.hidden = !(this._aiEntities || []).length;
       });
   }
@@ -5728,7 +5785,7 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _fillManualForm(scanned) {
-    const root = this.shadowRoot;
+    const root = this._formRoot();
     if (!root || !scanned) return;
     const fill = (selector, value) => {
       const node = root.querySelector(selector);
@@ -5766,35 +5823,23 @@ class RecipeBoxListCard extends HTMLElement {
       tags: Array.isArray(attributes.tags) ? attributes.tags.slice() : [],
     };
     this._ocrPages = [];
-    this._selected = null;
-    this._rememberTab("data");
     this._signature = null;
+    /* The form opens in its own dialog; the recipe stays visible behind it,
+     * and tabs, selection or the panel URL cannot close it again. */
     this._render();
-    /* The panel owns tab and recipe through the URL; without this it would
-     * put the open recipe back on the next update and the form would vanish. */
-    this._viewChanged({ tab: "data", selected: null });
-    const form = this.shadowRoot && this.shadowRoot.querySelector(".manual");
-    if (form && typeof form.scrollIntoView === "function") {
-      form.scrollIntoView({ block: "start" });
-    }
   }
 
   _cancelEdit() {
-    const entityId = this._edit && this._edit.entityId;
     this._edit = null;
     /* Pages scanned for the edit must not turn into a new recipe's photo. */
     this._ocrPages = [];
-    /* Back to the recipe the edit started from, not to the list. */
-    this._selected = entityId || null;
-    this._rememberTab("recipes");
     this._signature = null;
     this._render();
-    this._viewChanged({ tab: "recipes", selected: this._selected });
   }
 
   async _saveManual() {
     if (!this._hass) return;
-    const root = this.shadowRoot;
+    const root = this._formRoot();
     const title = (root.querySelector("input.manual-title") || {}).value || "";
     const ingredients = (root.querySelector("textarea.manual-ingredients") || {})
       .value || "";
@@ -5902,12 +5947,15 @@ class RecipeBoxListCard extends HTMLElement {
       }
       this._ocrPages = [];
       this._previewPhoto(null);
-      this._rememberTab("recipes");
-      /* Back to the recipe that was edited; a new one stays in the list. */
-      if (editing && editing.entityId) this._selected = editing.entityId;
       this._signature = null;
-      this._render();
-      this._viewChanged({ tab: "recipes", selected: this._selected });
+      if (editing) {
+        /* The dialog closes and the recipe stays visible behind it. */
+        this._render();
+      } else {
+        this._rememberTab("recipes");
+        this._render();
+        this._viewChanged({ tab: "recipes", selected: this._selected });
+      }
     } catch (error) {
       notify(
         this,
@@ -5936,7 +5984,7 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _previewPhoto(file) {
-    const root = this.shadowRoot;
+    const root = this._formRoot();
     const preview = root && root.querySelector(".manual-photo-preview");
     const image = preview && preview.querySelector("img");
     if (!image) return;
@@ -5955,8 +6003,8 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _clearPhoto() {
-    const input =
-      this.shadowRoot && this.shadowRoot.querySelector("input.manual-photo");
+    const root = this._formRoot();
+    const input = root && root.querySelector("input.manual-photo");
     if (input) input.value = "";
     this._previewPhoto(null);
   }
@@ -6290,7 +6338,7 @@ class RecipeBoxListCard extends HTMLElement {
         })}
       </ha-card>${deleteDialogHtml(
         this._confirmDelete ? this._deleteTitles(this._confirmDelete) : []
-      )}`;
+      )      }${this._editDialogHtml()}`;
 
     bindDetail(
       this.shadowRoot,

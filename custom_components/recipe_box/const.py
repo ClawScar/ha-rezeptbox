@@ -6,7 +6,7 @@ from homeassistant.const import Platform
 
 DOMAIN = "recipe_box"
 NAME = "Rezeptbox"
-VERSION = "3.0.2"
+VERSION = "3.0.3"
 
 CONF_URL = "url"
 CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"

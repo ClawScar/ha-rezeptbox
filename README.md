@@ -1,5 +1,11 @@
 # Rezeptbox für Home Assistant
 
+[![Release](https://img.shields.io/github/v/release/ClawScar/ha-rezeptbox?style=for-the-badge&label=release&color=2f81f7)](https://github.com/ClawScar/ha-rezeptbox/releases)
+[![Downloads](https://img.shields.io/badge/dynamic/json?color=41B883&label=downloads&query=recipe_box.total&url=https://analytics.home-assistant.io/custom_integrations.json&style=for-the-badge)](https://analytics.home-assistant.io/custom_integrations.json)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.1%2B-41B883?style=for-the-badge&logo=homeassistant&logoColor=white)](https://www.home-assistant.io)
+[![HACS](https://img.shields.io/badge/HACS-Default-orange?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white)](https://github.com/ClawScar/ha-rezeptbox)
+[![License](https://img.shields.io/github/license/ClawScar/ha-rezeptbox?style=for-the-badge&label=license&color=green)](LICENSE)
+
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ClawScar&repository=ha-rezeptbox&category=integration)
 
 *Rezeptbox for Home Assistant – import recipes from a URL and use them right in
@@ -226,14 +232,14 @@ nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
 Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js?v=3.0.2
+url: /recipe_box/recipe-card.js?v=3.0.3
 type: module
 ```
 
 Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
 Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
 und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
-aktiv ist, steht unter **Daten → Sicherung** („Karte 3.0.2“).
+aktiv ist, steht unter **Daten → Sicherung** („Karte 3.0.3“).
 
 ### Rezeptliste mit Detailansicht
 
