@@ -18,6 +18,7 @@ from .const import (
     CONF_UPDATE_INTERVAL_HOURS,
     DEFAULT_UPDATE_INTERVAL_HOURS,
     DOMAIN,
+    MANUAL_URL_PREFIX,
     MAX_GROUPS,
     MAX_RECIPE_GROUPS,
     STORAGE_VERSION,
@@ -577,6 +578,14 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         updated: dict[str, Recipe] = {}
         for url in urls:
             cached = self.recipes.get(url)
+            if url.startswith(MANUAL_URL_PREFIX):
+                # Own recipes have no source page. Fetching them anyway only
+                # produced an "invalid_url" error in the card, so keep the
+                # stored version and forget a status left by older versions.
+                if cached is not None:
+                    updated[url] = cached
+                self.status.pop(url, None)
+                continue
             try:
                 recipe = await async_scrape_recipe(self.hass, url)
             except RecipeError as err:

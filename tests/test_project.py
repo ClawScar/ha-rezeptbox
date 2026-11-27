@@ -505,6 +505,20 @@ class PhotoScannerAndEditTest(unittest.TestCase):
             self.assertIn(marker, readme)
 
 
+class ManualRecipeRefreshTest(unittest.TestCase):
+    def test_manual_recipes_are_not_fetched_again(self) -> None:
+        coordinator = (COMPONENT / "coordinator.py").read_text("utf-8")
+        self.assertIn("MANUAL_URL_PREFIX", coordinator)
+        refresh = coordinator[coordinator.index("async def _async_update_data") :]
+        # The guard must run before the scraper: an own recipe has no page,
+        # so fetching it would only set update_error to invalid_url.
+        self.assertLess(
+            refresh.index("MANUAL_URL_PREFIX"),
+            refresh.index("async_scrape_recipe"),
+        )
+        self.assertIn("self.status.pop(url, None)", refresh)
+
+
 if __name__ == "__main__":
     unittest.main()
 

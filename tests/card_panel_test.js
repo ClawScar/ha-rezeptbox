@@ -264,6 +264,38 @@ list._config.navigate = (view) => reported.push(view);
 list._viewChanged({ tab: "data", selected: null });
 same(reported[reported.length - 1], { tab: "data", selected: null });
 
+// 13b. Editing reports the data tab and cancelling returns to the recipe, so
+// the panel's URL cannot put the open recipe back over the form.
+const editing = Object.create(RecipeBoxListCard.prototype);
+const editViews = [];
+editing._config = { entities: undefined, navigate: (view) => editViews.push(view) };
+editing._hass = { states: {} };
+editing._recipes = () => [
+  {
+    entityId: "sensor.schnitzel",
+    state: {
+      attributes: {
+        title: "Schnitzel",
+        ingredients: ["Fleisch"],
+        instructions: ["Braten"],
+        source_url: "manual://schnitzel",
+      },
+    },
+  },
+];
+editing._render = () => {};
+editing._startEdit("manual://schnitzel");
+assert.equal(editing._tab, "data");
+assert.equal(editing._edit.title, "Schnitzel");
+same(editViews[editViews.length - 1], { tab: "data", selected: null });
+editing._cancelEdit();
+assert.equal(editing._edit, null);
+assert.equal(editing._tab, "recipes");
+same(editViews[editViews.length - 1], {
+  tab: "recipes",
+  selected: "sensor.schnitzel",
+});
+
 // 14. Without a panel the card applies views itself and does no URL work.
 const plain = Object.create(RecipeBoxListCard.prototype);
 plain._config = {};

@@ -5710,6 +5710,9 @@ class RecipeBoxListCard extends HTMLElement {
     this._rememberTab("data");
     this._signature = null;
     this._render();
+    /* The panel owns tab and recipe through the URL; without this it would
+     * put the open recipe back on the next update and the form would vanish. */
+    this._viewChanged({ tab: "data", selected: null });
     const form = this.shadowRoot && this.shadowRoot.querySelector(".manual");
     if (form && typeof form.scrollIntoView === "function") {
       form.scrollIntoView({ block: "start" });
@@ -5717,11 +5720,16 @@ class RecipeBoxListCard extends HTMLElement {
   }
 
   _cancelEdit() {
+    const entityId = this._edit && this._edit.entityId;
     this._edit = null;
     /* Pages scanned for the edit must not turn into a new recipe's photo. */
     this._ocrPages = [];
+    /* Back to the recipe the edit started from, not to the list. */
+    this._selected = entityId || null;
+    this._rememberTab("recipes");
     this._signature = null;
     this._render();
+    this._viewChanged({ tab: "recipes", selected: this._selected });
   }
 
   async _saveManual() {
@@ -5835,8 +5843,11 @@ class RecipeBoxListCard extends HTMLElement {
       this._ocrPages = [];
       this._previewPhoto(null);
       this._rememberTab("recipes");
+      /* Back to the recipe that was edited; a new one stays in the list. */
+      if (editing && editing.entityId) this._selected = editing.entityId;
       this._signature = null;
       this._render();
+      this._viewChanged({ tab: "recipes", selected: this._selected });
     } catch (error) {
       notify(
         this,
