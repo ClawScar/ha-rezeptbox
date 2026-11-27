@@ -42,6 +42,10 @@
         "urls": {
           "name": "Rezept-URLs",
           "description": "Mehrere Rezept-Adressen. Ein fehlerhafter Link blockiert die übrigen nicht."
+        },
+        "groups": {
+          "name": "Gruppen",
+          "description": "Gruppe(n), in die die importierten Rezepte direkt einsortiert werden. Ein noch unbekannter Name wird als neue Gruppe angelegt."
         }
       }
     },

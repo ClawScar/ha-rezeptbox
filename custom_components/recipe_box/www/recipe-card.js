@@ -3640,6 +3640,9 @@ const STYLES = `<style>
   .list-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .count { color: var(--secondary-text-color); font-size: 0.85rem; }
   .import-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+  .import-group-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .import-group-label { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--secondary-text-color); }
+  select.import-group { padding: 7px 9px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.85rem; font-family: inherit; }
   textarea.import-input { flex: 1 1 220px; min-width: 0; min-height: 44px; resize: vertical; padding: 9px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.9rem; font-family: inherit; }
   textarea.import-input:focus { outline: 2px solid var(--primary-color); outline-offset: 1px; }
   button.import-button { flex: 0 0 auto; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 9px 14px; font-size: 0.9rem; cursor: pointer; }
@@ -3840,7 +3843,7 @@ const STYLES = `<style>
     button.week-shopping { width: auto; min-width: 260px; justify-self: start; }
   }
   @media print {
-    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, button.plan-add, .day-strip, .groups-editor, .selection-bar, .dialog-backdrop { display: none !important; }
+    .servings, .shopping-row, .filter-bar, .tools, .import-bar, .import-group-row, .tabs, .group-tabs, .groups-manager, .footer button, .list-bar, button.delete, button.plan-add, .day-strip, .groups-editor, .selection-bar, .dialog-backdrop { display: none !important; }
     ha-card { box-shadow: none; }
     .content { padding: 0; gap: 8px; }
     .recipe-image { max-height: 180px; }
@@ -3980,6 +3983,8 @@ class RecipeBoxListCard extends HTMLElement {
     this._hass = undefined;
     this._importUrl = "";
     this._importing = false;
+    /* Group choice of the import form; "" imports without a group. */
+    this._importGroup = "";
     /* Photo scan and the recipe that the form currently edits. */
     this._ocrPages = [];
     this._ocrBusy = false;
@@ -4190,6 +4195,13 @@ class RecipeBoxListCard extends HTMLElement {
     this._renderList(entries);
   }
 
+  /* The group the import form would add the new recipes to. */
+  _importGroups() {
+    const name = this._importGroup;
+    if (!name) return [];
+    return knownGroups(this._hass, this._recipes()).includes(name) ? [name] : [];
+  }
+
   async _import() {
     const urls = parseUrls(this._importUrl);
     if (!urls.length) {
@@ -4204,6 +4216,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
     if (this._importing || !this._hass) return;
 
+    const groups = this._importGroups();
     this._importing = true;
     this._render();
     try {
@@ -4211,7 +4224,7 @@ class RecipeBoxListCard extends HTMLElement {
         const single = await this._hass.callService(
           "recipe_box",
           "import_recipe",
-          { url: urls[0] },
+          { url: urls[0], groups },
           undefined,
           false,
           true
@@ -4229,7 +4242,7 @@ class RecipeBoxListCard extends HTMLElement {
         const many = await this._hass.callService(
           "recipe_box",
           "import_recipe",
-          { urls },
+          { urls, groups },
           undefined,
           false,
           true
@@ -4718,6 +4731,28 @@ class RecipeBoxListCard extends HTMLElement {
       </li>`;
     });
 
+    const importGroups = knownGroups(this._hass, entries);
+    const importChoice = importGroups.includes(this._importGroup)
+      ? this._importGroup
+      : "";
+    /* New groups are created in the groups section below; the import only
+     * assigns the recipes to one that already exists. */
+    const importGroupRow = importGroups.length
+      ? `
+          <div class="import-group-row">
+            <label class="import-group-label">${tr("Gruppe", "Group")}
+              <select class="import-group"${this._importing ? " disabled" : ""}>
+                <option value=""${importChoice ? "" : " selected"}>${tr("Ohne Gruppe", "No group")}</option>
+                ${importGroups
+                  .map(
+                    (name) =>
+                      `<option value="${escapeHtml(name)}"${name === importChoice ? " selected" : ""}>${escapeHtml(name)}</option>`
+                  )
+                  .join("")}
+              </select>
+            </label>
+          </div>`
+      : "";
     const importBar = this._config.show_import
       ? `<div class="data-section">
           <h3>${tr("Rezepte importieren", "Import recipes")}</h3>
@@ -4725,6 +4760,7 @@ class RecipeBoxListCard extends HTMLElement {
             <textarea class="import-input" rows="2" placeholder="${tr("Rezept-URLs – eine pro Zeile", "Recipe URLs – one per line")}"${this._importing ? " disabled" : ""}>${escapeHtml(this._importUrl)}</textarea>
             <button class="import-button" type="button"${this._importing ? " disabled" : ""}>${this._importing ? tr("Importiere…", "Importing…") : tr("Importieren", "Import")}</button>
           </div>
+          ${importGroupRow}
         </div>`
       : "";
 
@@ -4744,7 +4780,7 @@ class RecipeBoxListCard extends HTMLElement {
       : "";
 
     const filterBar = entries.length > 1 ? filterBarHtml(entries, this._filter) : "";
-    const groups = knownGroups(this._hass, entries);
+    const groups = importGroups;
     const emptyText = !entries.length
       ? tr(
           "Noch keine Rezepte. Füge oben eine oder mehrere Rezept-URLs ein – zum Beispiel von Chefkoch.",
@@ -4976,6 +5012,12 @@ class RecipeBoxListCard extends HTMLElement {
     const importButton = this.shadowRoot.querySelector("button.import-button");
     if (importButton) {
       bindBusyButton(importButton, () => this._import());
+    }
+    const importGroup = this.shadowRoot.querySelector("select.import-group");
+    if (importGroup) {
+      importGroup.addEventListener("change", () => {
+        this._importGroup = importGroup.value;
+      });
     }
 
     const search = this.shadowRoot.querySelector("input.filter-search");

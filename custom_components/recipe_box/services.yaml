@@ -13,6 +13,12 @@ import_recipe:
         text:
           type: url
           multiple: true
+    groups:
+      example:
+        - Abendessen
+      selector:
+        text:
+          multiple: true
 
 add_recipe:
   fields:

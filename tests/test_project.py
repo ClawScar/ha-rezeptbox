@@ -549,3 +549,50 @@ class BackupTargetFilesTest(unittest.TestCase):
         readme = (BASE / "README.md").read_text("utf-8")
         self.assertIn("Zielordner für", readme)
         self.assertIn("Konfigurationsordner", readme)
+
+
+class ImportGroupTest(unittest.TestCase):
+    def test_import_can_put_recipes_into_a_group(self) -> None:
+        init = (COMPONENT / "__init__.py").read_text("utf-8")
+        self.assertIn("vol.Optional(ATTR_GROUPS)", init)
+        import_recipe = init[
+            init.index("async def _async_import_recipe(") :
+            init.index("async def _async_remove_recipe(")
+        ]
+        # The group travels with the import, so the recipes are stored with it
+        # in one save; an unknown name becomes a group of its own.
+        self.assertIn("normalize_group_names", import_recipe)
+        self.assertIn("_import_single(hub, urls[0], groups)", import_recipe)
+        self.assertIn("hub.async_import(url, groups)", import_recipe)
+
+        coordinator = (COMPONENT / "coordinator.py").read_text("utf-8")
+        self.assertIn(
+            "self, url: str, groups: list[str] | None = None", coordinator
+        )
+        self.assertIn("recipe.groups = list(groups)", coordinator)
+
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        for marker in (
+            "select.import-group",
+            "const groups = this._importGroups();",
+            "{ url: urls[0], groups }",
+            "{ urls, groups }",
+        ):
+            self.assertIn(marker, card)
+        # New groups are made in the groups section, not in the import form.
+        self.assertNotIn("IMPORT_NEW_GROUP", card)
+        self.assertNotIn("import-new-group", card)
+
+        services = (COMPONENT / "services.yaml").read_text("utf-8")
+        import_fields = services[
+            services.index("import_recipe:") : services.index("add_recipe:")
+        ]
+        self.assertIn("groups:", import_fields)
+
+        for name in ("strings.json", "translations/de.json", "translations/en.json"):
+            data = json.loads((COMPONENT / name).read_text("utf-8"))
+            self.assertIn("groups", data["services"]["import_recipe"]["fields"])
+
+        readme = (BASE / "README.md").read_text("utf-8")
+        self.assertIn("Abschnitt **Gruppen**", readme)
+        self.assertIn("| `groups` |", readme)

@@ -42,6 +42,10 @@
         "urls": {
           "name": "Recipe URLs",
           "description": "Multiple recipe URLs. A failing link does not block the others."
+        },
+        "groups": {
+          "name": "Groups",
+          "description": "Group(s) the imported recipes are filed into. A name that does not exist yet is created."
         }
       }
     },

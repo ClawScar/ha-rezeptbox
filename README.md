@@ -123,12 +123,19 @@ Benachrichtigung die Zusammenfassung (z. B. „3 von 4 importiert, 1
 fehlgeschlagen“). Ein fehlerhafter Link blockiert die übrigen nicht. Mit
 **Strg+Enter** (bzw. Cmd+Enter) startest du den Import aus dem Feld.
 
+Unter dem Feld wählst du eine **Gruppe**, in die die neuen Rezepte direkt
+einsortiert werden – **Ohne Gruppe** lässt die Rezepte ohne Zuweisung. Eine
+neue Gruppe legst du vorher im Abschnitt **Gruppen** darunter an; danach steht
+sie auch im Import zur Auswahl.
+
 **Über einen Service** (z. B. in einem Skript oder einer Automation):
 
 ```yaml
 action: recipe_box.import_recipe
 data:
   url: https://www.chefkoch.de/rezepte/2060241333351072/Die-beste-Okroschka-nach-Mamas-Rezept.html
+  groups:
+    - Abendessen
 ```
 
 Bei einer URL gibt der Service `title` und `url` zurück, bei mehreren eine
@@ -457,6 +464,7 @@ Beispiel für eine Automation:
 | --- | --- | --- |
 | `url` | eins von beiden | Adresse einer Rezeptseite |
 | `urls` | eins von beiden | Liste von Rezept-Adressen |
+| `groups` | nein | Gruppen, in die die importierten Rezepte direkt einsortiert werden; ein unbekannter Name wird als neue Gruppe angelegt |
 
 Importiert ein oder mehrere Rezepte und legt sie als Geräte mit Sensoren an.
 Bei einer URL enthält die Antwort `title` und `url`, bei mehreren `imported`,

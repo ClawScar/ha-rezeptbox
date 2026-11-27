@@ -235,9 +235,13 @@ class RecipeHub(DataUpdateCoordinator[dict[str, Recipe]]):
         _LOGGER.debug("Removed recipe %s", source_url)
         return recipe
 
-    async def async_import(self, url: str) -> Recipe:
+    async def async_import(
+        self, url: str, groups: list[str] | None = None
+    ) -> Recipe:
         """Fetch a recipe from a URL and add it to the collection."""
         recipe = await async_scrape_recipe(self.hass, url)
+        if groups:
+            recipe.groups = list(groups)
         await self.async_add_recipe(recipe)
         return recipe
 

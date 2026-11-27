@@ -241,6 +241,7 @@ IMPORT_RECIPE_SCHEMA = vol.All(
         {
             vol.Optional(ATTR_URL): cv.string,
             vol.Optional(ATTR_URLS): vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(ATTR_GROUPS): vol.All(cv.ensure_list, [cv.string]),
         }
     ),
     cv.has_at_least_one_key(ATTR_URL, ATTR_URLS),
@@ -566,10 +567,12 @@ def _collect_import_urls(call: ServiceCall) -> list[str]:
     return result
 
 
-async def _import_single(hub: RecipeHub, url: str) -> Recipe:
+async def _import_single(
+    hub: RecipeHub, url: str, groups: list[str] | None = None
+) -> Recipe:
     """Import one recipe or raise a translated service error."""
     try:
-        return await hub.async_import(url)
+        return await hub.async_import(url, groups)
     except RecipeError as err:
         _LOGGER.debug("Recipe import failed for %s: %s", url, err)
         code = err.code if err.code in KNOWN_IMPORT_ERRORS else "unknown"
@@ -593,8 +596,15 @@ async def _async_import_recipe(
             translation_domain=DOMAIN, translation_key="invalid_url"
         )
 
+    # The card and the service can put the new recipes straight into a group;
+    # a name that is not used yet becomes a group of its own.
+    groups = normalize_group_names(
+        [str(item) for item in call.data.get(ATTR_GROUPS) or []],
+        MAX_RECIPE_GROUPS,
+    )
+
     if len(urls) == 1:
-        recipe = await _import_single(hub, urls[0])
+        recipe = await _import_single(hub, urls[0], groups)
         _LOGGER.debug(
             "Imported recipe %s from %s", recipe.title, recipe.source_url
         )
@@ -604,7 +614,7 @@ async def _async_import_recipe(
     failed: list[dict[str, str]] = []
     for url in urls:
         try:
-            recipe = await hub.async_import(url)
+            recipe = await hub.async_import(url, groups)
         except RecipeError as err:
             code = err.code if err.code in KNOWN_IMPORT_ERRORS else "unknown"
             _LOGGER.debug("Recipe import failed for %s: %s", url, err)
