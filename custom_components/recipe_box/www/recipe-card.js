@@ -3189,6 +3189,50 @@ const notify = (target, message) => {
   );
 };
 
+/* Every button reports a running action: the spinner from the stylesheet
+ * appears after a short delay, so quick taps (tabs, dialogs, filters) do not
+ * flicker, while service calls, uploads and the text recognition keep it
+ * until their promise settles. The button ignores further taps meanwhile. */
+const BUSY_DELAY_MS = 200;
+
+const bindBusyButton = (button, handler) => {
+  if (!button || typeof button.addEventListener !== "function") return;
+  button.addEventListener("click", (event) => {
+    if (button._rezeptboxBusy) return;
+    let timer = null;
+    const start = () => {
+      timer = null;
+      if (button.classList) button.classList.add("busy");
+      if (button.setAttribute) button.setAttribute("aria-busy", "true");
+    };
+    const finish = () => {
+      if (timer && typeof clearTimeout === "function") clearTimeout(timer);
+      timer = null;
+      button._rezeptboxBusy = false;
+      if (button.classList) button.classList.remove("busy");
+      if (button.removeAttribute) button.removeAttribute("aria-busy");
+    };
+    button._rezeptboxBusy = true;
+    let result;
+    try {
+      result = handler(event);
+    } catch (error) {
+      finish();
+      throw error;
+    }
+    if (result && typeof result.then === "function") {
+      if (typeof setTimeout === "function") {
+        timer = setTimeout(start, BUSY_DELAY_MS);
+      } else {
+        start();
+      }
+      result.then(finish, finish);
+      return;
+    }
+    finish();
+  });
+};
+
 const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => {
   root.querySelectorAll("input[data-ingredient]").forEach((input) => {
     input.addEventListener("change", () => {
@@ -3200,7 +3244,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
   });
 
   root.querySelectorAll("button.servings-button").forEach((button) => {
-    button.addEventListener("click", () => {
+    bindBusyButton(button, () => {
       const step = Number(button.getAttribute("data-step")) || 0;
       const current = Number(options.servings) || 1;
       const next = Math.max(1, Math.min(99, current + step));
@@ -3209,7 +3253,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
   });
 
   root.querySelectorAll("button.step-timer").forEach((button) => {
-    button.addEventListener("click", () => {
+    bindBusyButton(button, () => {
       const index = Number(button.getAttribute("data-timer"));
       const minutes = Number(button.getAttribute("data-minutes"));
       if (Number.isFinite(index) && Number.isFinite(minutes) && minutes > 0) {
@@ -3221,7 +3265,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
 
   const refresh = root.querySelector("button.refresh");
   if (refresh && hass) {
-    refresh.addEventListener("click", async () => {
+    bindBusyButton(refresh, async () => {
       refresh.disabled = true;
       try {
         await hass.callService("recipe_box", "refresh_recipe", {
@@ -3244,7 +3288,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
 
   const editButton = root.querySelector("button.edit");
   if (editButton && typeof options.onEdit === "function") {
-    editButton.addEventListener("click", () => {
+    bindBusyButton(editButton, () => {
       const attributes = (options.state && options.state.attributes) || {};
       options.onEdit(attributes.source_url || "");
     });
@@ -3296,7 +3340,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
 
   const photoRemove = root.querySelector("button.photo-remove");
   if (photoRemove && hass) {
-    photoRemove.addEventListener("click", async () => {
+    bindBusyButton(photoRemove, async () => {
       photoRemove.disabled = true;
       try {
         await hass.callService("recipe_box", "set_recipe_image", {
@@ -3319,7 +3363,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
 
   const print = root.querySelector("button.print");
   if (print) {
-    print.addEventListener("click", () => {
+    bindBusyButton(print, () => {
       if (!options.state) {
         window.print();
         return;
@@ -3369,13 +3413,13 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
   const groupSelect = root.querySelector("select.group-select");
   const groupAdd = root.querySelector("button.group-add-button");
   if (groupSelect && groupAdd && hass) {
-    groupAdd.addEventListener("click", () => {
+    bindBusyButton(groupAdd, () => {
       const name = String(groupSelect.value || "").trim();
       if (!name) {
         notify(dispatcher, tr("Bitte eine Gruppe wählen.", "Please choose a group."));
         return;
       }
-      assignGroup(name);
+      return assignGroup(name);
     });
   }
 
@@ -3392,9 +3436,9 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
         return;
       }
       groupInput.value = "";
-      assignGroup(name);
+      return assignGroup(name);
     };
-    groupNew.addEventListener("click", addNew);
+    bindBusyButton(groupNew, addNew);
     groupInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         event.preventDefault();
@@ -3404,7 +3448,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
   }
 
   root.querySelectorAll("button.group-remove").forEach((removeButton) => {
-    removeButton.addEventListener("click", async () => {
+    bindBusyButton(removeButton, async () => {
       if (!hass) return;
       const name = removeButton.getAttribute("data-group") || "";
       const next = recipeGroups(options.state).filter(
@@ -3432,7 +3476,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
 
   const favoriteButton = root.querySelector("button.favorite-toggle");
   if (favoriteButton) {
-    favoriteButton.addEventListener("click", async () => {
+    bindBusyButton(favoriteButton, async () => {
       if (!hass) return;
       const favorite =
         favoriteButton.getAttribute("data-favorite") !== "true";
@@ -3463,7 +3507,7 @@ const bindDetail = (root, hass, entityId, checked, dispatcher, options = {}) => 
   const button = root.querySelector("button.shopping");
   if (!button || !hass) return;
 
-  button.addEventListener("click", async () => {
+  bindBusyButton(button, async () => {
     button.disabled = true;
     const params = { entity_id: entityId };
     const servings = Number(options.servings);
@@ -3652,7 +3696,7 @@ const STYLES = `<style>
   .manual-body input, .manual-body textarea { padding: 8px 10px; border-radius: 6px; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); background: var(--card-background-color, transparent); color: var(--primary-text-color); font-size: 0.88rem; font-family: inherit; }
   .manual-body button, button.week-shopping { align-self: flex-start; background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 6px; padding: 8px 14px; font-size: 0.88rem; cursor: pointer; }
   button.week-shopping { grid-column: 1 / -1; width: 100%; min-height: 44px; border-radius: 10px; font-size: 0.9rem; font-weight: 600; }
-  button.busy { cursor: progress; }
+  button.busy { cursor: progress; pointer-events: none; }
   button.busy::before { content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 6px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; vertical-align: -1px; animation: recipe-box-spin 0.8s linear infinite; }
   button.busy:disabled { opacity: 0.75; }
   @keyframes recipe-box-spin { to { transform: rotate(360deg); } }
@@ -4233,9 +4277,9 @@ class RecipeBoxListCard extends HTMLElement {
     const dialog = this.shadowRoot.querySelector(".delete-backdrop");
     if (!dialog) return;
     const cancel = dialog.querySelector("button.dialog-cancel");
-    if (cancel) cancel.addEventListener("click", () => this._cancelDelete());
+    if (cancel) bindBusyButton(cancel, () => this._cancelDelete());
     const confirm = dialog.querySelector("button.dialog-confirm");
-    if (confirm) confirm.addEventListener("click", () => this._deleteConfirmed());
+    if (confirm) bindBusyButton(confirm, () => this._deleteConfirmed());
     const backdrop = dialog;
     if (backdrop) {
       backdrop.addEventListener("click", (event) => {
@@ -4701,7 +4745,7 @@ class RecipeBoxListCard extends HTMLElement {
 
     if (this.shadowRoot.querySelector("ol.ocr-pages")) this._renderOcrPages();
     this.shadowRoot.querySelectorAll("button.tab").forEach((button) => {
-      button.addEventListener("click", () => {
+      bindBusyButton(button, () => {
         const next = button.getAttribute("data-tab");
         if (!next || next === this._tab) return;
         this._rememberTab(next);
@@ -4715,7 +4759,7 @@ class RecipeBoxListCard extends HTMLElement {
 
     this.shadowRoot.querySelectorAll("button.recipe-item").forEach((button) => {
       const entityId = button.getAttribute("data-entity");
-      button.addEventListener("click", () => {
+      bindBusyButton(button, () => {
         if (Date.now() < this._suppressClickUntil) return;
         if (this._selection.size) {
           this._toggleSelection(entityId);
@@ -4741,14 +4785,14 @@ class RecipeBoxListCard extends HTMLElement {
     });
 
     this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
-      button.addEventListener("click", (event) => {
+      bindBusyButton(button, (event) => {
         event.stopPropagation();
         this._requestDelete(button.getAttribute("data-entity"));
       });
     });
 
     this.shadowRoot.querySelectorAll("button.plan-add").forEach((button) => {
-      button.addEventListener("click", (event) => {
+      bindBusyButton(button, (event) => {
         event.stopPropagation();
         const entityId = button.getAttribute("data-entity");
         this._planPicker = this._planPicker === entityId ? null : entityId;
@@ -4757,7 +4801,7 @@ class RecipeBoxListCard extends HTMLElement {
       });
     });
     this.shadowRoot.querySelectorAll("button.day-chip").forEach((button) => {
-      button.addEventListener("click", (event) => {
+      bindBusyButton(button, (event) => {
         event.stopPropagation();
         const entityId = button.getAttribute("data-entity");
         const date = button.getAttribute("data-date");
@@ -4769,7 +4813,7 @@ class RecipeBoxListCard extends HTMLElement {
     });
 
     this.shadowRoot.querySelectorAll("button.recipe-favorite").forEach((button) => {
-      button.addEventListener("click", async (event) => {
+      bindBusyButton(button, async (event) => {
         event.stopPropagation();
         const next = button.getAttribute("data-favorite") !== "true";
         try {
@@ -4801,35 +4845,35 @@ class RecipeBoxListCard extends HTMLElement {
       "button.selection-assign"
     );
     if (selectionAssign) {
-      selectionAssign.addEventListener("click", () => {
+      bindBusyButton(selectionAssign, () => {
         const select = this.shadowRoot.querySelector("select.selection-group");
         const group = String((select && select.value) || "").trim();
         if (!group) {
           notify(this, tr("Bitte eine Gruppe wählen.", "Please choose a group."));
           return;
         }
-        this._assignGroupToSelection(group);
+        return this._assignGroupToSelection(group);
       });
     }
     const selectionRemove = this.shadowRoot.querySelector(
       "button.selection-remove"
     );
     if (selectionRemove) {
-      selectionRemove.addEventListener("click", () => {
+      bindBusyButton(selectionRemove, () => {
         const select = this.shadowRoot.querySelector("select.selection-group");
         const group = String((select && select.value) || "").trim();
         if (!group) {
           notify(this, tr("Bitte eine Gruppe wählen.", "Please choose a group."));
           return;
         }
-        this._removeGroupFromSelection(group);
+        return this._removeGroupFromSelection(group);
       });
     }
     const selectionDelete = this.shadowRoot.querySelector(
       "button.selection-delete"
     );
     if (selectionDelete) {
-      selectionDelete.addEventListener("click", () =>
+      bindBusyButton(selectionDelete, () =>
         this._requestSelectionDelete()
       );
     }
@@ -4837,7 +4881,7 @@ class RecipeBoxListCard extends HTMLElement {
       "button.selection-cancel"
     );
     if (selectionCancel) {
-      selectionCancel.addEventListener("click", () => {
+      bindBusyButton(selectionCancel, () => {
         this._selection.clear();
         this._signature = null;
         this._render();
@@ -4861,7 +4905,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
     const importButton = this.shadowRoot.querySelector("button.import-button");
     if (importButton) {
-      importButton.addEventListener("click", () => this._import());
+      bindBusyButton(importButton, () => this._import());
     }
 
     const search = this.shadowRoot.querySelector("input.filter-search");
@@ -4879,7 +4923,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
 
     this.shadowRoot.querySelectorAll("button.group-tab").forEach((button) => {
-      button.addEventListener("click", () => {
+      bindBusyButton(button, () => {
         const next = button.getAttribute("data-group") || "";
         if (next === this._filter.group) return;
         this._rememberGroup(next);
@@ -4890,7 +4934,7 @@ class RecipeBoxListCard extends HTMLElement {
       "button.filter-favorites"
     );
     if (favoritesOnly) {
-      favoritesOnly.addEventListener("click", () => {
+      bindBusyButton(favoritesOnly, () => {
         this._filter.onlyFavorites = !this._filter.onlyFavorites;
         this._renderList(entries);
       });
@@ -4918,11 +4962,11 @@ class RecipeBoxListCard extends HTMLElement {
     }
 
     const random = this.shadowRoot.querySelector("button.random");
-    if (random) random.addEventListener("click", () => this._openRandom(entries));
+    if (random) bindBusyButton(random, () => this._openRandom(entries));
 
     const exportButton = this.shadowRoot.querySelector("button.export");
     if (exportButton) {
-      exportButton.addEventListener("click", () => this._export());
+      bindBusyButton(exportButton, () => this._export());
     }
 
     const file = this.shadowRoot.querySelector("input.import-file");
@@ -4936,21 +4980,21 @@ class RecipeBoxListCard extends HTMLElement {
 
     const manualSave = this.shadowRoot.querySelector("button.manual-save");
     if (manualSave) {
-      manualSave.addEventListener("click", () => this._saveManual());
+      bindBusyButton(manualSave, () => this._saveManual());
     }
 
     const manualCancel = this.shadowRoot.querySelector("button.manual-cancel");
     if (manualCancel) {
-      manualCancel.addEventListener("click", () => this._cancelEdit());
+      bindBusyButton(manualCancel, () => this._cancelEdit());
     }
 
     const ocrInputs = this.shadowRoot.querySelectorAll("input.scan-input");
     ocrInputs.forEach((input) => this._attachScanInput(input));
     const ocrRun = this.shadowRoot.querySelector("button.ocr-run");
-    if (ocrRun) ocrRun.addEventListener("click", () => this._scanPages());
+    if (ocrRun) bindBusyButton(ocrRun, () => this._scanPages());
     const ocrClear = this.shadowRoot.querySelector("button.ocr-clear");
     if (ocrClear) {
-      ocrClear.addEventListener("click", () => {
+      bindBusyButton(ocrClear, () => {
         this._ocrPages = [];
         this._renderOcrPages();
         this._scanStatus("");
@@ -4970,13 +5014,13 @@ class RecipeBoxListCard extends HTMLElement {
       "button.manual-photo-remove"
     );
     if (manualPhotoRemove) {
-      manualPhotoRemove.addEventListener("click", () => this._clearPhoto());
+      bindBusyButton(manualPhotoRemove, () => this._clearPhoto());
     }
 
     const createGroup = this.shadowRoot.querySelector("button.group-create-button");
     if (createGroup) {
       const create = () => this._createGroup();
-      createGroup.addEventListener("click", create);
+      bindBusyButton(createGroup, create);
       const groupInput = this.shadowRoot.querySelector("input.group-new-input");
       if (groupInput) {
         groupInput.addEventListener("keydown", (event) => {
@@ -4988,7 +5032,7 @@ class RecipeBoxListCard extends HTMLElement {
       }
     }
     this.shadowRoot.querySelectorAll("button.group-move").forEach((button) => {
-      button.addEventListener("click", () =>
+      bindBusyButton(button, () =>
         this._moveGroup(
           button.getAttribute("data-group"),
           button.getAttribute("data-direction")
@@ -4996,24 +5040,24 @@ class RecipeBoxListCard extends HTMLElement {
       );
     });
     this.shadowRoot.querySelectorAll("button.group-delete").forEach((button) => {
-      button.addEventListener("click", () =>
+      bindBusyButton(button, () =>
         this._requestGroupDelete(button.getAttribute("data-group"))
       );
     });
     this.shadowRoot.querySelectorAll("button.group-rename").forEach((button) => {
-      button.addEventListener("click", () =>
+      bindBusyButton(button, () =>
         this._startGroupRename(button.getAttribute("data-group"))
       );
     });
     const renameSave = this.shadowRoot.querySelector("button.group-rename-save");
     if (renameSave) {
-      renameSave.addEventListener("click", () => this._saveGroupRename());
+      bindBusyButton(renameSave, () => this._saveGroupRename());
     }
     const renameCancel = this.shadowRoot.querySelector(
       "button.group-rename-cancel"
     );
     if (renameCancel) {
-      renameCancel.addEventListener("click", () => this._cancelGroupRename());
+      bindBusyButton(renameCancel, () => this._cancelGroupRename());
     }
     const renameInput = this.shadowRoot.querySelector(
       "input.group-rename-input"
@@ -5036,13 +5080,13 @@ class RecipeBoxListCard extends HTMLElement {
       );
     });
     this.shadowRoot.querySelectorAll("button.plan-clear").forEach((button) => {
-      button.addEventListener("click", () =>
+      bindBusyButton(button, () =>
         this._plan(button.getAttribute("data-date"), "")
       );
     });
     const weekShopping = this.shadowRoot.querySelector("button.week-shopping");
     if (weekShopping) {
-      weekShopping.addEventListener("click", () => this._weekShopping());
+      bindBusyButton(weekShopping, () => this._weekShopping());
     }
 
     const stepWeek = (step) => {
@@ -5053,14 +5097,14 @@ class RecipeBoxListCard extends HTMLElement {
       this._renderList(entries);
     };
     const planPrev = this.shadowRoot.querySelector("button.plan-prev");
-    if (planPrev) planPrev.addEventListener("click", () => stepWeek(-7));
+    if (planPrev) bindBusyButton(planPrev, () => stepWeek(-7));
     const planNext = this.shadowRoot.querySelector("button.plan-next");
-    if (planNext) planNext.addEventListener("click", () => stepWeek(7));
+    if (planNext) bindBusyButton(planNext, () => stepWeek(7));
     const planTodayButton = this.shadowRoot.querySelector(
       "button.plan-today-button"
     );
     if (planTodayButton) {
-      planTodayButton.addEventListener("click", () => {
+      bindBusyButton(planTodayButton, () => {
         this._planOffset = 0;
         this._signature = null;
         this._renderList(entries);
@@ -5068,7 +5112,7 @@ class RecipeBoxListCard extends HTMLElement {
     }
     const planPrune = this.shadowRoot.querySelector("button.plan-prune");
     if (planPrune) {
-      planPrune.addEventListener("click", () => this._prunePlan());
+      bindBusyButton(planPrune, () => this._prunePlan());
     }
   }
 
@@ -5262,7 +5306,7 @@ class RecipeBoxListCard extends HTMLElement {
     const root = this.shadowRoot;
     if (!root) return;
     root.querySelectorAll("button.ocr-page-remove").forEach((button) => {
-      button.addEventListener("click", () => {
+      bindBusyButton(button, () => {
         const index = Number(button.getAttribute("data-index"));
         if (!Number.isInteger(index)) return;
         this._ocrPages = (this._ocrPages || []).filter(
@@ -5772,24 +5816,24 @@ class RecipeBoxListCard extends HTMLElement {
     const backup = this._backup;
     if (!node || !backup) return;
     const close = node.querySelector("button.backup-close");
-    if (close) close.addEventListener("click", () => this._closeBackup());
+    if (close) bindBusyButton(close, () => this._closeBackup());
     const save = node.querySelector("button.backup-save");
     if (save) {
-      save.addEventListener("click", () => {
+      bindBusyButton(save, () => {
         save.disabled = true;
-        this._saveBackupWithPicker(backup, save);
+        return this._saveBackupWithPicker(backup, save);
       });
     }
     const share = node.querySelector("button.backup-share");
     if (share) {
-      share.addEventListener("click", () => {
+      bindBusyButton(share, () => {
         share.disabled = true;
-        this._shareBackup(backup, share);
+        return this._shareBackup(backup, share);
       });
     }
     const download = node.querySelector("a.backup-download");
     if (download) {
-      download.addEventListener("click", () => {
+      bindBusyButton(download, () => {
         notify(
           this,
           tr(
@@ -6042,7 +6086,7 @@ class RecipeBoxListCard extends HTMLElement {
     );
 
     this.shadowRoot.querySelectorAll("button.delete").forEach((button) => {
-      button.addEventListener("click", () => {
+      bindBusyButton(button, () => {
         this._requestDelete(button.getAttribute("data-entity"));
       });
     });
@@ -6050,7 +6094,7 @@ class RecipeBoxListCard extends HTMLElement {
 
     const back = this.shadowRoot.querySelector("button.back");
     if (back) {
-      back.addEventListener("click", () => {
+      bindBusyButton(back, () => {
         this._selected = null;
         this._rememberTab("recipes");
         this._signature = null;
@@ -6154,7 +6198,7 @@ class RecipeBoxPanel extends HTMLElement {
       </div>
       <div class="content"></div>`;
     const menu = this.shadowRoot.querySelector("button.menu");
-    if (menu) menu.addEventListener("click", () => this._toggleMenu());
+    if (menu) bindBusyButton(menu, () => this._toggleMenu());
     this._toolbar = this.shadowRoot.querySelector(".toolbar");
     this._content = this.shadowRoot.querySelector(".content");
     this._titleNode = this.shadowRoot.querySelector(".title");
