@@ -1102,6 +1102,58 @@ const postPhoto = (hass, form) => {
   });
 };
 
+/* Same transport as the photo upload, but to the integration's AI view. */
+const postAiScan = (hass, form) => {
+  if (hass && typeof hass.fetchWithAuth === "function") {
+    return hass.fetchWithAuth(AI_SCAN_URL, { method: "POST", body: form });
+  }
+  const url =
+    hass && typeof hass.hassUrl === "function" ? hass.hassUrl(AI_SCAN_URL) : AI_SCAN_URL;
+  const token =
+    hass && hass.auth && hass.auth.data && hass.auth.data.access_token;
+  if (typeof fetch !== "function") {
+    throw new Error(
+      tr(
+        "Dieser Browser kann die Fotos nicht senden.",
+        "This browser cannot send the photos."
+      )
+    );
+  }
+  return fetch(url, {
+    method: "POST",
+    body: form,
+    credentials: "same-origin",
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+};
+
+/* The checkbox only appears when Home Assistant has an AI task entity that
+ * accepts photos; before 2025.8 the endpoint simply reports none. */
+const aiScanEntities = async (hass) => {
+  if (!hass || typeof hass.fetchWithAuth !== "function") return [];
+  const response = await hass.fetchWithAuth(AI_SCAN_URL, { method: "GET" });
+  if (!response || !response.ok) return [];
+  const data = await response.json();
+  return data && Array.isArray(data.entities) ? data.entities : [];
+};
+
+const aiScanError = async (response) => {
+  let message = "";
+  try {
+    const data = await response.json();
+    message = (data && (data.message || data.error)) || "";
+  } catch (error) {
+    message = "";
+  }
+  return new Error(
+    message ||
+      tr(
+        "Die KI konnte die Fotos nicht lesen.",
+        "The AI could not read the photos."
+      )
+  );
+};
+
 const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
   const blob = await shrink(file);
   if (blob === file && looksHeic(file)) {
@@ -1162,6 +1214,9 @@ const uploadPhoto = async (hass, file, shrink = shrinkPhoto) => {
  * text is only a suggestion that the form below shows for correction.
  * ------------------------------------------------------------------------ */
 const OCR_BASE = "/recipe_box/ocr/";
+/* The AI scan posts to the integration itself; the photos never leave Home
+ * Assistant from the browser and no provider key sits in the card. */
+const AI_SCAN_URL = "/api/recipe_box/ai_scan";
 const OCR_INGREDIENT_HEADING =
   /^(zutaten(?:liste)?|ingredients|you need|f\u00fcr die zutaten(?:liste)?)\b/i;
 const OCR_STEP_HEADING =
@@ -2141,7 +2196,7 @@ const ocrZoneText = (data, minConfidence = 45) => {
     .join("\n");
 };
 
-const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-section">
+const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class="manual data-section">
   <h3>${edit ? tr("Rezept bearbeiten", "Edit recipe") : tr("Eigenes Rezept", "Own recipe")}</h3>
   <p class="tab-hint">${edit
     ? tr(
@@ -2164,9 +2219,13 @@ const manualFormHtml = (edit = null, pages = []) => `<div class="manual data-sec
         "Clear list"
       )}</button>
     </div>
+    <label class="scan-ai" hidden>${tr(
+      "Mit KI lesen (Fotos gehen an die KI in Home Assistant)",
+      "Read with AI (photos go to the AI set up in Home Assistant)"
+    )}<input class="ocr-ai" type="checkbox"${aiRead ? " checked" : ""}></label>
     <p class="scan-hint">${tr(
-      "Gedruckte Rezeptkarten. „Foto hinzufügen“ nimmt ein Bild pro Auswahl – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; Handschrift erkennt der Scanner nicht.",
-      "Printed recipe cards. “Add photo” takes one picture per pick – tap again for another page. The first photo becomes the recipe photo; the scanner cannot read handwriting."
+      "Gedruckte Rezeptkarten. „Foto hinzufügen“ nimmt ein Bild pro Auswahl – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; ohne KI erkennt der Scanner keine Handschrift.",
+      "Printed recipe cards. “Add photo” takes one picture per pick – tap again for another page. The first photo becomes the recipe photo; without AI the scanner cannot read handwriting."
     )}</p>
     <ol class="ocr-pages">${ocrPagesHtml(pages)}</ol>
     <p class="scan-status" role="status"></p>
@@ -3710,6 +3769,9 @@ const STYLES = `<style>
   label.scan-pick input.scan-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
   button.ocr-run { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
   button.ocr-run[disabled] { opacity: 0.5; cursor: default; }
+  label.scan-ai { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 0.8rem; color: var(--secondary-text-color); }
+  label.scan-ai[hidden] { display: none; }
+  label.scan-ai input { margin: 0; }
   button.ocr-clear { background: none; border: 1px solid var(--divider-color, rgba(127, 127, 127, 0.4)); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; color: var(--text-primary-color); cursor: pointer; }
   button.ocr-clear[hidden] { display: none; }
   .scan-hint { margin: 0; font-size: 0.78rem; color: var(--secondary-text-color); }
@@ -3919,6 +3981,8 @@ class RecipeBoxListCard extends HTMLElement {
     /* Photo scan and the recipe that the form currently edits. */
     this._ocrPages = [];
     this._ocrBusy = false;
+    this._aiEntities = null;
+    this._aiRead = false;
     this._edit = null;
     this._confirmDelete = null;
     this._selection = new Set();
@@ -4722,7 +4786,11 @@ class RecipeBoxListCard extends HTMLElement {
         groupCounts(entries),
         this._pendingGroupDelete,
         this._renamingGroup
-      )}${tools}${manualFormHtml(this._edit, this._ocrPages || [])}</div>`,
+      )}${tools}${manualFormHtml(
+        this._edit,
+        this._ocrPages || [],
+        this._aiRead
+      )}</div>`,
       plan: entries.length
         ? planHtml(this._hass, entries, this._config, this._planOffset)
         : `<p class="empty">${tr(
@@ -5002,6 +5070,14 @@ class RecipeBoxListCard extends HTMLElement {
       });
     }
     this._bindOcrPages();
+    const aiBox = this.shadowRoot.querySelector("input.ocr-ai");
+    if (aiBox) {
+      aiBox.addEventListener("change", () => {
+        /* Kept on the card, so a re-render does not silently drop the choice. */
+        this._aiRead = Boolean(aiBox.checked);
+      });
+    }
+    this._loadAiScan();
 
     const manualPhoto = this.shadowRoot.querySelector("input.manual-photo");
     if (manualPhoto) {
@@ -5388,6 +5464,12 @@ class RecipeBoxListCard extends HTMLElement {
     let currentPage = 1;
 
     try {
+      const aiBox = root && root.querySelector("input.ocr-ai");
+      if (aiBox && aiBox.checked && (this._aiEntities || []).length) {
+        await this._scanPagesWithAi(pages);
+        return;
+      }
+
       const Tesseract = await loadTesseract();
       this._scanStatus(
         tr("Texterkennung wird geladen …", "Loading text recognition …")
@@ -5484,7 +5566,7 @@ class RecipeBoxListCard extends HTMLElement {
       notify(
         this,
         tr(
-          `Texterkennung fehlgeschlagen: ${
+          `Lesen fehlgeschlagen: ${
             (error && (error.message || error.code)) || "unbekannter Fehler"
           }`,
           `Text recognition failed: ${
@@ -5503,6 +5585,84 @@ class RecipeBoxListCard extends HTMLElement {
       this._ocrBusy = false;
       if (run) run.disabled = !(this._ocrPages || []).length;
     }
+  }
+
+  /* The AI option stays hidden until Home Assistant reports an AI task entity
+   * that can read photos. Asking once per card is enough. */
+  _loadAiScan() {
+    const label =
+      this.shadowRoot && this.shadowRoot.querySelector("label.scan-ai");
+    if (!label) return;
+    if (this._aiEntities !== null) {
+      label.hidden = !this._aiEntities.length;
+      return;
+    }
+    this._aiScanLoading = aiScanEntities(this._hass)
+      .then((entities) => {
+        this._aiEntities = entities || [];
+      })
+      .catch(() => {
+        this._aiEntities = [];
+      })
+      .then(() => {
+        const current =
+          this.shadowRoot && this.shadowRoot.querySelector("label.scan-ai");
+        if (current) current.hidden = !(this._aiEntities || []).length;
+      });
+  }
+
+  /* Sends the photos to the AI task entity the user set up and fills the form
+   * with what it read. Nothing is saved until the user checks the fields. */
+  async _scanPagesWithAi(pages) {
+    this._scanStatus(
+      tr("Die KI liest die Fotos …", "The AI is reading the photos …")
+    );
+    const form = new FormData();
+    for (let index = 0; index < pages.length; index += 1) {
+      const page = pages[index];
+      /* Shrinking keeps the request small and turns HEIC into JPEG. */
+      const blob = await shrinkPhoto(page);
+      const part = photoBlobFor(blob, page && page.name);
+      form.append("file", part, photoFileName(`scan-${index + 1}`, part));
+    }
+
+    const response = await postAiScan(this._hass, form);
+    if (!response || !response.ok) {
+      throw await aiScanError(response);
+    }
+    const data = await response.json();
+    const scanned = {
+      title: String((data && data.title) || ""),
+      servings: Number(data && data.servings) || null,
+      ingredients: Array.isArray(data && data.ingredients)
+        ? data.ingredients.slice()
+        : [],
+      instructions: Array.isArray(data && data.instructions)
+        ? data.instructions.slice()
+        : [],
+    };
+    if (!scanned.ingredients.length && !scanned.instructions.length) {
+      throw new Error(
+        tr(
+          "Die KI hat nichts Lesbares zurückgegeben.",
+          "The AI returned nothing readable."
+        )
+      );
+    }
+
+    this._fillManualForm(scanned);
+    this._scanStatus("");
+    notify(
+      this,
+      tr(
+        `KI gelesen: ${scanned.title || "ohne Titel"} (${
+          scanned.ingredients.length
+        } Zutaten, ${scanned.instructions.length} Schritte). Bitte prüfen und speichern.`,
+        `Read by AI: ${scanned.title || "no title"} (${
+          scanned.ingredients.length
+        } ingredients, ${scanned.instructions.length} steps). Please check and save.`
+      )
+    );
   }
 
   _fillManualForm(scanned) {

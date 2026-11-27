@@ -24,6 +24,7 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers import config_validation as cv
 
+from .ai_scan import async_register_ai_scan
 from .backup import BackupPathError, configured_backup_path, write_backup
 from .const import (
     ATTR_DATE,
@@ -260,8 +261,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """Register services and the bundled Lovelace card."""
+    """Register services, the AI scan view and the bundled Lovelace card."""
     hass.data.setdefault(DOMAIN, {})
+    async_register_ai_scan(hass)
 
     if not hass.services.has_service(DOMAIN, SERVICE_IMPORT_RECIPE):
         hass.services.async_register(

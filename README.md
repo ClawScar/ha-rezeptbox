@@ -47,7 +47,7 @@ Einkaufsliste.
 - **Koch-Sitzung bleibt erhalten**: abgehakte Zutaten und gewählte Portionen überleben Neuladen und Handy-Sperre
 - **Eigene Rezepte** ohne Link anlegen (Familienrezepte, Karten) – direkt in der Liste oder über den Service, auf Wunsch mit Foto von der Rezeptkarte, das sich später in der Detailansicht ändern oder entfernen lässt; nicht mehr benötigte Fotos löscht die Rezeptbox dabei automatisch
 - **Tabs bleiben stehen**: „Rezepte“, „Wochenplan“ und „Daten“ kleben beim Scrollen oben am Rand, solange die Karte sichtbar ist
-- **Foto-Scanner** für gedruckte Rezeptkarten: mehrere Seiten fotografieren, Text mit Tesseract direkt im Browser erkennen lassen und als Rezeptvorschlag im Formular prüfen – ohne KI-Dienst, ohne Internet, ohne Serverpakete; das erste Foto wird das Rezeptfoto
+- **Foto-Scanner** für gedruckte Rezeptkarten: mehrere Seiten fotografieren, Text mit Tesseract direkt im Browser erkennen lassen und als Rezeptvorschlag im Formular prüfen – ohne KI-Dienst, ohne Internet, ohne Serverpakete; auf Wunsch liest stattdessen die in Home Assistant eingerichtete KI (z. B. Gemini) die Fotos und erkennt dann auch Handschrift; das erste Foto wird das Rezeptfoto
 - **Rezepte bearbeiten**: Titel, Portionen, Zutaten, Zubereitung, Tags und Foto eines gespeicherten Rezepts über **Bearbeiten** in der Detailansicht oder den Service `recipe_box.update_recipe` ändern
 - **Wochenplan** zum Blättern: sieben Tage ab heute, eine Woche vor und zurück, Rezeptbilder, Heute-Markierung, geplante Tage direkt an der Rezeptzeile, Reste-/Auswärts-Tage ohne Rezept und Einkauf für die sichtbare Woche
 - **Sicherung**: alle Rezepte und den Wochenplan per Speichern-Dialog als JSON sichern und wieder einlesen
@@ -273,8 +273,9 @@ Reihe nach eingelesen und das Ergebnis im Formular geprüft. Abschnitte wie „Z
 und „Zubereitung“ dürfen sich auf späteren Seiten wiederholen; sie werden
 fortgesetzt statt neu begonnen. Das erste Foto wird das Rezeptfoto. Die
 Texterkennung läuft mit Tesseract und dem deutschen Sprachmodell direkt im
-Browser – rund 5,5 MB liegen dafür unter `www/ocr/`, es geht kein Foto und kein
-Text an einen Dienst, und eine KI ist nicht beteiligt. Vor der Erkennung wird
+Browser – rund 5,5 MB liegen dafür unter `www/ocr/`. Solange das Häkchen
+**Mit KI lesen** aus ist, geht kein Foto und kein Text an einen Dienst, und eine
+KI ist nicht beteiligt. Vor der Erkennung wird
 jede Seite auf etwa 2000 Pixel lange Kante gebracht (kleine Fotos bis zur
 doppelten Größe), in Graustufen umgewandelt, im Kontrast angehoben und an der
 Schwelle zwischen Papier und Druck in Schwarz-Weiß getrennt. Bleibt eine Seite
@@ -297,6 +298,21 @@ zwischen zwei Schritten eine Leerzeile, damit sie beim Prüfen getrennt bleiben.
 Scanner nicht; bei Reflexen oder schräger Aufnahme steigt die Fehlerquote, ein
 gerades, gut beleuchtetes Foto liefert die besten Ergebnisse. Bei älteren
 Browsern ohne WebAssembly-SIMD erscheint eine Fehlermeldung.
+
+Wer in Home Assistant bereits eine KI eingerichtet hat – etwa Google Gemini,
+OpenAI oder ein lokales Modell über Ollama –, kann statt Tesseract sie lesen
+lassen: Im Formular erscheint dann das Häkchen **Mit KI lesen**. Es ist nur
+sichtbar, wenn Home Assistant eine KI-Aufgabe mit Bild-Unterstützung kennt (AI
+Task, ab Home Assistant 2025.8; ältere Versionen scannen unverändert mit
+Tesseract). Die Rezeptbox speichert dabei keinen Schlüssel und spricht auch
+nicht selbst mit einem Anbieter: Sie übergibt die Fotos als Anhang an die
+KI-Aufgabe, und die dort eingerichtete KI entscheidet, wohin sie gehen. Ein
+Abo ist dafür nicht nötig, solange der kostenlose Tarif reicht – für ein
+Rezept genügen wenige Bilder, auch wenn Googles kostenloser Tarif nur wenige
+Anfragen pro Tag erlaubt. Der Vorteil sind Handschrift, schräge Fotos und
+saubere Abschnitte; dafür gehen die Fotos an den Anbieter, und ein lokales
+Modell braucht je nach Hardware etwas länger. Auch hier steht nichts ungeprüft
+im Rezept: Titel, Zutaten und Schritte landen zuerst im Formular.
 
 Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
 oder direkt mit der Handy-Kamera aufnehmen; es wird vor dem Hochladen auf
