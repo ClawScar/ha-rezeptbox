@@ -21,7 +21,7 @@ from aiohttp import web
 
 from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, Unauthorized, UnknownUser
 
 from .ai_recipe import PROMPT, AiRecipeError, parse_ai_recipe
 
@@ -115,6 +115,25 @@ def _remove(paths: Sequence[Path]) -> None:
             continue
 
 
+async def _run_task(
+    hass: HomeAssistant,
+    attachments: list[dict[str, str]],
+    entity_id: str | None,
+    context: Context | None,
+):
+    """Run the AI task itself; ``context`` decides whose rights apply."""
+    from homeassistant.components.ai_task import async_generate_data
+
+    return await async_generate_data(
+        hass,
+        task_name=SCAN_TASK_NAME,
+        entity_id=entity_id,
+        instructions=PROMPT,
+        attachments=attachments,
+        context=context,
+    )
+
+
 async def async_scan_recipe(
     hass: HomeAssistant,
     images: Sequence[tuple[str, bytes]],
@@ -148,14 +167,26 @@ async def async_scan_recipe(
         )
 
     try:
-        result = await async_generate_data(
-            hass,
-            task_name=SCAN_TASK_NAME,
-            entity_id=entity_id,
-            instructions=PROMPT,
-            attachments=attachments,
-            context=context,
+        result = await _run_task(hass, attachments, entity_id, context)
+    except (Unauthorized, UnknownUser) as err:
+        # A restricted user may not control the AI entity. The scan itself is
+        # harmless, so it runs once more as the integration instead of leaving
+        # that user without the AI option.
+        if context is None or not context.user_id:
+            raise AiScanError(
+                f"Die KI konnte die Fotos nicht lesen: {err}"
+            ) from err
+        _LOGGER.debug(
+            "User %s may not run %s, retrying without the user context",
+            context.user_id,
+            entity_id or SCAN_TASK_NAME,
         )
+        try:
+            result = await _run_task(hass, attachments, entity_id, None)
+        except HomeAssistantError as retry_err:
+            raise AiScanError(
+                f"Die KI konnte die Fotos nicht lesen: {retry_err}"
+            ) from retry_err
     except HomeAssistantError as err:
         raise AiScanError(f"Die KI konnte die Fotos nicht lesen: {err}") from err
     except Exception as err:  # noqa: BLE001 - providers raise very different types

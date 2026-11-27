@@ -312,7 +312,11 @@ Rezept genügen wenige Bilder, auch wenn Googles kostenloser Tarif nur wenige
 Anfragen pro Tag erlaubt. Der Vorteil sind Handschrift, schräge Fotos und
 saubere Abschnitte; dafür gehen die Fotos an den Anbieter, und ein lokales
 Modell braucht je nach Hardware etwas länger. Auch hier steht nichts ungeprüft
-im Rezept: Titel, Zutaten und Schritte landen zuerst im Formular.
+im Rezept: Titel, Zutaten und Schritte landen zuerst im Formular. Normale
+Benutzerkonten dürfen die KI-Entität steuern und lesen ohne weiteres Zutun;
+verbietet ein eingeschränktes Konto (nur lesen oder mit einer Entitäts-Auswahl)
+den Zugriff, wiederholt die Rezeptbox den Lesevorgang einmal als Integration,
+statt die Option zu verweigern.
 
 Über **Foto hinzufügen** lässt sich ein Bild der Rezeptkarte auswählen
 oder direkt mit der Handy-Kamera aufnehmen; es wird vor dem Hochladen auf

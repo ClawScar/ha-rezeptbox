@@ -107,6 +107,8 @@ const run = async () => {
   assert.match(form, /<label class="scan-ai" hidden>/);
   assert.match(form, /<input class="ocr-ai" type="checkbox">/);
   assert.match(form, /Mit KI lesen/);
+  // The hint names the limit, so the refusal does not come as a surprise.
+  assert.match(form, /höchstens 6 Seiten/);
   assert.doesNotMatch(form, /class="ocr-ai"[^>]*checked/);
   // The choice survives a re-render, so an active AI scan stays active.
   assert.match(

@@ -13,6 +13,7 @@ from __future__ import annotations
 import enum
 import io
 import json
+import re
 import sys
 import types
 import unittest
@@ -95,7 +96,15 @@ def _install_stubs() -> None:
     class HomeAssistantError(Exception):
         pass
 
+    class Unauthorized(HomeAssistantError):
+        pass
+
+    class UnknownUser(HomeAssistantError):
+        pass
+
     exceptions.HomeAssistantError = HomeAssistantError
+    exceptions.Unauthorized = Unauthorized
+    exceptions.UnknownUser = UnknownUser
 
     components = types.ModuleType("homeassistant.components")
     components.__path__ = []
@@ -164,6 +173,7 @@ from recipe_box.ai_scan import AiScanError, AiScanView  # noqa: E402
 
 AI_TASK = sys.modules["homeassistant.components.ai_task"]
 HOME_ASSISTANT_ERROR = sys.modules["homeassistant.exceptions"].HomeAssistantError
+UNAUTHORIZED = sys.modules["homeassistant.exceptions"].Unauthorized
 CONTEXT = sys.modules["homeassistant.core"].Context
 
 RECIPE = {
@@ -420,6 +430,76 @@ class AiScanCallTest(unittest.TestCase):
             self.assertIn("kein Bild verstanden", str(caught.exception))
             self.assertEqual(list(Path(folder).iterdir()), [])
 
+    def test_a_model_error_is_not_retried(self) -> None:
+        fake = _CapturingAiTask(error=HOME_ASSISTANT_ERROR("Modell kaputt"))
+        self.install(fake)
+        with TemporaryDirectory() as folder:
+            hass = FakeHass(media_dirs={"local": folder}, entities=[vision_entity()])
+            with self.assertRaises(AiScanError):
+                asyncio_run(
+                    ai_scan.async_scan_recipe(
+                        hass, [("image/jpeg", b"seite")], None, CONTEXT("user-1")
+                    )
+                )
+        self.assertEqual(len(fake.calls), 1, "a model error costs no second call")
+
+    def test_a_restricted_user_is_retried_without_a_user_context(self) -> None:
+        calls: list[object] = []
+
+        async def restricted(
+            hass,
+            *,
+            task_name,
+            entity_id=None,
+            instructions,
+            structure=None,
+            attachments=None,
+            context=None,
+        ):
+            calls.append(context)
+            if context is not None and context.user_id:
+                raise UNAUTHORIZED("entity not allowed")
+            return SimpleNamespace(data=json.dumps(RECIPE))
+
+        AI_TASK.async_generate_data = restricted
+        with TemporaryDirectory() as folder:
+            hass = FakeHass(media_dirs={"local": folder}, entities=[vision_entity()])
+            recipe = asyncio_run(
+                ai_scan.async_scan_recipe(
+                    hass,
+                    [("image/jpeg", b"seite")],
+                    "ai_task.gemini",
+                    CONTEXT("user-1"),
+                )
+            )
+            self.assertEqual(recipe["title"], "Apfelkuchen")
+            self.assertEqual(list(Path(folder).iterdir()), [])
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0].user_id, "user-1")
+            self.assertIsNone(calls[1], "the retry runs as the integration")
+
+    def test_a_refused_retry_is_reported(self) -> None:
+        calls: list[object] = []
+
+        async def refusing(hass, **kwargs):
+            calls.append(kwargs.get("context"))
+            raise UNAUTHORIZED("entity not allowed")
+
+        AI_TASK.async_generate_data = refusing
+        with TemporaryDirectory() as folder:
+            hass = FakeHass(media_dirs={"local": folder}, entities=[vision_entity()])
+            with self.assertRaises(AiScanError):
+                asyncio_run(
+                    ai_scan.async_scan_recipe(
+                        hass,
+                        [("image/jpeg", b"seite")],
+                        "ai_task.gemini",
+                        CONTEXT("user-1"),
+                    )
+                )
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(list(Path(folder).iterdir()), [])
+
     def test_unreadable_answer_is_reported(self) -> None:
         fake = _CapturingAiTask(answer="Ich sehe leider nichts.")
         self.install(fake)
@@ -437,8 +517,8 @@ class AiScanViewTest(unittest.TestCase):
         self.addCleanup(setattr, AI_TASK, "async_generate_data", self.original)
         self.view = AiScanView()
 
-    def post(self, hass, files, extra=None):
-        request = FakeRequest(hass, files, extra)
+    def post(self, hass, files, extra=None, user=None):
+        request = FakeRequest(hass, files, extra, user)
         return asyncio_run(self.view.post(request))
 
     def test_get_lists_the_usable_entities(self) -> None:
@@ -546,6 +626,37 @@ class AiScanViewTest(unittest.TestCase):
             response = self.post(hass, [FakeField(b"seite")])
             self.assertEqual(response.status_code, 502)
             self.assertIn("Modell nicht erreichbar", response.payload["message"])
+
+    def test_a_card_request_from_a_restricted_user_succeeds(self) -> None:
+        async def restricted(
+            hass,
+            *,
+            task_name,
+            entity_id=None,
+            instructions,
+            structure=None,
+            attachments=None,
+            context=None,
+        ):
+            if context is not None and context.user_id:
+                raise UNAUTHORIZED("entity not allowed")
+            return SimpleNamespace(data=json.dumps(RECIPE))
+
+        AI_TASK.async_generate_data = restricted
+        with TemporaryDirectory() as folder:
+            hass = FakeHass(media_dirs={"local": folder}, entities=[vision_entity()])
+            response = self.post(
+                hass, [FakeField(b"seite")], user=SimpleNamespace(id="user-2")
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.payload["title"], "Apfelkuchen")
+
+    def test_the_page_limit_matches_the_card(self) -> None:
+        card = (COMPONENT / "www" / "recipe-card.js").read_text("utf-8")
+        match = re.search(r"const AI_SCAN_MAX_PAGES = (\d+);", card)
+        self.assertIsNotNone(match, "the card names the page limit")
+        self.assertEqual(int(match.group(1)), ai_scan.MAX_PAGES)
+        self.assertIn("Pro Durchlauf höchstens ${AI_SCAN_MAX_PAGES} Seiten", card)
 
     def test_the_view_is_registered_once(self) -> None:
         hass = FakeHass(entities=[vision_entity()])

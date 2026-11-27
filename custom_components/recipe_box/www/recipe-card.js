@@ -1217,6 +1217,8 @@ const OCR_BASE = "/recipe_box/ocr/";
 /* The AI scan posts to the integration itself; the photos never leave Home
  * Assistant from the browser and no provider key sits in the card. */
 const AI_SCAN_URL = "/api/recipe_box/ai_scan";
+/* Kept in step with MAX_PAGES in ai_scan.py; the scanner hint names it. */
+const AI_SCAN_MAX_PAGES = 6;
 const OCR_INGREDIENT_HEADING =
   /^(zutaten(?:liste)?|ingredients|you need|f\u00fcr die zutaten(?:liste)?)\b/i;
 const OCR_STEP_HEADING =
@@ -2224,8 +2226,8 @@ const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class=
       "Read with AI (photos go to the AI set up in Home Assistant)"
     )}<input class="ocr-ai" type="checkbox"${aiRead ? " checked" : ""}></label>
     <p class="scan-hint">${tr(
-      "Gedruckte Rezeptkarten. „Foto hinzufügen“ nimmt ein Bild pro Auswahl – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; ohne KI erkennt der Scanner keine Handschrift.",
-      "Printed recipe cards. “Add photo” takes one picture per pick – tap again for another page. The first photo becomes the recipe photo; without AI the scanner cannot read handwriting."
+      `Gedruckte Rezeptkarten. „Foto hinzufügen“ nimmt ein Bild pro Auswahl – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; ohne KI erkennt der Scanner keine Handschrift. Pro Durchlauf höchstens ${AI_SCAN_MAX_PAGES} Seiten.`,
+      `Printed recipe cards. “Add photo” takes one picture per pick – tap again for another page. The first photo becomes the recipe photo; without AI the scanner cannot read handwriting. At most ${AI_SCAN_MAX_PAGES} pages per run.`
     )}</p>
     <ol class="ocr-pages">${ocrPagesHtml(pages)}</ol>
     <p class="scan-status" role="status"></p>
