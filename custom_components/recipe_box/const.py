@@ -13,6 +13,7 @@ CONF_UPDATE_INTERVAL_HOURS = "update_interval_hours"
 CONF_SHOPPING_TARGET = "shopping_target"
 DEFAULT_SHOPPING_TARGET = ""
 CONF_BACKUP_PATH = "backup_path"
+CONF_AI_PROMPT = "ai_prompt"
 DEFAULT_UPDATE_INTERVAL_HOURS = 24
 
 DATA_HUB = "hub"

@@ -23,7 +23,8 @@ from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from homeassistant.core import Context, HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, Unauthorized, UnknownUser
 
-from .ai_recipe import PROMPT, AiRecipeError, parse_ai_recipe
+from .ai_recipe import PROMPT, AiRecipeError, parse_ai_recipe, resolve_ai_prompt
+from .const import CONF_AI_PROMPT, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,6 +69,16 @@ def ai_task_entity_ids(hass: HomeAssistant) -> list[str]:
             continue
         found.append(entity_id)
     return sorted(found)
+
+
+def configured_ai_prompt(hass: HomeAssistant) -> str:
+    """Return the instruction from the options, or the built-in one."""
+    entries = getattr(getattr(hass, "config_entries", None), "async_entries", None)
+    for entry in entries(DOMAIN) if entries else []:
+        value = str(entry.options.get(CONF_AI_PROMPT) or "").strip()
+        if value:
+            return resolve_ai_prompt(value)
+    return PROMPT
 
 
 def _preferred_entity(hass: HomeAssistant) -> str | None:
@@ -120,6 +131,7 @@ async def _run_task(
     attachments: list[dict[str, str]],
     entity_id: str | None,
     context: Context | None,
+    instructions: str,
 ):
     """Run the AI task itself; ``context`` decides whose rights apply."""
     from homeassistant.components.ai_task import async_generate_data
@@ -128,7 +140,7 @@ async def _run_task(
         hass,
         task_name=SCAN_TASK_NAME,
         entity_id=entity_id,
-        instructions=PROMPT,
+        instructions=instructions,
         attachments=attachments,
         context=context,
     )
@@ -166,8 +178,10 @@ async def async_scan_recipe(
             }
         )
 
+    instructions = configured_ai_prompt(hass)
+
     try:
-        result = await _run_task(hass, attachments, entity_id, context)
+        result = await _run_task(hass, attachments, entity_id, context, instructions)
     except (Unauthorized, UnknownUser) as err:
         # A restricted user may not control the AI entity. The scan itself is
         # harmless, so it runs once more as the integration instead of leaving
@@ -182,7 +196,9 @@ async def async_scan_recipe(
             entity_id or SCAN_TASK_NAME,
         )
         try:
-            result = await _run_task(hass, attachments, entity_id, None)
+            result = await _run_task(
+                hass, attachments, entity_id, None, instructions
+            )
         except HomeAssistantError as retry_err:
             raise AiScanError(
                 f"Die KI konnte die Fotos nicht lesen: {retry_err}"

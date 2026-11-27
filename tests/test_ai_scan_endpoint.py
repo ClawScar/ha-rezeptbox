@@ -228,11 +228,17 @@ class FakeHass:
         self,
         media_dirs: dict[str, str] | None = None,
         entities: list[FakeEntity] | None = None,
+        options: dict | None = None,
     ) -> None:
         self.data = {}
         self.states = FakeStates(entities or [])
         self.config = FakeConfig(media_dirs or {})
         self.http = FakeHttp()
+        self.config_entries = SimpleNamespace(
+            async_entries=lambda domain: (
+                [SimpleNamespace(options=dict(options))] if options is not None else []
+            )
+        )
         if entities:
             self.data[DATA_COMPONENT] = FakeComponent(entities)
 
@@ -430,6 +436,38 @@ class AiScanCallTest(unittest.TestCase):
             self.assertIn("kein Bild verstanden", str(caught.exception))
             self.assertEqual(list(Path(folder).iterdir()), [])
 
+    def test_the_configured_prompt_reaches_the_ai(self) -> None:
+        fake = _CapturingAiTask()
+        self.install(fake)
+        with TemporaryDirectory() as folder:
+            hass = FakeHass(
+                media_dirs={"local": folder},
+                entities=[vision_entity()],
+                options={ai_scan.CONF_AI_PROMPT: "  Lies nur die Zutaten.  "},
+            )
+            asyncio_run(ai_scan.async_scan_recipe(hass, [("image/jpeg", b"x")]))
+        self.assertEqual(fake.calls[0]["instructions"], "Lies nur die Zutaten.")
+
+    def test_a_blank_option_keeps_the_built_in_prompt(self) -> None:
+        fake = _CapturingAiTask()
+        self.install(fake)
+        with TemporaryDirectory() as folder:
+            hass = FakeHass(
+                media_dirs={"local": folder},
+                entities=[vision_entity()],
+                options={ai_scan.CONF_AI_PROMPT: "   "},
+            )
+            asyncio_run(ai_scan.async_scan_recipe(hass, [("image/jpeg", b"x")]))
+        self.assertEqual(fake.calls[0]["instructions"], ai_scan.PROMPT)
+
+    def test_without_options_the_built_in_prompt_is_used(self) -> None:
+        fake = _CapturingAiTask()
+        self.install(fake)
+        with TemporaryDirectory() as folder:
+            hass = FakeHass(media_dirs={"local": folder}, entities=[vision_entity()])
+            asyncio_run(ai_scan.async_scan_recipe(hass, [("image/jpeg", b"x")]))
+        self.assertEqual(fake.calls[0]["instructions"], ai_scan.PROMPT)
+
     def test_a_model_error_is_not_retried(self) -> None:
         fake = _CapturingAiTask(error=HOME_ASSISTANT_ERROR("Modell kaputt"))
         self.install(fake)
@@ -444,7 +482,7 @@ class AiScanCallTest(unittest.TestCase):
         self.assertEqual(len(fake.calls), 1, "a model error costs no second call")
 
     def test_a_restricted_user_is_retried_without_a_user_context(self) -> None:
-        calls: list[object] = []
+        calls: list[dict] = []
 
         async def restricted(
             hass,
@@ -456,7 +494,7 @@ class AiScanCallTest(unittest.TestCase):
             attachments=None,
             context=None,
         ):
-            calls.append(context)
+            calls.append({"context": context, "instructions": instructions})
             if context is not None and context.user_id:
                 raise UNAUTHORIZED("entity not allowed")
             return SimpleNamespace(data=json.dumps(RECIPE))
@@ -475,8 +513,15 @@ class AiScanCallTest(unittest.TestCase):
             self.assertEqual(recipe["title"], "Apfelkuchen")
             self.assertEqual(list(Path(folder).iterdir()), [])
             self.assertEqual(len(calls), 2)
-            self.assertEqual(calls[0].user_id, "user-1")
-            self.assertIsNone(calls[1], "the retry runs as the integration")
+            self.assertEqual(calls[0]["context"].user_id, "user-1")
+            self.assertIsNone(
+                calls[1]["context"], "the retry runs as the integration"
+            )
+            self.assertEqual(
+                calls[0]["instructions"],
+                calls[1]["instructions"],
+                "the retry uses the same instruction",
+            )
 
     def test_a_refused_retry_is_reported(self) -> None:
         calls: list[object] = []

@@ -43,6 +43,33 @@ class AiRecipeError(ValueError):
     """Raised when the answer holds no usable recipe."""
 
 
+def _same_prompt(first: str, second: str) -> bool:
+    """Compare prompts regardless of line breaks and extra spaces."""
+
+    def squeeze(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    return squeeze(first) == squeeze(second)
+
+
+def resolve_ai_prompt(value: Any) -> str:
+    """Return the prompt to send: the configured one, else the default."""
+    text = str(value or "").strip()
+    return text or PROMPT
+
+
+def custom_ai_prompt(value: Any) -> str:
+    """Return what to store for the option.
+
+    An empty value and a copy of the built-in text both mean "use the
+    default", so a later change to the default still reaches the user.
+    """
+    text = str(value or "").strip()
+    if not text or _same_prompt(text, PROMPT):
+        return ""
+    return text
+
+
 def _payload(answer: Any) -> dict[str, Any]:
     """Return the JSON object inside the answer, however the model wrapped it."""
     if isinstance(answer, dict):

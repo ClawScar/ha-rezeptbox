@@ -109,7 +109,10 @@ Home-Assistant-Konfigurationsordner, zum Beispiel `backups`. Er gilt für den
 Service `recipe_box.export_recipes` mit `write_backup: true`. Der Button
 **Sichern** in der Karte fragt stattdessen in einem Dialog, ob die JSON-Datei
 über den Speichern-Dialog des Browsers abgelegt, auf dem Handy geteilt oder
-heruntergeladen werden soll.
+heruntergeladen werden soll. Dieselbe Seite enthält die **Anweisung für den
+KI-Foto-Scanner**: Sie überschreibt den eingebauten Prompt, mit dem die KI
+Zutaten und Schritte einordnen soll. Bleibt das Feld leer, gilt der eingebaute
+Text – auch nach einem Update, das ihn verbessert.
 
 ## Rezept importieren
 
@@ -311,7 +314,9 @@ Abo ist dafür nicht nötig, solange der kostenlose Tarif reicht – für ein
 Rezept genügen wenige Bilder, auch wenn Googles kostenloser Tarif nur wenige
 Anfragen pro Tag erlaubt. Der Vorteil sind Handschrift, schräge Fotos und
 saubere Abschnitte; dafür gehen die Fotos an den Anbieter, und ein lokales
-Modell braucht je nach Hardware etwas länger. Auch hier steht nichts ungeprüft
+Modell braucht je nach Hardware etwas länger. Ordnet ein Modell Zutaten und
+Schritte trotzdem schlecht ein, lässt sich die Anweisung in den Optionen der
+Integration überschreiben. Auch hier steht nichts ungeprüft
 im Rezept: Titel, Zutaten und Schritte landen zuerst im Formular. Normale
 Benutzerkonten dürfen die KI-Entität steuern und lesen ohne weiteres Zutun;
 verbietet ein eingeschränktes Konto (nur lesen oder mit einer Entitäts-Auswahl)

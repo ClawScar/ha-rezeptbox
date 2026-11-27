@@ -20,9 +20,36 @@ if "recipe_box" not in sys.modules:  # pragma: no cover - import guard
     sys.modules["recipe_box"] = package
 
 from recipe_box.ai_recipe import (  # noqa: E402
+    PROMPT,
     AiRecipeError,
+    custom_ai_prompt,
     parse_ai_recipe,
+    resolve_ai_prompt,
 )
+
+
+class AiPromptOptionTest(unittest.TestCase):
+    def test_empty_and_missing_values_mean_the_default(self) -> None:
+        for value in (None, "", "   ", "\n"):
+            with self.subTest(value=value):
+                self.assertEqual(resolve_ai_prompt(value), PROMPT)
+
+    def test_a_custom_prompt_wins_and_is_trimmed(self) -> None:
+        self.assertEqual(
+            resolve_ai_prompt("  Lies nur die Zutaten.  "),
+            "Lies nur die Zutaten.",
+        )
+
+    def test_a_copy_of_the_default_is_not_stored(self) -> None:
+        self.assertEqual(custom_ai_prompt(PROMPT), "")
+        self.assertEqual(custom_ai_prompt(f"  {PROMPT}\n"), "")
+        self.assertEqual(custom_ai_prompt("   "), "")
+
+    def test_a_changed_prompt_is_stored(self) -> None:
+        self.assertEqual(
+            custom_ai_prompt("  Lies nur die Zutaten.  "),
+            "Lies nur die Zutaten.",
+        )
 
 
 class ParseAiRecipeTest(unittest.TestCase):

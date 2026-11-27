@@ -18,7 +18,9 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
 )
 
+from .ai_recipe import PROMPT, custom_ai_prompt
 from .const import (
+    CONF_AI_PROMPT,
     CONF_BACKUP_PATH,
     CONF_SHOPPING_TARGET,
     CONF_UPDATE_INTERVAL_HOURS,
@@ -53,12 +55,12 @@ class RecipeBoxConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class RecipeBoxOptionsFlow(OptionsFlow):
-    """Configure the refresh interval and the shopping list target."""
+    """Configure refresh, shopping list, backup target and the AI prompt."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the refresh interval and the shopping list target."""
+        """Handle the settings of the recipe box."""
         if user_input is not None:
             data = dict(user_input)
             data[CONF_SHOPPING_TARGET] = str(
@@ -67,6 +69,9 @@ class RecipeBoxOptionsFlow(OptionsFlow):
             data[CONF_BACKUP_PATH] = str(
                 data.get(CONF_BACKUP_PATH) or ""
             ).strip()
+            # An empty field and an unchanged copy of the built-in text both
+            # mean "use the default", so later improvements reach the user.
+            data[CONF_AI_PROMPT] = custom_ai_prompt(data.get(CONF_AI_PROMPT))
             return self.async_create_entry(data=data)
 
         current = self.config_entry.options.get(
@@ -77,6 +82,9 @@ class RecipeBoxOptionsFlow(OptionsFlow):
         ).strip()
         backup_path = str(
             self.config_entry.options.get(CONF_BACKUP_PATH) or ""
+        ).strip()
+        ai_prompt = str(
+            self.config_entry.options.get(CONF_AI_PROMPT) or ""
         ).strip()
         return self.async_show_form(
             step_id="init",
@@ -105,6 +113,10 @@ class RecipeBoxOptionsFlow(OptionsFlow):
                         if backup_path
                         else {},
                     ): TextSelector(TextSelectorConfig()),
+                    vol.Optional(
+                        CONF_AI_PROMPT,
+                        description={"suggested_value": ai_prompt or PROMPT},
+                    ): TextSelector(TextSelectorConfig(multiline=True)),
                 }
             ),
         )

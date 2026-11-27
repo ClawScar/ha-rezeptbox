@@ -14,16 +14,18 @@
     "step": {
       "init": {
         "title": "Rezepte aktualisieren",
-        "description": "Wie oft alle Rezepte von ihren Quellseiten neu geladen werden sollen.",
+        "description": "Aktualisierungsintervall, Einkaufsliste, Sicherungsordner und die Anweisung für den KI-Foto-Scanner.",
         "data": {
           "update_interval_hours": "Aktualisierungsintervall (Stunden, 0 = nie)",
           "shopping_target": "Ziel-Einkaufsliste (optional)",
-          "backup_path": "Zielordner für Sicherungen (optional)"
+          "backup_path": "Zielordner für Sicherungen (optional)",
+          "ai_prompt": "Anweisung für den KI-Foto-Scanner (optional)"
         },
         "data_description": {
           "update_interval_hours": "0 schaltet die automatische Aktualisierung ab. Importierte Rezepte bleiben aus dem lokalen Cache verfügbar.",
           "shopping_target": "To-do-Liste, die die Zutaten aufnimmt, zum Beispiel die Alexa-Einkaufsliste. Leer lassen für die Home-Assistant-Einkaufsliste.",
-          "backup_path": "Rückfall-Ordner im Home-Assistant-Konfigurationsordner, zum Beispiel backups. Sichern öffnet normalerweise einen Speichern-Dialog; dieser Ordner wird nur genutzt, wo weder Dialog noch Teilen-Menü verfügbar sind, etwa in der Handy-App."
+          "backup_path": "Rückfall-Ordner im Home-Assistant-Konfigurationsordner, zum Beispiel backups. Sichern öffnet normalerweise einen Speichern-Dialog; dieser Ordner wird nur genutzt, wo weder Dialog noch Teilen-Menü verfügbar sind, etwa in der Handy-App.",
+          "ai_prompt": "Leer lassen für die eingebaute Anweisung. Sie verlangt JSON mit Titel, Portionen, Zutaten und Schritten; anpassen, wenn ein Modell Zutaten und Schritte verwechselt."
         }
       }
     }

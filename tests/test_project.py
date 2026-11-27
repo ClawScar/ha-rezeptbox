@@ -399,6 +399,14 @@ class ShoppingTargetFilesTest(unittest.TestCase):
     def test_options_offer_todo_entities(self) -> None:
         flow = (COMPONENT / "config_flow.py").read_text("utf-8")
         self.assertIn("CONF_SHOPPING_TARGET", flow)
+
+    def test_options_offer_the_ai_prompt(self) -> None:
+        flow = (COMPONENT / "config_flow.py").read_text("utf-8")
+        self.assertIn("CONF_AI_PROMPT", flow)
+        self.assertIn("TextSelectorConfig(multiline=True)", flow)
+        self.assertIn("custom_ai_prompt", flow)
+        # The built-in instruction stays the default of the field.
+        self.assertIn("ai_prompt or PROMPT", flow)
         self.assertIn('EntitySelector(EntitySelectorConfig(domain="todo"))', flow)
 
     def test_shopping_writer_can_target_todo_lists(self) -> None:
