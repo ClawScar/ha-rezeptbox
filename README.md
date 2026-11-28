@@ -232,14 +232,14 @@ nicht auftauchen, trage die Ressource einmal manuell unter **Einstellungen →
 Dashboards → Ressourcen** ein – am besten mit derselben Versionskennung:
 
 ```yaml
-url: /recipe_box/recipe-card.js?v=3.0.4
+url: /recipe_box/recipe-card.js?v=3.0.5
 type: module
 ```
 
 Eine ältere manuelle Ressource ohne `?v=` kann noch aus dem Cache laufen und
 Änderungen verdecken; dann diese Ressource löschen, Home Assistant neu starten
 und in der App zusätzlich den Frontend-Cache leeren. Welche Kartenversion
-aktiv ist, steht unter **Daten → Sicherung** („Karte 3.0.4“).
+aktiv ist, steht unter **Daten → Sicherung** („Karte 3.0.5“).
 
 ### Rezeptliste mit Detailansicht
 
