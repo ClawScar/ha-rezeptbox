@@ -117,22 +117,23 @@ const run = () => {
   /* A desktop browser has no camera picker, so the button stays away. */
   assert.doesNotMatch(form, /Foto aufnehmen/);
 
-  // 1b. On a touch device a second label opens the camera directly, and its
-  //     photos go through the same scan input wiring.
+  // 1b. On a touch device the single button opens the camera directly, and
+  //     its photos go through the same scan input wiring.
   context.navigator = { maxTouchPoints: 5 };
   context.document.createElement = () => ({ ...makeInput(), capture: "" });
   const phoneForm = context.manualFormHtml();
-  assert.match(phoneForm, /Foto aufnehmen/);
+  assert.match(phoneForm, /<label class="scan-add scan-capture">Foto aufnehmen/);
   const cameraInput = (
     phoneForm.match(/<input class="scan-input scan-camera"[^>]*>/) || [""]
   )[0];
   assert.match(cameraInput, /type="file"/);
   assert.match(cameraInput, /accept="image\/\*"/);
   assert.match(cameraInput, /capture="environment"/);
+  assert.doesNotMatch(phoneForm, /scan-pick/, "no second picker label");
   assert.equal(
     (phoneForm.match(/class="scan-input/g) || []).length,
-    2,
-    "both labels feed the same scan list"
+    1,
+    "one button, one input"
   );
 
   // 2. The tap goes straight to the input, so Android opens the picker.

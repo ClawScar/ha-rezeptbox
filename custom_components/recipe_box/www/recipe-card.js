@@ -2213,7 +2213,15 @@ const cameraCaptureAvailable = () => {
   }
 };
 
-const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class="manual data-section">
+const manualFormHtml = (edit = null, pages = [], aiRead = false) => {
+  /* One button only: a phone opens the camera, a desktop opens the file
+   * picker. A native file input next to it rendered as a stray browser
+   * widget inside Home Assistant's dark theme. */
+  const cameraCapture = cameraCaptureAvailable();
+  const photoLabel = cameraCapture
+    ? tr("Foto aufnehmen", "Take photo")
+    : tr("Foto hinzufügen", "Add photo");
+  return `<div class="manual data-section">
   <h3>${edit ? tr("Rezept bearbeiten", "Edit recipe") : tr("Eigenes Rezept", "Own recipe")}</h3>
   <p class="tab-hint">${edit
     ? tr(
@@ -2226,10 +2234,7 @@ const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class=
       )}</p>
   <div class="scan">
     <div class="scan-bar">
-      <label class="scan-add scan-pick">${tr("Foto hinzufügen", "Add photo")}<input class="scan-input" type="file"></label>
-      ${cameraCaptureAvailable()
-        ? `<label class="scan-add scan-capture">${tr("Foto aufnehmen", "Take photo")}<input class="scan-input scan-camera" type="file" accept="image/*" capture="environment"></label>`
-        : ""}
+      <label class="scan-add ${cameraCapture ? "scan-capture" : "scan-pick"}">${photoLabel}<input class="scan-input${cameraCapture ? " scan-camera" : ""}" type="file"${cameraCapture ? ` accept="image/*" capture="environment"` : ""}></label>
       <button class="ocr-run" type="button"${pages.length ? "" : " disabled"}>${tr(
         "Text erkennen",
         "Read text"
@@ -2244,7 +2249,7 @@ const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class=
       "Read with AI (photos go to the AI set up in Home Assistant)"
     )}<input class="ocr-ai" type="checkbox"${aiRead ? " checked" : ""}></label>
     <p class="scan-hint">${tr(
-      `Gedruckte Rezeptkarten. „Foto hinzufügen“ nimmt ein Bild pro Auswahl – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; ohne KI erkennt der Scanner keine Handschrift. Pro Durchlauf höchstens ${AI_SCAN_MAX_PAGES} Seiten.`,
+      `Gedruckte Rezeptkarten. „${photoLabel}“ nimmt ein Bild pro Auswahl – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; ohne KI erkennt der Scanner keine Handschrift. Pro Durchlauf höchstens ${AI_SCAN_MAX_PAGES} Seiten.`,
       `Printed recipe cards. “Add photo” takes one picture per pick – tap again for another page. The first photo becomes the recipe photo; without AI the scanner cannot read handwriting. At most ${AI_SCAN_MAX_PAGES} pages per run.`
     )}</p>
     <ol class="ocr-pages">${ocrPagesHtml(pages)}</ol>
@@ -2295,6 +2300,7 @@ const manualFormHtml = (edit = null, pages = [], aiRead = false) => `<div class=
     </div>
   </div>
 </div>`;
+};
 
 const TABS = [
   { id: "recipes", label: () => tr("Rezepte", "Recipes") },
@@ -3790,8 +3796,8 @@ const STYLES = `<style>
   /* The real input sits invisibly on the label: Android webviews only open the
    * photo picker for a tapped file input inside the page, not for a hidden
    * input that script clicks. */
-  label.scan-pick { position: relative; overflow: hidden; }
-  label.scan-pick input.scan-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  label.scan-pick, label.scan-capture { position: relative; overflow: hidden; }
+  label.scan-pick input.scan-input, label.scan-capture input.scan-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
   button.ocr-run { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
   button.ocr-run[disabled] { opacity: 0.5; cursor: default; }
   label.scan-ai { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 0.8rem; color: var(--secondary-text-color); }
