@@ -101,15 +101,18 @@ const reset = () => {
 const run = () => {
   // 1. The form offers a native file input in a label, not a scripted button.
   const form = context.manualFormHtml();
-  assert.match(form, /<label class="scan-add scan-pick">/);
+  assert.match(form, /<label class="scan-add scan-pick" title="Foto aus Dateien wählen">/);
+  assert.match(form, /class="scan-icon"/, "the picker button shows a folder icon");
+  assert.doesNotMatch(form, /scan-camera/, "no camera button on a desktop");
   /* Android only hands the chosen file to a plain input: no photo filter,
    * no multiple selection. One picture per pick, further pages by tapping
    * again. */
   const scanInput = (form.match(/<input class="scan-input"[^>]*>/) || [""])[0];
   assert.match(scanInput, /type="file"/);
   assert.doesNotMatch(scanInput, /accept=/);
+  assert.doesNotMatch(scanInput, /capture=/);
   assert.doesNotMatch(scanInput, /multiple/);
-  assert.match(form, /Foto hinzufügen/);
+  assert.match(scanInput, /aria-label="Foto aus Dateien wählen"/);
   assert.match(form, /ein Bild pro Auswahl/);
   assert.doesNotMatch(form, /button class="scan-add/);
   assert.equal((form.match(/class="scan-input"/g) || []).length, 1);
@@ -117,26 +120,35 @@ const run = () => {
   /* A desktop browser has no camera picker, so the button stays away. */
   assert.doesNotMatch(form, /Foto aufnehmen/);
 
-  // 1b. On a touch device the single button opens the camera directly, and
-  //     its photos go through the same scan input wiring.
+  // 1b. On a touch device a camera button sits next to the folder button, and
+  //     both photos go through the same scan input wiring.
   context.navigator = { maxTouchPoints: 5 };
   context.document.createElement = () => ({ ...makeInput(), capture: "" });
   const phoneForm = context.manualFormHtml();
-  assert.match(phoneForm, /<label class="scan-add scan-capture">Foto aufnehmen/);
+  assert.match(
+    phoneForm,
+    /<label class="scan-add scan-camera" title="Foto aufnehmen">/
+  );
   const cameraInput = (
     phoneForm.match(/<input class="scan-input scan-camera"[^>]*>/) || [""]
   )[0];
   assert.match(cameraInput, /type="file"/);
   assert.match(cameraInput, /accept="image\/\*"/);
   assert.match(cameraInput, /capture="environment"/);
-  assert.doesNotMatch(phoneForm, /scan-pick/, "no second picker label");
+  assert.match(phoneForm, /<label class="scan-add scan-pick" title=/);
   assert.equal(
     (phoneForm.match(/class="scan-input/g) || []).length,
-    1,
-    "one button, one input"
+    2,
+    "camera and folder, one input each"
+  );
+  assert.equal(
+    (phoneForm.match(/class="scan-icon"/g) || []).length,
+    2,
+    "both buttons carry an icon"
   );
 
-  // 2. The tap goes straight to the input, so Android opens the picker.
+  // 2. The tap goes straight to the input, so Android opens the picker or the
+  //    camera, depending on which of the two buttons was tapped.
   reset();
   const card = makeCard();
   const input = makeInput();

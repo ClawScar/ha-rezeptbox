@@ -2213,14 +2213,16 @@ const cameraCaptureAvailable = () => {
   }
 };
 
+/* Icon-only buttons for the scan bar: a phone gets one button that opens the
+ * camera and one that opens the file system, a desktop only the latter. The
+ * inline SVGs keep the card a single file and take the button colour. */
+const SCAN_CAMERA_ICON = `<svg class="scan-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+const SCAN_FOLDER_ICON = `<svg class="scan-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
+
 const manualFormHtml = (edit = null, pages = [], aiRead = false) => {
-  /* One button only: a phone opens the camera, a desktop opens the file
-   * picker. A native file input next to it rendered as a stray browser
-   * widget inside Home Assistant's dark theme. */
   const cameraCapture = cameraCaptureAvailable();
-  const photoLabel = cameraCapture
-    ? tr("Foto aufnehmen", "Take photo")
-    : tr("Foto hinzufügen", "Add photo");
+  const photoLabel = tr("Foto aufnehmen", "Take photo");
+  const pickLabel = tr("Foto aus Dateien wählen", "Choose a photo file");
   return `<div class="manual data-section">
   <h3>${edit ? tr("Rezept bearbeiten", "Edit recipe") : tr("Eigenes Rezept", "Own recipe")}</h3>
   <p class="tab-hint">${edit
@@ -2234,7 +2236,10 @@ const manualFormHtml = (edit = null, pages = [], aiRead = false) => {
       )}</p>
   <div class="scan">
     <div class="scan-bar">
-      <label class="scan-add ${cameraCapture ? "scan-capture" : "scan-pick"}">${photoLabel}<input class="scan-input${cameraCapture ? " scan-camera" : ""}" type="file"${cameraCapture ? ` accept="image/*" capture="environment"` : ""}></label>
+      ${cameraCapture
+        ? `<label class="scan-add scan-camera" title="${photoLabel}">${SCAN_CAMERA_ICON}<input class="scan-input scan-camera" type="file" accept="image/*" capture="environment" aria-label="${photoLabel}"></label>`
+        : ""}
+      <label class="scan-add scan-pick" title="${pickLabel}">${SCAN_FOLDER_ICON}<input class="scan-input" type="file" aria-label="${pickLabel}"></label>
       <button class="ocr-run" type="button"${pages.length ? "" : " disabled"}>${tr(
         "Text erkennen",
         "Read text"
@@ -2249,8 +2254,8 @@ const manualFormHtml = (edit = null, pages = [], aiRead = false) => {
       "Read with AI (photos go to the AI set up in Home Assistant)"
     )}<input class="ocr-ai" type="checkbox"${aiRead ? " checked" : ""}></label>
     <p class="scan-hint">${tr(
-      `Gedruckte Rezeptkarten. „${photoLabel}“ nimmt ein Bild pro Auswahl – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; ohne KI erkennt der Scanner keine Handschrift. Pro Durchlauf höchstens ${AI_SCAN_MAX_PAGES} Seiten.`,
-      `Printed recipe cards. “Add photo” takes one picture per pick – tap again for another page. The first photo becomes the recipe photo; without AI the scanner cannot read handwriting. At most ${AI_SCAN_MAX_PAGES} pages per run.`
+      `Gedruckte Rezeptkarten. Die Fototaste nimmt ein Bild pro Auswahl direkt auf, die Ordnertaste wählt eins aus dem Speicher – für eine weitere Seite erneut tippen. Das erste Foto wird das Rezeptfoto; ohne KI erkennt der Scanner keine Handschrift. Pro Durchlauf höchstens ${AI_SCAN_MAX_PAGES} Seiten.`,
+      `Printed recipe cards. The photo button takes one picture per pick, the folder button picks one from storage – tap again for another page. The first photo becomes the recipe photo; without AI the scanner cannot read handwriting. At most ${AI_SCAN_MAX_PAGES} pages per run.`
     )}</p>
     <ol class="ocr-pages">${ocrPagesHtml(pages)}</ol>
     <p class="scan-status" role="status"></p>
@@ -3792,12 +3797,13 @@ const STYLES = `<style>
   @keyframes recipe-box-spin { to { transform: rotate(360deg); } }
   .scan { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--secondary-background-color, rgba(127, 127, 127, 0.08)); }
   .scan-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .scan-add { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--primary-color); background: none; color: var(--primary-color); font-family: inherit; font-size: 0.85rem; cursor: pointer; }
+  .scan-add { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; padding: 0; border-radius: 8px; border: 1px solid var(--primary-color); background: none; color: var(--primary-color); font-family: inherit; cursor: pointer; }
+  .scan-add .scan-icon { display: block; width: 20px; height: 20px; }
   /* The real input sits invisibly on the label: Android webviews only open the
    * photo picker for a tapped file input inside the page, not for a hidden
    * input that script clicks. */
-  label.scan-pick, label.scan-capture { position: relative; overflow: hidden; }
-  label.scan-pick input.scan-input, label.scan-capture input.scan-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  label.scan-add { position: relative; overflow: hidden; }
+  label.scan-add input.scan-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
   button.ocr-run { background: var(--primary-color); color: var(--text-primary-color, #fff); border: none; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; cursor: pointer; }
   button.ocr-run[disabled] { opacity: 0.5; cursor: default; }
   label.scan-ai { display: flex; align-items: center; gap: 6px; margin: 8px 0 0; font-size: 0.8rem; color: var(--secondary-text-color); }
